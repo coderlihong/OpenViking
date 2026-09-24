@@ -1,9 +1,28 @@
 # wolf-viking 容器配置指南
 
-> 只讲**容器启动之后**怎么配模型和参数。构建/启动步骤见
+> 只讲**容器启动之后**的配置与使用。构建/启动步骤见
 > [wolf-viking-local-deploy.md](./wolf-viking-local-deploy.md)。
 
-## 一、要配什么（依赖关系）
+## 一、端口与服务入口
+
+**只有一个端口：1933**。前端、MCP、REST API 全在它上面，靠路径区分：
+
+| 入口 | 地址 | 说明 |
+| --- | --- | --- |
+| 前端（Studio） | `http://localhost:1933/studio/` | 浏览器打开；访问 `/` 会 302 跳到这里 |
+| MCP | `http://localhost:1933/mcp` | Streamable HTTP，15 个工具（find/search/read/write/edit/list/tree/remember/…） |
+| REST API | `http://localhost:1933/api/v1/*` | 数据读写、管理、系统接口；Swagger 在 `/docs` |
+| 健康检查 | `/health`、`/ready` | 容器 healthcheck 用的也是它 |
+| WebDAV | `/webdav/resources` | 可选，映射 `viking://resources` |
+
+没有独立的 MCP 端口或前端端口 —— 一个进程一个端口，全部复用。
+
+- **1934**：官方 compose 里 Caddy 反代的入口（转发到 1933）。wolf-local compose **没有**这个，直接访问 1933 即可。
+- **改端口**：启动时设 `OPENVIKING_SERVER_PORT`（compose 环境变量或 `-e`）。
+
+认证：Studio 登录用 `server.root_api_key`；数据 API（含 MCP）必须用 **user key**，root key 会报 `PERMISSION_DENIED`。
+
+## 二、要配什么（依赖关系）
 
 | 配置 | 必填 | 不配的后果 |
 | --- | --- | --- |
@@ -15,7 +34,7 @@
 
 配置文件位置：容器内 `/app/.openviking/ov.conf`（即宿主挂载的 `~/.openviking/ov.conf`）。
 
-## 二、怎么配
+## 三、怎么配
 
 ### 方式 A：容器内向导（推荐）
 
@@ -74,7 +93,7 @@ docker exec -it openviking-local openviking-server init
 
 ov.conf **不存在**时，用 `OPENVIKING_CONF_CONTENT` 传 JSON 字符串，容器启动时写入。文件已存在后不再覆盖。
 
-## 三、生效 + 验证
+### 改完生效
 
 ```bash
 docker restart openviking-local
@@ -106,6 +125,15 @@ curl -s -X POST http://localhost:1933/api/v1/content/write \
 # 3. 读回 / 列目录
 curl -s "http://localhost:1933/api/v1/content/read?uri=viking://resources/test.md" -H "Authorization: Bearer <USER_KEY>"
 curl -s "http://localhost:1933/api/v1/fs/ls?uri=viking://resources" -H "Authorization: Bearer <USER_KEY>"
+```
+
+MCP 连通性（同样用 user key）：
+
+```bash
+curl -s -X POST http://localhost:1933/mcp \
+  -H "Authorization: Bearer <USER_KEY>" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1,"params":{}}'
 ```
 
 ## 五、数据迁移（`.ovpack` 打包 / 导入）
@@ -161,7 +189,7 @@ docker exec openviking-local ov import /tmp/proj.ovpack viking://resources/ --on
 | --- | --- |
 | 启动崩 `llama-cpp-python is not installed` | 没配 `embedding.dense` |
 | 启动报 root_api_key 错误 | `host` 非 localhost 时必须设非空 `root_api_key` |
-| 数据 API `PERMISSION_DENIED` | 用了 root key；数据 API 要 user key |
+| 数据 API / MCP `PERMISSION_DENIED` | 用了 root key；数据 API 要 user key |
 | 改 ov.conf 不生效 | 改完要 `docker restart`；`OPENVIKING_CONF_CONTENT` 只在文件不存在时写入 |
 | `/ready` embedding `error` | key/端点不对或网络不通 |
 | 写入一直 `queued` / 检索不到 | embedding 或 vlm 不可用，后台任务在重试；`docker logs` 看详情 |
