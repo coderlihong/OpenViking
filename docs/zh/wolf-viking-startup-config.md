@@ -108,7 +108,54 @@ curl -s "http://localhost:1933/api/v1/content/read?uri=viking://resources/test.m
 curl -s "http://localhost:1933/api/v1/fs/ls?uri=viking://resources" -H "Authorization: Bearer <USER_KEY>"
 ```
 
-## 五、常见报错
+## 五、数据迁移（`.ovpack` 打包 / 导入）
+
+`ov` CLI 在容器内 `/app/.venv/bin/ov`。首次使用先配 CLI 连接（写 `ovcli.conf`，需要 **user key**，root key 不行）：
+
+```bash
+docker exec openviking-local sh -c '
+cat > /app/.openviking/ovcli.conf <<EOF
+{"url":"http://127.0.0.1:1933","api_key":"<USER_KEY>"}
+EOF
+ov language zh-CN'
+```
+
+### 5.1 子目录导出 / 导入
+
+```bash
+# 导出（默认不含向量，导入后自动重新向量化）
+ov export viking://resources/proj /tmp/proj.ovpack
+
+# 导入：目标是**父目录**，包根名保留 → 结果为 viking://resources/imported/proj
+ov import /tmp/proj.ovpack viking://resources/imported/ --on-conflict overwrite
+```
+
+- 只支持**目录**（`viking://resources/xxx` / `viking://user/xxx`），单文件导不了。
+- `--on-conflict`：`fail`（默认）/ `overwrite` / `skip`。
+- 同 embedding 配置的环境想跳过重算：导出加 `--include-vectors`，导入加 `--vector-mode auto`（`recompute` 强制重算，`require` 快照缺失就报错）。
+
+### 5.2 全量备份 / 恢复
+
+顶层 scope 根（`viking://resources` 整个）不能用 export，要用 backup：
+
+```bash
+ov backup /tmp/full.ovpack                            # 公开 scope 全量（resources + 本账号所有 user）
+ov restore /tmp/full.ovpack --on-conflict overwrite   # 只能 restore，不能普通 import
+```
+
+- 需要 ROOT / ADMIN 权限；包内**不含**账号和 API key，恢复后要重建用户。
+- 备份是逐文件在线读取，非原子快照；要严格一致就先停写入。
+
+### 5.3 跨机迁移
+
+```bash
+# 源机导出 → 拷出 → 目标机拷入 → 导入
+docker cp openviking-local:/tmp/proj.ovpack ./proj.ovpack
+scp proj.ovpack <target>:~/ && ssh <target> 'docker cp ~/proj.ovpack openviking-local:/tmp/'
+docker exec openviking-local ov import /tmp/proj.ovpack viking://resources/ --on-conflict overwrite
+```
+
+## 六、常见报错
 
 | 现象 | 原因 |
 | --- | --- |
@@ -118,3 +165,6 @@ curl -s "http://localhost:1933/api/v1/fs/ls?uri=viking://resources" -H "Authoriz
 | 改 ov.conf 不生效 | 改完要 `docker restart`；`OPENVIKING_CONF_CONTENT` 只在文件不存在时写入 |
 | `/ready` embedding `error` | key/端点不对或网络不通 |
 | 写入一直 `queued` / 检索不到 | embedding 或 vlm 不可用，后台任务在重试；`docker logs` 看详情 |
+| `ov` 报 "needs a display language" | 先跑 `ov language zh-CN` |
+| import 报 "Top-level scope ovpack packages must be imported to viking://" | 导出的是顶层 scope 根，改用 `ov backup` / `ov restore` |
+| export 报 "not a directory" | 只支持目录导出，单文件不行 |
