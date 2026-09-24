@@ -137,4 +137,5 @@ curl -s -X POST http://localhost:1933/api/v1/content/write \
 | `examples/ov.conf.example` | 完整配置示例（404 行，含各 embedding provider） |
 | `deploy/wolf-local/docker-compose.yml` | 本 fork 的 compose（源码构建 + 配置/数据挂载） |
 | `deploy/wolf-local/ov.conf.example` | 可直接用的最小 ov.conf 模板 |
+| `docs/zh/wolf-viking-startup-config.md` | 启动步骤 + ov.conf 逐段配置说明（模拟参数可直接抄） |
 | `deploy/helm/openviking` | K8s Helm chart |
