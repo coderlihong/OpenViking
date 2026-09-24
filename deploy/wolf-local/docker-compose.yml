@@ -1,0 +1,38 @@
+# docker-compose for the wolf-viking fork (builds from source).
+#
+#   cd deploy/wolf-local
+#   mkdir -p ov-data && cp ov.conf.example ov-data/ov.conf   # then edit the file
+#   docker compose up -d --build
+#
+# Behind a proxy (GitHub / Docker Hub / crates.io unreachable directly):
+#   export BUILD_HTTP_PROXY=http://host.docker.internal:7890
+#   docker compose up -d --build
+#
+# NOTE: `container_name: openviking-local` — remove any existing container with
+# the same name first: docker rm -f openviking-local
+
+services:
+  openviking:
+    build:
+      context: ../..
+      args:
+        OPENVIKING_VERSION: ${OPENVIKING_VERSION:-0.4.15.dev35}
+        http_proxy: ${BUILD_HTTP_PROXY:-}
+        https_proxy: ${BUILD_HTTP_PROXY:-}
+        no_proxy: ${BUILD_NO_PROXY:-localhost,127.0.0.1}
+    image: openviking:wolf
+    container_name: openviking-local
+    ports:
+      - "1933:1933"
+    volumes:
+      - ./ov-data:/app/.openviking
+    environment:
+      # Bot needs extra LLM config; off by default.
+      OPENVIKING_WITH_BOT: "0"
+    healthcheck:
+      test: ["CMD", "openviking-entrypoint", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
