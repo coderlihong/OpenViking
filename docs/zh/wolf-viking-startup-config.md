@@ -162,25 +162,76 @@ ov import /tmp/proj.ovpack viking://resources/imported/ --on-conflict overwrite
 - `--on-conflict`：`fail`（默认）/ `overwrite` / `skip`。
 - 同 embedding 配置的环境想跳过重算：导出加 `--include-vectors`，导入加 `--vector-mode auto`（`recompute` 强制重算，`require` 快照缺失就报错）。
 
-### 5.2 全量备份 / 恢复
+### 5.2 向量迁移（要不要重算 embedding）
+
+默认**不迁移向量**：文本（含 `.abstract.md` / `.overview.md` 侧车）会过去，导入后由目标环境**重新向量化**（只调 embedding，不重跑 LLM 语义）。
+
+想原样搬向量（冷迁移加速）：
+
+```bash
+# 源端导出：带向量
+ov export viking://resources/proj /tmp/proj.ovpack --include-vectors
+
+# 目标端导入：require = 必须恢复快照，不兼容就报错（绝不静默重算）
+ov import /tmp/proj.ovpack viking://resources/ --vector-mode require
+```
+
+`--vector-mode` 三档：`auto`（默认，兼容则恢复否则重算）/ `recompute`（强制重算）/ `require`（必须恢复，否则报错）。
+
+**兼容性只看 6 个字段**（`api_base` / `api_key` 不比对）：
+
+```
+provider, model, input, query_param, document_param, dimensions
+```
+
+#### 怎么确保两边一致（操作方式）
+
+**原则：embedding 必须在首次启动、写入任何数据之前就定好。** 后续换模型 = 旧向量全部失效（校验会拦，但 none 模式文件和未索引内容不会拦）。
+
+1. **源端定稿后导出，记录 6 字段**：
+
+   ```bash
+   # 直接看配置里的 embedding 段
+   docker exec openviking-local cat /app/.openviking/ov.conf | python3 -c "import json,sys; print(json.load(sys.stdin)['embedding'])"
+
+   # 或者看包内快照自带的元数据（权威，以实际导出为准）
+   unzip -p /tmp/proj.ovpack '*/_ovpack/manifest.json' \
+     | python3 -c "import json,sys; print(json.load(sys.stdin)['index']['dense']['embedding'])"
+   ```
+
+2. **目标端启动前把 embedding 段配成完全相同的 6 个值**（照抄，尤其 `input`、`query_param`、`document_param`、`dimension` 别漏 —— 只写 `provider`/`model` 两个字段不算一致）。
+
+3. **导入后用 `require` 验证**：能导入成功 = 6 字段一致且快照完整；报 `dense vector snapshot is incompatible` = 有字段不一致，按报错字段改配置或改用 `--vector-mode recompute`。
+
+4. **导出前确保索引已完成**：`ov system consistency viking://resources/proj` 必须 ok，否则 `--include-vectors` 直接拒绝导出。
+
+⚠️ 注意：
+
+- 校验只比字段值。**同名 model 但实际后端是不同模型**（例如换了 `api_base` 指向另一个部署）会被判"兼容"，但向量语义空间已变，检索会悄悄变差。要真一致，就别动后端。
+- **none 模式写入的文件没有向量记录**，会让 `--include-vectors` 导出直接失败（`Cannot export incomplete OpenViking vector index snapshot`）。纯 none 的库只能默认重算迁移（none 文件会被顺便向量化 —— 这是 import 的固有行为，无法跳过）。
+- 快照只支持**纯 dense** 索引；`sparse_weight > 0`（hybrid）时拒绝导出。默认配置就是纯 dense。
+- Session 永不迁移向量（源、目标都跳过）；`.relations.json`、temp/queue/upload/locks 不迁移。
+- 向量主键 `md5(account_id:uri)` 恢复时按目标账号重算，跨账号迁移没问题。
+
+### 5.3 全量备份 / 恢复
 
 顶层 scope 根（`viking://resources` 整个）不能用 export，要用 backup：
 
 ```bash
-ov backup /tmp/full.ovpack                            # 公开 scope 全量（resources + 本账号所有 user）
-ov restore /tmp/full.ovpack --on-conflict overwrite   # 只能 restore，不能普通 import
+ov backup /tmp/full.ovpack --include-vectors             # 公开 scope 全量（resources + 本账号所有 user）
+ov restore /tmp/full.ovpack --vector-mode require        # 只能 restore，不能普通 import
 ```
 
 - 需要 ROOT / ADMIN 权限；包内**不含**账号和 API key，恢复后要重建用户。
 - 备份是逐文件在线读取，非原子快照；要严格一致就先停写入。
 
-### 5.3 跨机迁移
+### 5.4 跨机迁移
 
 ```bash
 # 源机导出 → 拷出 → 目标机拷入 → 导入
 docker cp openviking-local:/tmp/proj.ovpack ./proj.ovpack
 scp proj.ovpack <target>:~/ && ssh <target> 'docker cp ~/proj.ovpack openviking-local:/tmp/'
-docker exec openviking-local ov import /tmp/proj.ovpack viking://resources/ --on-conflict overwrite
+docker exec openviking-local ov import /tmp/proj.ovpack viking://resources/ --vector-mode require
 ```
 
 ## 六、常见报错
@@ -196,3 +247,5 @@ docker exec openviking-local ov import /tmp/proj.ovpack viking://resources/ --on
 | `ov` 报 "needs a display language" | 先跑 `ov language zh-CN` |
 | import 报 "Top-level scope ovpack packages must be imported to viking://" | 导出的是顶层 scope 根，改用 `ov backup` / `ov restore` |
 | export 报 "not a directory" | 只支持目录导出，单文件不行 |
+| export `--include-vectors` 报 "incomplete OpenViking vector index snapshot" | 索引未完成或有 none 模式文件；先 `ov system consistency <uri>` 定位 |
+| import 报 "dense vector snapshot is incompatible" | 目标 embedding 配置与包内 6 字段不一致；对齐配置或改用 `--vector-mode recompute` |
