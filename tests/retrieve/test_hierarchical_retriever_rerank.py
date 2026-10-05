@@ -87,6 +87,8 @@ class DummyStorage:
                 "offset": offset,
             }
         )
+        if level == [2]:
+            return []
         return [
             _result("viking://resources/root-a", 0.2, level=1, abstract="root A"),
             _result("viking://resources/root-b", 0.8, level=1, abstract="root B"),
@@ -358,7 +360,10 @@ async def test_rerank_scores_bounds_oversized_documents_and_preserves_tail(
 
 
 @pytest.mark.asyncio
-async def test_retrieve_falls_back_to_vector_scores_when_rerank_returns_none(monkeypatch):
+@pytest.mark.parametrize("acl_enabled", [False, True])
+async def test_retrieve_falls_back_to_vector_scores_when_rerank_returns_none(
+    monkeypatch, acl_enabled
+):
     class NoneRerankClient(FakeRerankClient):
         def rerank_batch(self, query: str, documents: list[str]):
             self.calls.append((query, list(documents)))
@@ -370,11 +375,15 @@ async def test_retrieve_falls_back_to_vector_scores_when_rerank_returns_none(mon
         lambda config: fake_client,
     )
 
-    storage = QuickSearchStorage([
-        _result("viking://resources/a/deep-a.md", 0.2, abstract="deep A"),
-        _result("viking://resources/b/deep-b.md", 0.8, abstract="deep B"),
-    ])
-    storage.acl_manager = SimpleNamespace(is_enabled=lambda _account_id: True)
+    storage = QuickSearchStorage(
+        [
+            _result("viking://resources/a/deep-a.md", 0.2, abstract="deep A"),
+            _result("viking://resources/b/deep-b.md", 0.8, abstract="deep B"),
+        ]
+    )
+    storage.acl_manager = (
+        SimpleNamespace(is_enabled=lambda _account_id: True) if acl_enabled else None
+    )
 
     async def no_hierarchical_children(*_args, **_kwargs):
         return []
@@ -714,3 +723,46 @@ async def test_convert_to_matched_contexts_defaults_tags_and_body_previews():
         markdown,
         "",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [RetrieverMode.QUICK, RetrieverMode.THINKING])
+async def test_same_uri_children_preserve_multiple_matches_and_parent_context(mode):
+    class ChunkStorage(QuickSearchStorage):
+        async def search_in_tenant(self, *args, **kwargs):
+            rows = await super().search_in_tenant(*args, **kwargs)
+            return [r for r in rows if kwargs.get("level") is None or r["level"] in kwargs["level"]]
+
+        async def search_children_in_tenant(self, *args, **kwargs):
+            return []
+
+    uri = "viking://resources/manual.md"
+    storage = ChunkStorage(
+        [
+            _result(
+                uri,
+                0.9,
+                chunk_id="child-a",
+                parent_chunk_id="parent",
+                chunk_text="正文开头",
+                parent_text="完整父块",
+                content_revision="rev",
+            ),
+            _result(
+                uri,
+                0.8,
+                chunk_id="child-b",
+                parent_chunk_id="parent",
+                chunk_text="正文末尾",
+                parent_text="完整父块",
+                content_revision="rev",
+            ),
+        ]
+    )
+    retriever = HierarchicalRetriever(storage=storage, embedder=DummyEmbedder())
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=2, mode=mode)
+    assert len(result.matched_contexts) == 1
+    match = result.matched_contexts[0]
+    assert match.uri == uri
+    assert {m["chunk_id"] for m in match.matches} == {"child-a", "child-b"}
+    assert {m["parent_text"] for m in match.matches} == {"完整父块"}

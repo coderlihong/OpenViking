@@ -11,6 +11,56 @@ from openviking.models.rerank import OpenAIRerankClient, RerankClient
 from openviking_cli.utils.config.rerank_config import RerankConfig
 
 
+def _patch_sdk(json_payload=None, *, post_error=None, capture=None):
+    """Patch ``openai.OpenAI`` so the client's generic ``post`` is mocked.
+
+    Returns ``(patcher, mock_client)``. When *capture* is a dict the posted
+    path and body are recorded into it. When *post_error* is set the mock
+    ``post`` raises it, simulating a transport/API failure.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    if json_payload is not None:
+        mock_response.json.return_value = json_payload
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+
+    def _post(path, **kwargs):
+        if capture is not None:
+            capture["path"] = path
+            capture["body"] = kwargs.get("body")
+        if post_error is not None:
+            raise post_error
+        return mock_response
+
+    mock_client.post.side_effect = _post
+
+    if capture is not None:
+        capture["client_kwargs"] = None
+
+        def _record(*args, **kwargs):
+            capture["client_kwargs"] = kwargs
+            return mock_client
+
+        return (
+            patch(
+                "openviking.models.rerank.openai_rerank.openai.OpenAI",
+                side_effect=_record,
+            ),
+            mock_client,
+        )
+
+    return (
+        patch(
+            "openviking.models.rerank.openai_rerank.openai.OpenAI",
+            return_value=mock_client,
+        ),
+        mock_client,
+    )
+
+
 class TestOpenAIRerankClient:
     def _make_client(self):
         return OpenAIRerankClient(
@@ -21,21 +71,19 @@ class TestOpenAIRerankClient:
 
     def test_rerank_batch_success(self):
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 0, "relevance_score": 0.9},
-                    {"index": 1, "relevance_score": 0.3},
-                    {"index": 2, "relevance_score": 0.7},
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 0, "relevance_score": 0.9},
+                        {"index": 1, "relevance_score": 0.3},
+                        {"index": 2, "relevance_score": 0.7},
+                    ]
+                }
             }
-        }
-        mock_response.raise_for_status = MagicMock()
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ):
+        with patcher:
             scores = client.rerank_batch("test query", ["doc1", "doc2", "doc3"])
 
         assert scores == [0.9, 0.3, 0.7]
@@ -43,21 +91,19 @@ class TestOpenAIRerankClient:
     def test_rerank_batch_out_of_order_results(self):
         """Results returned out-of-order should be re-ordered by index."""
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 2, "relevance_score": 0.7},
-                    {"index": 0, "relevance_score": 0.9},
-                    {"index": 1, "relevance_score": 0.3},
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 2, "relevance_score": 0.7},
+                        {"index": 0, "relevance_score": 0.9},
+                        {"index": 1, "relevance_score": 0.3},
+                    ]
+                }
             }
-        }
-        mock_response.raise_for_status = MagicMock()
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ):
+        with patcher:
             scores = client.rerank_batch("test query", ["doc1", "doc2", "doc3"])
 
         assert scores == [0.9, 0.3, 0.7]
@@ -69,33 +115,27 @@ class TestOpenAIRerankClient:
 
     def test_rerank_batch_unexpected_format_returns_none(self):
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"unexpected": "format"}
-        mock_response.raise_for_status = MagicMock()
+        patcher, _ = _patch_sdk({"unexpected": "format"})
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ):
+        with patcher:
             result = client.rerank_batch("query", ["doc1"])
 
         assert result is None
 
     def test_rerank_batch_sparse_results_fill_missing_scores_with_zero(self):
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 2, "relevance_score": 0.7},
-                    {"index": 0, "relevance_score": 0.9},
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 2, "relevance_score": 0.7},
+                        {"index": 0, "relevance_score": 0.9},
+                    ]
+                }
             }
-        }
-        mock_response.raise_for_status = MagicMock()
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ), patch("openviking.models.rerank.openai_rerank.logger.warning") as warning:
+        with patcher, patch("openviking.models.rerank.openai_rerank.logger.warning") as warning:
             result = client.rerank_batch("query", ["doc1", "doc2", "doc3"])
 
         assert result == [0.9, 0.0, 0.7]
@@ -106,19 +146,17 @@ class TestOpenAIRerankClient:
     def test_rerank_batch_out_of_bounds_index_returns_none(self):
         """An index that is >= len(documents) should return None."""
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 5, "relevance_score": 0.9},  # only 1 doc
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 5, "relevance_score": 0.9},  # only 1 doc
+                    ]
+                }
             }
-        }
-        mock_response.raise_for_status = MagicMock()
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ):
+        with patcher:
             result = client.rerank_batch("query", ["doc1"])
 
         assert result is None
@@ -126,55 +164,55 @@ class TestOpenAIRerankClient:
     def test_rerank_batch_missing_index_field_returns_none(self):
         """A result item with no 'index' key should return None."""
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"relevance_score": 0.9},  # missing 'index'
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"relevance_score": 0.9},  # missing 'index'
+                    ]
+                }
             }
-        }
-        mock_response.raise_for_status = MagicMock()
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ):
+        with patcher:
             result = client.rerank_batch("query", ["doc1"])
 
         assert result is None
 
     def test_rerank_batch_http_error_returns_none(self):
         client = self._make_client()
+        patcher, _ = _patch_sdk(post_error=Exception("connection error"))
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post",
-            side_effect=Exception("connection error"),
-        ):
+        with patcher:
             result = client.rerank_batch("query", ["doc1"])
 
         assert result is None
 
     def test_rerank_batch_sends_correct_request(self):
         client = self._make_client()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "output": {"results": [{"index": 0, "relevance_score": 0.8}]}
-        }
-        mock_response.raise_for_status = MagicMock()
+        capture = {}
+        patcher, mock_client = _patch_sdk(
+            {"output": {"results": [{"index": 0, "relevance_score": 0.8}]}},
+            capture=capture,
+        )
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ) as mock_post:
+        with patcher:
             client.rerank_batch("my query", ["doc1"])
 
-        call_kwargs = mock_post.call_args
-        assert call_kwargs.kwargs["url"] == "https://dashscope.aliyuncs.com/api/v1/services/rerank"
-        assert call_kwargs.kwargs["headers"]["Authorization"] == "Bearer test-key"
-        body = call_kwargs.kwargs["json"]
+        # DashScope native endpoint is used as-is; the SDK appends no path.
+        assert capture["path"] == ""
+        body = capture["body"]
         assert body["model"] == "gte-rerank-v2"
         assert body["input"]["query"] == "my query"
         assert body["input"]["documents"] == ["doc1"]
         assert body["parameters"]["return_documents"] is False
+
+        # The native endpoint is passed verbatim as the SDK base_url.
+        assert (
+            capture["client_kwargs"]["base_url"]
+            == "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+        )
+        assert capture["client_kwargs"]["api_key"] == "test-key"
 
     def test_from_config(self):
         config = RerankConfig(

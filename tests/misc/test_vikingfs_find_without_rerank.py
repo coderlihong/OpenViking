@@ -12,6 +12,17 @@ from openviking.server.identity import RequestContext, Role
 from openviking.storage.viking_fs import VikingFS
 from openviking_cli.retrieve.types import ContextType, MatchedContext, QueryResult
 from openviking_cli.session.user_id import UserIdentifier
+from openviking_cli.utils.config import RerankConfig
+from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingleton
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rerank_singleton():
+    """Pin the singleton rerank section so retrieval sees a known value,
+    independent of the developer machine's ov.conf."""
+    OpenVikingConfigSingleton._instance = None
+    yield
+    OpenVikingConfigSingleton._instance = None
 
 
 def _ctx() -> RequestContext:
@@ -41,7 +52,8 @@ async def test_find_works_without_rerank_config(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(self, storage, embedder, rerank_config, retrieval_config, lexical_search=None):
+            assert lexical_search is None
             captured["storage"] = storage
             captured["embedder"] = embedder
             captured["rerank_config"] = rerank_config
@@ -114,7 +126,8 @@ async def test_find_accepts_image_url_without_text_query(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(self, storage, embedder, rerank_config, retrieval_config, lexical_search=None):
+            assert lexical_search is None
             pass
 
         async def retrieve(
@@ -169,7 +182,8 @@ async def test_find_uses_quick_mode_with_rerank_config(monkeypatch) -> None:
     captured = {}
 
     class FakeRetriever:
-        def __init__(self, storage, embedder, rerank_config, retrieval_config):
+        def __init__(self, storage, embedder, rerank_config, retrieval_config, lexical_search=None):
+            assert lexical_search is None
             captured["rerank_config"] = rerank_config
 
         async def retrieve(self, typed_query, **kwargs):

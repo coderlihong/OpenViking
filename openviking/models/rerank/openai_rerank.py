@@ -10,7 +10,8 @@ via api_key + api_base configuration.
 # For logging, use Python's built-in logging
 from typing import Dict, List, Optional
 
-import requests
+import httpx
+import openai
 
 from openviking.models.rerank.base import RerankBase
 from openviking_cli.utils import get_logger
@@ -37,6 +38,23 @@ def _uses_nested_envelope(api_base: str) -> bool:
     return any(marker in api_base for marker in _DASHSCOPE_NATIVE_PATH_MARKERS)
 
 
+def _rerank_request_target(api_base: str) -> "tuple[str, str]":
+    """Split a configured base URL into the OpenAI SDK ``base_url`` and path.
+
+    Callers configure a standard OpenAI-compatible base ending in ``/v1``
+    (the same convention the embedding and VLM clients use, where the SDK
+    appends the operation path). The ``/rerank`` path is appended for that
+    convention; a base that already names the operation (a full ``.../rerank``
+    path or DashScope's native endpoint) is used as-is with an empty path.
+    """
+    trimmed = api_base.rstrip("/")
+    if trimmed.endswith("/rerank") or trimmed.endswith("/reranks"):
+        return trimmed, ""
+    if any(marker in trimmed for marker in _DASHSCOPE_NATIVE_PATH_MARKERS):
+        return trimmed, ""
+    return trimmed, "/rerank"
+
+
 class OpenAIRerankClient(RerankBase):
     """
     OpenAI-compatible rerank API client using Bearer token auth.
@@ -57,7 +75,10 @@ class OpenAIRerankClient(RerankBase):
 
         Args:
             api_key: Bearer token for authentication
-            api_base: Full endpoint URL for the rerank API
+            api_base: Base URL of the OpenAI-compatible API, conventionally
+                ending in ``/v1`` (e.g. ``http://host:8029/v1``). The
+                ``/rerank`` operation path is appended automatically; a base
+                that already names the operation is used as-is.
             model_name: Model name to use for reranking
             extra_headers: Optional extra headers for API requests
             timeout: HTTP request timeout in seconds. Defaults to 30. Increase for
@@ -66,6 +87,8 @@ class OpenAIRerankClient(RerankBase):
         super().__init__()
         self.api_key = api_key
         self.api_base = api_base
+        self._client_base_url, self._rerank_path = _rerank_request_target(api_base)
+        self.endpoint_url = f"{self._client_base_url}{self._rerank_path}"
         self.model_name = model_name
         self.extra_headers = extra_headers or {}
         self.timeout = timeout
@@ -133,20 +156,23 @@ class OpenAIRerankClient(RerankBase):
         req_body = self._build_request_body(query, documents)
 
         try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
+            # A fresh client per call mirrors the previous one-shot requests.post
+            # behaviour (the retriever constructs a new client for every search),
+            # so the connection pool is closed deterministically instead of leaking.
+            client_kwargs: Dict[str, object] = {
+                "api_key": self.api_key,
+                "base_url": self._client_base_url,
+                "timeout": self.timeout,
             }
             if self.extra_headers:
-                headers.update(self.extra_headers)
+                client_kwargs["default_headers"] = self.extra_headers
 
-            response = requests.post(
-                url=self.api_base,
-                headers=headers,
-                json=req_body,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
+            with openai.OpenAI(**client_kwargs) as client:
+                response = client.post(
+                    self._rerank_path,
+                    cast_to=httpx.Response,
+                    body=req_body,
+                )
             result = response.json()
 
             # Update token usage tracking (estimate, OpenAI rerank doesn't provide token info)

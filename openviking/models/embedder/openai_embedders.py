@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0
 """OpenAI Embedder Implementation"""
 
+import base64
+import struct
 from typing import Any, Dict, List, Literal, Optional
 
 import httpx
@@ -81,6 +83,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         configured_provider: Optional[str] = None,
         encoding_format: Optional[Literal["float", "base64"]] = None,
         extra_body: Optional[Dict[str, Any]] = None,
+        wire_format: Literal["input", "messages"] = "input",
     ):
         """Initialize OpenAI-Compatible Dense Embedder
 
@@ -138,6 +141,9 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         self._supports_multimodal = input_type == "multimodal"
         self.encoding_format = encoding_format
         self.extra_body = extra_body
+        if wire_format not in {"input", "messages"}:
+            raise ValueError("Embedding wire_format must be input or messages")
+        self.wire_format = wire_format
         self._provider = provider.lower()
         self.provider = (configured_provider or provider).lower()
         self._client_kwargs: Dict[str, Any] = {"api_key": self.api_key or "no-key"}
@@ -309,6 +315,10 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         self, text_input: EmbeddingInput | List[str], is_query: bool = False
     ) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {"input": text_input, "model": self.model_name}
+        if self.wire_format == "messages":
+            if isinstance(text_input, list) and any(isinstance(part, str) for part in text_input):
+                raise ValueError("Messages embedding accepts one document, not a text batch")
+            kwargs = {"messages": [{"role": "user", "content": text_input}], "model": self.model_name}
         if self.dimension and self._should_send_dimensions():
             kwargs["dimensions"] = self.dimension
         if self.encoding_format is not None:
@@ -316,8 +326,25 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
         extra_body = self._build_extra_body(is_query=is_query)
         if extra_body:
+            if self.wire_format == "messages" and set(extra_body) & {
+                "input", "messages", "model", "dimensions", "encoding_format"
+            }:
+                raise ValueError("Extra body cannot override messages embedding identity/input")
             kwargs["extra_body"] = extra_body
         return kwargs
+
+    def _messages_body(self, kwargs):
+        body = dict(kwargs)
+        body.update(body.pop("extra_body", {}))
+        # The lower-level post does not apply embeddings.create's SDK defaults.
+        body.setdefault("encoding_format", "float")
+        return body
+
+    def _decode_wire_vector(self, vector):
+        if self.wire_format == "messages" and isinstance(vector, str):
+            raw = base64.b64decode(vector, validate=True)
+            return [value[0] for value in struct.iter_unpack("<f", raw)]
+        return vector
 
     def _should_send_dimensions(self) -> bool:
         # Preserve existing behavior for official OpenAI embeddings: only custom
@@ -357,11 +384,17 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         embedding_input = self._prepare_embedding_input(text)
 
         def _call() -> EmbedResult:
-            response = self.client.embeddings.create(
-                **self._build_kwargs(embedding_input, is_query=is_query)
+            kwargs = self._build_kwargs(embedding_input, is_query=is_query)
+            response = (
+                self.client.post(
+                    "/embeddings", body=self._messages_body(kwargs),
+                    cast_to=openai.types.CreateEmbeddingResponse,
+                )
+                if self.wire_format == "messages"
+                else self.client.embeddings.create(**kwargs)
             )
             self._update_telemetry_token_usage(response)
-            vector = response.data[0].embedding
+            vector = self._decode_wire_vector(response.data[0].embedding)
 
             # Truncate vector if needed
             vector = self._truncate_vector(vector)
@@ -384,11 +417,18 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         embedding_input = self._prepare_embedding_input(text)
 
         async def _call() -> EmbedResult:
-            response = await client.embeddings.create(
-                **self._build_kwargs(embedding_input, is_query=is_query)
-            )
+            kwargs = self._build_kwargs(embedding_input, is_query=is_query)
+            if self.wire_format == "messages":
+                response = await client.post(
+                    "/embeddings", body=self._messages_body(kwargs),
+                    cast_to=openai.types.CreateEmbeddingResponse,
+                )
+            else:
+                response = await client.embeddings.create(**kwargs)
             self._update_telemetry_token_usage(response)
-            return EmbedResult(dense_vector=self._truncate_vector(response.data[0].embedding))
+            return EmbedResult(
+                dense_vector=self._truncate_vector(self._decode_wire_vector(response.data[0].embedding))
+            )
 
         try:
             return await self._run_with_async_retry(

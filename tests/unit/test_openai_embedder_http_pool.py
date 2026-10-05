@@ -113,7 +113,11 @@ async def test_openai_embedder_bounds_sync_and_async_connection_pools(provider: 
 
 
 @pytest.mark.asyncio
-async def test_openai_embedder_reuses_and_closes_local_connection() -> None:
+async def test_openai_embedder_reuses_and_closes_local_connection(monkeypatch) -> None:
+    # macOS system proxy discovery can route loopback through a proxy that
+    # closes each HTTP response. This fixture measures the local server pool.
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     with _embedding_server() as server:
         embedder = OpenAIDenseEmbedder(
             model_name="test-embedding",

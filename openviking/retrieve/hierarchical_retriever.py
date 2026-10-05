@@ -13,12 +13,20 @@ import logging
 import math
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import default_target_directories
 from openviking.models.embedder.base import EmbedResult, embed_compat
 from openviking.models.rerank import RerankClient
+from openviking.retrieve.fusion import (
+    PROFILE_HYBRID,
+    Candidate,
+    FusionProfile,
+    candidate_from_result,
+    profile_for,
+    run_fusion,
+)
 from openviking.retrieve.memory_lifecycle import hotness_score
 from openviking.retrieve.retrieval_stats import get_stats_collector
 from openviking.server.identity import RequestContext
@@ -48,6 +56,9 @@ logger = get_logger(__name__)
 class RetrieverMode(str):
     THINKING = "thinking"
     QUICK = "quick"
+    # Unified fusion profile (KB-017). It is an explicit opt-in: it is never
+    # inferred from whether a reranker happens to be configured.
+    HYBRID = "hybrid"
 
 
 class HierarchicalRetriever:
@@ -65,6 +76,10 @@ class HierarchicalRetriever:
         embedder: Optional[Any],
         rerank_config: Optional[RerankConfig] = None,
         retrieval_config: Optional[RetrievalConfig] = None,
+        fusion_profile: Optional[FusionProfile] = None,
+        lexical_search: Optional[
+            Callable[..., Awaitable[List[Dict[str, Any]]]]
+        ] = None,
     ):
         """Initialize hierarchical retriever with rerank_config.
 
@@ -73,10 +88,19 @@ class HierarchicalRetriever:
             embedder: Embedder instance (supports dense/sparse/hybrid)
             rerank_config: Rerank configuration (optional, will fallback to vector search only)
             retrieval_config: Retrieval ranking configuration.
+            fusion_profile: Budgets/knobs for the unified ``hybrid`` profile. It is
+                only consulted when ``mode == RetrieverMode.HYBRID``, so quick and
+                thinking behavior is unaffected.
+            lexical_search: Optional async callable implementing the BM25 recall
+                path for the hybrid profile. It must return ranked candidate dicts
+                (higher-is-better normalized scores). Kept as an injected
+                interface so the retriever does not own a second search API.
         """
         self.vector_store = storage
         self.embedder = embedder
         self.rerank_config = rerank_config
+        self.fusion_profile = fusion_profile or profile_for(PROFILE_HYBRID)
+        self._lexical_search = lexical_search
         self.rerank_max_input_tokens = rerank_config.max_input_tokens if rerank_config else 0
         self.retrieval_config = retrieval_config or RetrievalConfig()
         self.hotness_alpha = self.retrieval_config.hotness_alpha
@@ -124,7 +148,10 @@ class HierarchicalRetriever:
         effective_threshold = self._resolve_threshold(score_threshold)
         image_query = bool(getattr(query, "image_query", False))
         if mode is None:
-            mode = RetrieverMode.QUICK if not self._rerank_client else RetrieverMode.THINKING
+            mode = (RetrieverMode.HYBRID if self._lexical_search is not None else
+                    RetrieverMode.QUICK if not self._rerank_client else RetrieverMode.THINKING)
+        if mode == RetrieverMode.HYBRID and level is not None and 2 not in level:
+            mode = RetrieverMode.QUICK
         if image_query:
             mode = RetrieverMode.QUICK
             if level is None:
@@ -135,7 +162,8 @@ class HierarchicalRetriever:
 
         target_dirs = [d for d in (query.target_directories or []) if d]
 
-        if not await vector_proxy.collection_exists_bound():
+        dense_collection_exists = await vector_proxy.collection_exists_bound()
+        if not dense_collection_exists and not (mode == RetrieverMode.HYBRID and self._lexical_search is not None):
             logger.warning(
                 "[RecursiveSearch] Collection %s does not exist",
                 vector_proxy.collection_name,
@@ -172,6 +200,22 @@ class HierarchicalRetriever:
         if image_query and context_type is None:
             context_type = ContextType.RESOURCE.value
 
+        if mode == RetrieverMode.HYBRID:
+            return await self._retrieve_hybrid(
+                query=query,
+                ctx=ctx,
+                vector_proxy=vector_proxy,
+                query_vector=query_vector,
+                sparse_query_vector=sparse_query_vector,
+                context_type=context_type,
+                target_dirs=target_dirs,
+                scope_dsl=scope_dsl,
+                level=level,
+                limit=limit,
+                root_uris=root_uris,
+                t0=t0,
+            )
+
         if mode == RetrieverMode.QUICK:
             search_limit = (
                 max(limit * 5, 50) if image_query else max(limit, self.GLOBAL_SEARCH_TOPK)
@@ -204,9 +248,9 @@ class HierarchicalRetriever:
                 candidate["_score"] = score
                 candidate["_final_score"] = score
 
-                previous = collected_by_uri.get(uri)
+                previous = collected_by_uri.get(self._candidate_identity(candidate))
                 if previous is None or score > previous.get("_final_score", 0.0):
-                    collected_by_uri[uri] = candidate
+                    collected_by_uri[self._candidate_identity(candidate)] = candidate
 
             candidates = sorted(
                 collected_by_uri.values(),
@@ -232,7 +276,9 @@ class HierarchicalRetriever:
             telemetry.count("vector.scanned", len(global_results))
 
             leaf_results: List[Dict[str, Any]] = []
-            if self.vector_store._acl_enabled(ctx) and (level is None or 2 in level):
+            # Navigation can miss relevant leaves even when ACL is disabled.
+            # The bound tenant proxy still applies the same scope/authorization.
+            if level is None or 2 in level:
                 leaf_results = await vector_proxy.search_in_tenant(
                     query_vector=query_vector,
                     sparse_query_vector=sparse_query_vector,
@@ -349,6 +395,150 @@ class HierarchicalRetriever:
             matched_contexts=final,
             searched_directories=root_uris,
         )
+
+    async def _retrieve_hybrid(
+        self,
+        *,
+        query: TypedQuery,
+        ctx: RequestContext,
+        vector_proxy: VikingDBManagerProxy,
+        query_vector: Optional[List[float]],
+        sparse_query_vector: Optional[Dict[str, float]],
+        context_type: Optional[str],
+        target_dirs: List[str],
+        scope_dsl: Optional[FilterExpr | Dict[str, Any]],
+        level: Optional[List[int]],
+        limit: int,
+        root_uris: List[str],
+        t0: float,
+    ) -> QueryResult:
+        """Unified pipeline: recall -> RRF -> rerank -> MMR -> expand -> aggregate.
+
+        The leaf/global L2 recall below is always executed regardless of whether
+        navigation, rerank or ACL are enabled, so the leaf fallback can never be
+        silently dropped by a config toggle (spec 7.1 / TC-6.4).
+        """
+        profile = self.fusion_profile
+        telemetry = get_current_telemetry()
+
+        recall_limit = max(profile.recall_limit, limit)
+        # Leaf global recall — independent of navigation and rerank toggles.
+        leaf_results = []
+        dense_searched = query_vector is not None and await vector_proxy.collection_exists_bound()
+        if dense_searched:
+            leaf_results = await vector_proxy.search_in_tenant(
+                query_vector=query_vector,
+                sparse_query_vector=sparse_query_vector,
+                context_type=context_type,
+                target_directories=target_dirs,
+                extra_filter=scope_dsl,
+                level=[2] if level is None else [lv for lv in level if lv == 2] or [2],
+                limit=recall_limit,
+            )
+        telemetry.count("vector.searches", int(dense_searched))
+        telemetry.count("vector.scored", len(leaf_results))
+        telemetry.count("vector.scanned", len(leaf_results))
+
+        ranked_paths: Dict[str, List[Candidate]] = {
+            "dense": [
+                candidate_from_result(result, rank=index + 1)
+                for index, result in enumerate(leaf_results)
+            ]
+        }
+
+        if self._lexical_search is not None:
+            try:
+                lexical_rows = await self._lexical_search(
+                    query=query,
+                    ctx=ctx,
+                    context_type=context_type,
+                    target_dirs=target_dirs,
+                    scope_dsl=scope_dsl,
+                    limit=recall_limit,
+                )
+            except Exception as exc:  # noqa: BLE001 - lexical path is a recall path
+                logger.warning("[HybridRetrieval] Lexical recall failed: %s", exc)
+                telemetry.record_error("hybrid.lexical_recall", "LEXICAL_RECALL_FAILED", str(exc))
+            else:
+                if lexical_rows:
+                    ranked_paths["lexical"] = [
+                        candidate_from_result(result, rank=index + 1)
+                        for index, result in enumerate(lexical_rows)
+                    ]
+
+        # The pipeline is pure CPU work plus one blocking provider call; run it off
+        # the event loop rather than stalling concurrent requests on rerank.
+        fusion_result = await asyncio.to_thread(
+            run_fusion,
+            ranked_paths,
+            profile=profile,
+            rerank=self._build_fusion_reranker(query.query),
+            estimate=estimate_text_tokens,
+        )
+
+        for key, value in fusion_result.trace.items():
+            telemetry.set(f"hybrid.{key}", value)
+
+        candidates = [candidate.as_dict() for candidate in fusion_result.selected]
+        matched = await self._convert_to_matched_contexts(candidates, ctx=ctx)
+        final = matched[:limit]
+
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        get_stats_collector().record_query(
+            context_type=context_type or "unknown",
+            result_count=len(final),
+            scores=[m.score for m in final],
+            latency_ms=elapsed_ms,
+            rerank_used=bool(fusion_result.trace.get("rerank_applied")),
+        )
+
+        return QueryResult(
+            query=query,
+            matched_contexts=final,
+            searched_directories=root_uris,
+        )
+
+    def _build_fusion_reranker(
+        self, rerank_query: str
+    ) -> Optional[Callable[[List[Candidate]], Optional[List[float]]]]:
+        """Adapt the sync rerank client into the pure fusion rerank callable.
+
+        Returning ``None`` when no client is configured means "rerank not
+        requested", which is not a degradation. A configured client that throws
+        or returns a wrong count *is* a degradation, handled inside
+        :func:`openviking.retrieve.fusion.apply_rerank`.
+        """
+        if not self._rerank_client:
+            return None
+
+        max_input_tokens = self.rerank_max_input_tokens
+
+        def _rerank(window: List[Candidate]) -> Optional[List[float]]:
+            documents = []
+            kept: List[int] = []
+            for index, candidate in enumerate(window):
+                text = candidate.text_for_similarity
+                if not text.strip():
+                    continue
+                if max_input_tokens > 0:
+                    text = truncate_text_to_token_budget(text, max_input_tokens)
+                documents.append(text)
+                kept.append(index)
+            if not documents:
+                return None
+            scores = self._rerank_client.rerank_batch(rerank_query, documents)
+            if scores is None:
+                return None
+            if len(scores) != len(documents):
+                raise ValueError(
+                    f"rerank returned {len(scores)} scores for {len(documents)} documents"
+                )
+            filled = [window[index].score for index in range(len(window))]
+            for index, score in zip(kept, scores, strict=True):
+                filled[index] = self._finite_score(score, window[index].score)
+            return filled
+
+        return _rerank
 
     def _resolve_threshold(self, threshold: Optional[float]) -> float:
         resolved = threshold if threshold is not None else self.threshold
@@ -470,7 +660,7 @@ class HierarchicalRetriever:
                         )
                         continue
                     r["_final_score"] = score
-                    collected_by_uri[uri] = r
+                    collected_by_uri[self._candidate_identity(r)] = r
                     logger.debug(
                         f"[RecursiveSearch] Added initial candidate: {uri} (score: {score:.4f})"
                     )
@@ -541,10 +731,10 @@ class HierarchicalRetriever:
                     telemetry.count("vector.passed", 1)
                     if level is None or r.get("level", 2) in level:
                         # Deduplicate by URI and keep the highest-scored candidate.
-                        previous = collected_by_uri.get(uri)
+                        previous = collected_by_uri.get(self._candidate_identity(r))
                         if previous is None or final_score > previous.get("_final_score", 0):
                             r["_final_score"] = final_score
-                            collected_by_uri[uri] = r
+                            collected_by_uri[self._candidate_identity(r)] = r
                             logger.debug(
                                 "[RecursiveSearch] Updated URI: %s candidate score to %.4f",
                                 uri,
@@ -561,7 +751,7 @@ class HierarchicalRetriever:
                 key=lambda x: x.get("_final_score", 0),
                 reverse=True,
             )[:limit]
-            current_topk_uris = {c.get("uri", "") for c in current_topk}
+            current_topk_uris = {self._candidate_identity(c) for c in current_topk}
             current_pool_size = len(collected_by_uri)
 
             if current_topk_uris == prev_topk_uris and len(current_topk_uris) >= limit:
@@ -586,6 +776,10 @@ class HierarchicalRetriever:
             reverse=True,
         )
         return collected[:limit]
+
+    @staticmethod
+    def _candidate_identity(candidate):
+        return (candidate.get("uri", ""), candidate.get("level", 2), candidate.get("chunk_id", ""))
 
     async def _convert_to_matched_contexts(
         self,
@@ -651,12 +845,36 @@ class HierarchicalRetriever:
                     abstract=abstract,
                     category=c.get("category", ""),
                     score=final_score,
-                    search_tags=normalize_search_tags(
-                        c.get("search_tags"), discard_invalid=True
-                    ),
+                    search_tags=normalize_search_tags(c.get("search_tags"), discard_invalid=True),
                 )
             )
 
+        # Aggregate readable sources only after preserving individual child hits.
+        grouped = {}
+        for result, candidate in zip(results, candidates, strict=True):
+            key = (result.uri, result.level)
+            if candidate.get("chunk_id"):
+                result.matches.append(
+                    {
+                        "chunk_id": candidate["chunk_id"],
+                        "parent_chunk_id": candidate.get("parent_chunk_id", ""),
+                        "text": candidate.get("chunk_text", result.abstract),
+                        "parent_text": candidate.get("parent_text", ""),
+                        "content_revision": candidate.get("content_revision", ""),
+                        "image_context_uri": candidate.get("image_context_uri", ""),
+                        "image_context_hash": candidate.get("image_context_hash", ""),
+                        "score": result.score,
+                    }
+                )
+            previous = grouped.get(key)
+            if previous is None:
+                grouped[key] = result
+            else:
+                previous.matches.extend(result.matches)
+                if result.score > previous.score:
+                    previous.score = result.score
+                    previous.abstract = result.abstract
+        results = list(grouped.values())
         # Re-sort by blended score so hotness boost can change ranking
         results.sort(key=lambda x: x.score, reverse=True)
         return results

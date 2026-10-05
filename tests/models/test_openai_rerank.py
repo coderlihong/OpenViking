@@ -13,8 +13,76 @@ from unittest.mock import MagicMock, patch
 
 from openviking.models.rerank.openai_rerank import (
     OpenAIRerankClient,
+    _rerank_request_target,
     _uses_nested_envelope,
 )
+
+
+def _patch_sdk(json_payload, *, capture=None):
+    """Patch openai.OpenAI so client.post returns a mock httpx response.
+
+    Returns the patcher; the mock client instance is available via the
+    patched class's return_value. When *capture* is a dict, the call kwargs
+    and posted path/body are recorded into it.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = json_payload
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    if capture is not None:
+        def _post(path, **kwargs):
+            capture["path"] = path
+            capture.update(kwargs)
+            return mock_response
+
+        mock_client.post.side_effect = _post
+    else:
+        mock_client.post.return_value = mock_response
+
+    return patch(
+        "openviking.models.rerank.openai_rerank.openai.OpenAI",
+        return_value=mock_client,
+    ), mock_client
+
+
+# ─── _rerank_request_target ───
+
+
+class TestRerankRequestTarget:
+    def test_appends_operation_to_v1_base(self):
+        assert _rerank_request_target("http://host:8029/v1") == ("http://host:8029/v1", "/rerank")
+
+    def test_strips_trailing_slash_before_appending(self):
+        assert _rerank_request_target("http://host:8029/v1/") == ("http://host:8029/v1", "/rerank")
+
+    def test_keeps_existing_rerank_path(self):
+        assert _rerank_request_target("https://api.openai.com/v1/rerank") == (
+            "https://api.openai.com/v1/rerank",
+            "",
+        )
+
+    def test_keeps_existing_reranks_path(self):
+        assert _rerank_request_target(
+            "https://dashscope.aliyuncs.com/compatible-api/v1/reranks"
+        ) == ("https://dashscope.aliyuncs.com/compatible-api/v1/reranks", "")
+
+    def test_keeps_dashscope_native_path(self):
+        native = "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+        assert _rerank_request_target(native) == (native, "")
+
+    def test_client_resolves_v1_base_to_rerank_path(self):
+        client = OpenAIRerankClient(
+            api_key="sk-test",
+            api_base="http://10.147.254.3:8029/v1",
+            model_name="qwen3-vl-reranker-2b",
+        )
+        assert client._client_base_url == "http://10.147.254.3:8029/v1"
+        assert client._rerank_path == "/rerank"
+        assert client.endpoint_url == "http://10.147.254.3:8029/v1/rerank"
+
 
 # ─── _uses_nested_envelope ───
 
@@ -156,27 +224,27 @@ class TestRerankBatch:
             model_name="gte-rerank-v2",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 0, "relevance_score": 0.95},
-                    {"index": 1, "relevance_score": 0.12},
-                ]
+        capture: dict = {}
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 0, "relevance_score": 0.95},
+                        {"index": 1, "relevance_score": 0.12},
+                    ]
+                },
+                "request_id": "abc123",
             },
-            "request_id": "abc123",
-        }
-
-        with patch("openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response) as mock_post:
+            capture=capture,
+        )
+        with patcher:
             scores = client.rerank_batch("hello", ["doc1", "doc2"])
 
         assert scores == [0.95, 0.12]
 
-        # Verify the request body was nested
-        _, kwargs = mock_post.call_args
-        sent_body = kwargs["json"]
+        # Native endpoint posts to its full base with an empty path
+        assert capture["path"] == ""
+        sent_body = capture["body"]
         assert "input" in sent_body
         assert sent_body["input"]["query"] == "hello"
         assert sent_body["input"]["documents"] == ["doc1", "doc2"]
@@ -193,24 +261,22 @@ class TestRerankBatch:
             model_name="qwen3-rerank",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
-            "results": [
-                {"index": 0, "relevance_score": 0.88},
-                {"index": 1, "relevance_score": 0.42},
-            ]
-        }
-
-        with patch("openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response) as mock_post:
+        capture: dict = {}
+        patcher, _ = _patch_sdk(
+            {
+                "results": [
+                    {"index": 0, "relevance_score": 0.88},
+                    {"index": 1, "relevance_score": 0.42},
+                ]
+            },
+            capture=capture,
+        )
+        with patcher:
             scores = client.rerank_batch("hello", ["doc1", "doc2"])
 
         assert scores == [0.88, 0.42]
 
-        # Verify the request body was flat
-        _, kwargs = mock_post.call_args
-        sent_body = kwargs["json"]
+        sent_body = capture["body"]
         assert sent_body["query"] == "hello"
         assert sent_body["documents"] == ["doc1", "doc2"]
         assert sent_body["top_n"] == 2
@@ -224,25 +290,43 @@ class TestRerankBatch:
             model_name="rerank-v2",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
-            "results": [
-                {"index": 0, "relevance_score": 0.88},
-                {"index": 1, "relevance_score": 0.42},
-            ]
-        }
-
-        with patch("openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response) as mock_post:
+        capture: dict = {}
+        patcher, _ = _patch_sdk(
+            {
+                "results": [
+                    {"index": 0, "relevance_score": 0.88},
+                    {"index": 1, "relevance_score": 0.42},
+                ]
+            },
+            capture=capture,
+        )
+        with patcher:
             scores = client.rerank_batch("hello", ["doc1", "doc2"])
 
         assert scores == [0.88, 0.42]
 
-        _, kwargs = mock_post.call_args
-        sent_body = kwargs["json"]
+        sent_body = capture["body"]
         assert sent_body["query"] == "hello"
         assert sent_body["documents"] == ["doc1", "doc2"]
+
+    def test_v1_base_posts_to_rerank_path(self):
+        """A base ending in /v1 posts to the SDK path '/rerank'."""
+        client = OpenAIRerankClient(
+            api_key="sk-test",
+            api_base="http://10.147.254.3:8029/v1",
+            model_name="qwen3-vl-reranker-2b",
+        )
+
+        capture: dict = {}
+        patcher, _ = _patch_sdk(
+            {"results": [{"index": 0, "relevance_score": 0.9}]},
+            capture=capture,
+        )
+        with patcher:
+            scores = client.rerank_batch("hello", ["doc1"])
+
+        assert scores == [0.9]
+        assert capture["path"] == "/rerank"
 
     def test_native_relevance_scores_plural_key(self):
         """Some DashScope models return 'relevance_scores' (plural)."""
@@ -252,19 +336,17 @@ class TestRerankBatch:
             model_name="gte-rerank-v2",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
-            "output": {
-                "results": [
-                    {"index": 0, "relevance_scores": 0.77},
-                    {"index": 1, "relevance_scores": 0.33},
-                ]
+        patcher, _ = _patch_sdk(
+            {
+                "output": {
+                    "results": [
+                        {"index": 0, "relevance_scores": 0.77},
+                        {"index": 1, "relevance_scores": 0.33},
+                    ]
+                }
             }
-        }
-
-        with patch("openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response):
+        )
+        with patcher:
             scores = client.rerank_batch("hello", ["doc1", "doc2"])
 
         assert scores == [0.77, 0.33]
@@ -285,17 +367,15 @@ class TestRerankBatch:
             model_name="rerank-v2",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
         # Only index 1 returned, index 0 and 2 missing
-        mock_response.json.return_value = {
-            "results": [
-                {"index": 1, "relevance_score": 0.55},
-            ]
-        }
-
-        with patch("openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response):
+        patcher, _ = _patch_sdk(
+            {
+                "results": [
+                    {"index": 1, "relevance_score": 0.55},
+                ]
+            }
+        )
+        with patcher:
             scores = client.rerank_batch("hello", ["doc0", "doc1", "doc2"])
 
         assert scores == [0.0, 0.55, 0.0]
