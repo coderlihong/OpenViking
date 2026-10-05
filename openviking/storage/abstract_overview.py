@@ -533,7 +533,10 @@ async def _raw_if_exists(viking_fs: Any, uri: str, ctx: Optional[RequestContext]
     if read_file is None:
         return None
     try:
-        return await read_file(uri, ctx=ctx)
+        from openviking.indexing.content import draft_sources
+
+        with draft_sources():
+            return await read_file(uri, ctx=ctx)
     except KeyError:
         # Lightweight storage doubles commonly expose an in-memory mapping and
         # use KeyError for a missing optional sidecar. Production backends use

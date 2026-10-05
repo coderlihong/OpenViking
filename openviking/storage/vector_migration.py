@@ -132,6 +132,10 @@ def rewrite_vector_record(
             "context_type": context_type_for_uri(rewritten_uri),
         }
     )
+    if payload.get("chunk_id"):
+        from openviking.storage.vector_ids import vector_record_id_for_data
+
+        payload["id"] = vector_record_id_for_data(payload)
     if mode == "copy":
         payload.update(
             {

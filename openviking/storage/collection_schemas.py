@@ -28,7 +28,7 @@ from openviking.storage.errors import (
 from openviking.storage.queuefs.embedding_msg import EmbeddingMsg
 from openviking.storage.queuefs.named_queue import DequeueHandlerBase
 from openviking.storage.queuefs.process_result import ProcessResult
-from openviking.storage.vector_ids import vector_record_id
+from openviking.storage.vector_ids import vector_record_id_for_data
 from openviking.storage.viking_vector_index_backend import (
     VIKINGDB_CONTENT_MAX_SIZE,
     VikingVectorIndexBackend,
@@ -117,8 +117,30 @@ class CollectionSchemas:
                 {"FieldName": "description", "FieldType": "string"},
                 {"FieldName": "tags", "FieldType": "string"},
                 {"FieldName": "search_tags", "FieldType": "list<string>"},
+                {"FieldName": "business_meta_tokens", "FieldType": "list<string>", "DefaultValue": []},
+                *[{"FieldName": field, "FieldType": "string", "DefaultValue": ""}
+                  for field in ("business_meta_payload", "business_meta_fingerprint", "business_meta_source_fingerprint")],
                 {"FieldName": "abstract", "FieldType": "string"},
                 {"FieldName": "content", "FieldType": "text"},
+                *[
+                    {"FieldName": field, "FieldType": "string", "DefaultValue": ""}
+                    for field in (
+                        "chunk_id",
+                        "parent_chunk_id",
+                        "document_id",
+                        "content_revision",
+                        "embedding_space_id",
+                        "index_plan_id",
+                        "index_generation",
+                        "chunker_version",
+                        "chunk_text",
+                        "parent_text",
+                        "image_context_uri",
+                        "image_context_hash",
+                    )
+                ],
+                {"FieldName": "chunk_ordinal", "FieldType": "int64", "DefaultValue": 0},
+                {"FieldName": "chunk_continuation", "FieldType": "int64", "DefaultValue": 0},
                 {"FieldName": "account_id", "FieldType": "string"},
                 {"FieldName": "owner_user_id", "FieldType": "string"},
                 {
@@ -150,6 +172,11 @@ class CollectionSchemas:
                 "name",
                 "tags",
                 "search_tags",
+                "business_meta_tokens",
+                "chunk_id",
+                "index_generation",
+                "index_plan_id",
+                "content_revision",
                 "account_id",
                 "owner_user_id",
                 ACL_MODE_FIELD,
@@ -205,6 +232,8 @@ def _build_embedding_metadata(config: "OpenVikingConfig") -> Dict[str, Any]:
     dimension = config.embedding.dimension
     model_path = getattr(model_cfg, "model_path", None)
     model_identity = model
+    if getattr(model_cfg, "wire_format", "input") != "input":
+        model_identity += ":wire:" + model_cfg.wire_format
 
     if provider == "local":
         try:
@@ -215,6 +244,23 @@ def _build_embedding_metadata(config: "OpenVikingConfig") -> Dict[str, Any]:
         except Exception:
             model_identity = model
 
+    chunking = getattr(config.embedding, "chunking", None)
+    if chunking and chunking.enabled:
+        from openviking.indexing.image import VERSION as image_index_version
+        from openviking.indexing.plan import VERSION as chunker_version
+
+        signature = json.dumps(
+            {
+                "chunker_version": chunker_version,
+                "image_index_version": image_index_version,
+                "publication": bool(chunking.publication_path or chunking.publication_authority_socket),
+                "config": chunking.model_dump(exclude={"tokenizer_path", "publication_path", "publication_authority_socket", "publication_authority_token_file"}),
+            },
+            sort_keys=True,
+        )
+        model_identity = (
+            str(model_identity) + ":chunking:" + hashlib.sha256(signature.encode()).hexdigest()
+        )
     return {
         "provider": provider,
         "model": model,
@@ -341,6 +387,17 @@ async def init_context_collection(storage) -> bool:
                 "Local context collection does not support automatic schema updates"
             )
         await storage.update_collection_schema(schema["Fields"], schema["ScalarIndex"])
+
+    chunking = getattr(config.embedding, "chunking", None)
+    if chunking and chunking.enabled and vectordb_cfg.backend not in {"local", "cuvs"}:
+        required = {"chunk_id", "index_plan_id", "chunk_text", "parent_text", "content_revision", "image_context_uri", "image_context_hash"}
+        if chunking.publication_path or chunking.publication_authority_socket:
+            required.add("index_generation")
+            required.update({"business_meta_tokens", "business_meta_payload", "business_meta_fingerprint", "business_meta_source_fingerprint"})
+        if required - existing_fields:
+            raise EmbeddingConfigurationError(
+                "Resource chunking requires a migrated chunk schema; use a new collection or migrate fields before enabling"
+            )
 
     base_description, existing_embedding_meta = _decode_collection_description(
         existing_meta.get("Description")
@@ -566,6 +623,8 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         ctx: RequestContext,
     ) -> str:
         inserted_data = embedding_msg.context_data
+        if inserted_data.get("chunk_id"):
+            return inserted_data["chunk_text"]
         if inserted_data.get("is_leaf") and inserted_data.get("context_type") in (
             ContextType.RESOURCE.value,
             ContextType.SKILL.value,
@@ -607,16 +666,32 @@ class TextEmbeddingHandler(DequeueHandlerBase):
 
         embedding_msg: Optional[EmbeddingMsg] = None
         request_failed_message: Optional[str] = None
+        publication_store = None
+        generation = None
         try:
             embedding_msg = EmbeddingMsg.from_json(data["data"])
-            inserted_data = embedding_msg.context_data
+            inserted_data = dict(embedding_msg.context_data)
+            require_joint_image = inserted_data.pop("_require_joint_image_embedding", False)
+            generation = inserted_data.get("index_generation")
+            if generation:
+                from openviking.indexing.publication import configured_store
+
+                publication_store = configured_store()
+                if publication_store is None:
+                    raise RuntimeError(
+                        "Managed generation requires the configured publication registry"
+                    )
+                if not publication_store.can_write(generation, inserted_data):
+                    if publication_store.state(generation)["state"] == "published":
+                        self._record_request_success(embedding_msg)
+                        return ProcessResult.success()  # Idempotent duplicate of published work.
+                    request_failed_message = (
+                        "Index generation is failed or superseded; cannot publish"
+                    )
+                    return ProcessResult.failed(request_failed_message)
             account_id = inserted_data.get("account_id", "default")
             context_user = inserted_data.get("user") or {}
-            user_id = (
-                context_user.get("user_id")
-                or inserted_data.get("owner_user_id")
-                or "default"
-            )
+            user_id = context_user.get("user_id") or inserted_data.get("owner_user_id") or "default"
             user = UserIdentifier(account_id=account_id, user_id=user_id)
             ctx = RequestContext(user=user, role=Role.USER, bypass_acl=True)
             collector = resolve_telemetry(embedding_msg.telemetry_id)
@@ -672,6 +747,22 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     config = get_openviking_config()
                     self._initialize_embedder(config)
 
+                if require_joint_image:
+                    parts = embedding_msg.message
+                    if (
+                        not getattr(self._embedder, "supports_multimodal", False)
+                        or not isinstance(parts, list)
+                        or not any(
+                            p.get("type") == "text" and p.get("text", "").strip() for p in parts
+                        )
+                        or not any(
+                            p.get("type") == "image_url" and p.get("image_url", {}).get("url")
+                            for p in parts
+                        )
+                    ):
+                        raise ValueError(
+                            "Joint image indexing requires a multimodal provider and both summary/image parts"
+                        )
                 # Generate embedding vector(s)
                 if self._embedder:
                     try:
@@ -801,6 +892,13 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     request_failed_message = error_msg
                     return ProcessResult.failed(error_msg)
 
+                # A managed generation cannot publish a row without an embedding.
+                if (
+                    publication_store is not None
+                    and not inserted_data.get("vector")
+                    and not inserted_data.get("sparse_vector")
+                ):
+                    raise RuntimeError("No embedding vector; generation cannot publish")
                 # Write to vector database
                 try:
                     raw_upsert_options = inserted_data.pop("_upsert_options", {})
@@ -810,9 +908,7 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     # Ensure vector DB has deterministic IDs per semantic layer.
                     uri = inserted_data.get("uri")
                     if uri:
-                        inserted_data["id"] = vector_record_id(
-                            account_id, uri, inserted_data.get("level", 2)
-                        )
+                        inserted_data["id"] = vector_record_id_for_data(inserted_data)
 
                     if self._vikingdb.uses_content_field:
                         inserted_data["content"] = await self._materialize_content(
@@ -860,6 +956,15 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     request_failed_message = error_msg
                     return ProcessResult.failed(error_msg)
 
+                if publication_store is not None:
+                    if not record_id:
+                        raise RuntimeError("Chunk write returned no ID; generation cannot publish")
+                    from openviking.storage.vector_ids import publication_member_id
+
+                    publication_store.acknowledge(generation, publication_member_id(inserted_data))
+                    state = publication_store.state(generation)
+                    if state["state"] in {"failed", "superseded"}:
+                        raise RuntimeError(state.get("error") or "Generation cannot publish")
                 self._merge_request_stats(embedding_msg.telemetry_id, processed=1)
                 self._record_request_success(
                     embedding_msg,
@@ -882,6 +987,8 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                 request_failed_message = error_msg
             return ProcessResult.failed(error_msg)
         finally:
+            if publication_store is not None and generation and request_failed_message is not None:
+                publication_store.fail(generation, request_failed_message)
             if embedding_msg is not None and request_failed_message is not None:
                 self._record_request_failure(embedding_msg, request_failed_message)
 
@@ -898,6 +1005,14 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             return ProcessResult.failed(str(exc))
 
         if embedding_msg is not None:
+            generation = embedding_msg.context_data.get("index_generation")
+            if generation:
+                from openviking.indexing.publication import configured_store
+
+                registry = configured_store()
+                if registry is None:
+                    return ProcessResult.failed("Cancelled generation has no publication registry")
+                registry.fail(generation, "Embedding cancelled")
             self._record_request_success(embedding_msg)
         return ProcessResult.cancelled()
 

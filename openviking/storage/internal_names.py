@@ -31,3 +31,6 @@ WEBDAV_RESERVED_FILENAMES = frozenset(
         *MULTIWRITE_INTERNAL_FILE_NAMES,
     }
 )
+
+# Parser control records remain readable but are not source knowledge.
+CHAPTER_METADATA_FILENAMES = frozenset({"_toc.json", "_manifest.json"})

@@ -176,8 +176,26 @@ class _AccessMixin:
                 valid.append(uri)
 
         acl_manager = self.acl_manager
+        from openviking.wiki.access import denied_namespace_roots, inside_denied_namespace
+
+        denied_roots = await denied_namespace_roots(acl_manager, real_ctx, action=action)
+        valid_allowed = []
+        for uri in valid:
+            if inside_denied_namespace(uri, denied_roots):
+                result[uri] = False
+            else:
+                valid_allowed.append(uri)
+        valid = valid_allowed
+        derived_denied: set = set()
+        if action is AclAction.READ and valid:
+            # Derived records carry the contributor-source intersection even when
+            # their own URI is readable; every FS read channel shares this predicate.
+            from openviking.indexing.derived_access import denied_derived_uris
+            derived_denied = set(await denied_derived_uris(acl_manager, real_ctx))
         if acl_manager is None or not acl_manager.is_enabled(real_ctx.account_id):
             result.update({uri: self._is_accessible(uri, real_ctx) for uri in valid})
+            for uri in derived_denied:
+                result[uri] = False
             return result
 
         pending: List[str] = []
@@ -200,6 +218,8 @@ class _AccessMixin:
                 result[uri] = self._is_accessible(uri, real_ctx)
             else:
                 result[uri] = acl_allows(acl, real_ctx, action)
+        for uri in derived_denied:
+            result[uri] = False
         return result
 
     async def _ensure_access(

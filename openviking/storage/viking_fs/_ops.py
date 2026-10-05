@@ -15,6 +15,7 @@ from openviking.core.namespace import (
     may_include_hidden_actor_peers,
     uri_parts,
 )
+from openviking.indexing.content import projected_content, source_write
 from openviking.pyagfs.exceptions import (
     AGFSClientError,
     AGFSDirectoryNotEmptyError,
@@ -135,6 +136,28 @@ def _rel_path_sort_key(uri: str, root_uri: str) -> List[str]:
 class _OpsMixin:
     """Core filesystem operations (read/write/mkdir/rm/mv/stat/glob/tree/ls/temp)."""
 
+    @staticmethod
+    def _tombstone_registry():
+        """Registry owning deletion tombstones, or None when publication is off."""
+        from openviking.indexing.publication import configured_store
+
+        return configured_store()
+
+    def _ensure_not_tombstoned(self, uri: str, ctx: Optional[RequestContext]) -> None:
+        """Refuse reads of a tombstoned source before physical cleanup runs."""
+        registry = self._tombstone_registry()
+        if registry is None:
+            return
+        account = self._ctx_or_default(ctx).account_id
+        if registry.is_tombstoned(account, uri):
+            raise NotFoundError(uri, "file")
+
+    def _tombstone_uri(self, uri: str, ctx: Optional[RequestContext]) -> None:
+        """Mark a deleted source so recall and read-back stop returning it at once."""
+        registry = self._tombstone_registry()
+        if registry is not None:
+            registry.tombstone(self._ctx_or_default(ctx).account_id, uri)
+
     # ========== AGFS Basic Commands ==========
 
     async def read(
@@ -148,6 +171,7 @@ class _OpsMixin:
         real_ctx = self._ctx_or_default(ctx)
         uri = await self.resolve_uri(uri, real_ctx)
         await self._ensure_access(uri, ctx)
+        self._ensure_not_tombstoned(uri, ctx)
         primary_path = self._uri_to_path(uri, ctx=ctx)
 
         # Decryption + offset/size slicing now happen inside the ragfs encryption layer
@@ -174,7 +198,12 @@ class _OpsMixin:
         else:
             raw = b""
 
-        return raw
+        projection = await projected_content(self, uri, real_ctx)
+        return (
+            raw
+            if projection is None
+            else (projection[offset:] if size == -1 else projection[offset : offset + size])
+        )
 
     async def write(
         self,
@@ -189,7 +218,8 @@ class _OpsMixin:
             data = data.encode("utf-8")
 
         # Encryption (when configured) happens inside the ragfs layer keyed by account_id.
-        return await self._async_agfs.write(path, data)
+        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+            return await self._async_agfs.write(path, data)
 
     async def mkdir(
         self,
@@ -247,6 +277,9 @@ class _OpsMixin:
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
         path = self._uri_to_path(uri, ctx=ctx)
         target_uri = self._path_to_uri(path, ctx=ctx)
+        # Write the tombstone before touching storage so a concurrent recall or
+        # read cannot return the source between the fence and the physical delete.
+        self._tombstone_uri(target_uri, ctx)
 
         async def _estimate_deleted_count(target_path: str, real_ctx: RequestContext) -> int:
             """Estimate number of nodes to be deleted using vector index."""
@@ -1331,7 +1364,7 @@ class _OpsMixin:
             return None
 
         remote_limit = self._remote_glob_limit(node_limit)
-        filter_expr = self._remote_glob_filter(uri, pattern)
+        filter_expr = self._remote_glob_filter(uri, pattern, ctx)
         if tag_filter:
             filter_expr = And([filter_expr, RawDSL(tag_filter)])
         full_pattern = _uri_to_remote_path_pattern(uri, pattern)
@@ -1473,9 +1506,19 @@ class _OpsMixin:
         prefix = _literal_glob_prefix(pattern)
         return _join_uri_path(uri, prefix) if prefix else _normalize_uri_for_glob(uri)
 
-    def _remote_glob_filter(self, uri: str, pattern: str) -> PathScope:
+    def _remote_glob_filter(
+        self, uri: str, pattern: str, ctx: Optional[RequestContext] = None
+    ) -> Any:
         scoped_uri = self._remote_glob_scoped_uri(uri, pattern)
-        return PathScope("uri", scoped_uri, depth=-1)
+        scope = PathScope("uri", scoped_uri, depth=-1)
+        registry = self._tombstone_registry()
+        if registry is None:
+            return scope
+        dead = registry.tombstones(self._ctx_or_default(ctx).account_id)
+        if not dead:
+            return scope
+        # Deleted URIs are excluded before the remote page is fetched, not after.
+        return And([scope, RawDSL({"op": "must_not", "field": "uri", "conds": dead, "para": "-d=-1"})])
 
     def _remote_glob_records_to_entries(
         self,
@@ -1973,12 +2016,13 @@ class _OpsMixin:
         if isinstance(content, str):
             content = content.encode("utf-8")
 
-        await self._async_agfs.write(
-            path,
-            content,
-            fs_ctx=self._pathlock_fs_ctx(ctx, lease_ref),
-            auto_pathlock=auto_pathlock,
-        )
+        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+            await self._async_agfs.write(
+                path,
+                content,
+                fs_ctx=self._pathlock_fs_ctx(ctx, lease_ref),
+                auto_pathlock=auto_pathlock,
+            )
 
     async def read_file(
         self,
@@ -2000,6 +2044,7 @@ class _OpsMixin:
         real_ctx = self._ctx_or_default(ctx)
         uri = await self.resolve_uri(uri, real_ctx)
         await self._ensure_access(uri, ctx)
+        self._ensure_not_tombstoned(uri, ctx)
         primary_path = self._uri_to_path(uri, ctx=ctx)
         # Verify the file exists before reading, because AGFS read returns
         # empty bytes for non-existent files instead of raising an error.
@@ -2032,6 +2077,9 @@ class _OpsMixin:
             else:
                 raw = b""
 
+            projection = await projected_content(self, uri, real_ctx)
+            if projection is not None:
+                raw = projection
             text = self._decode_bytes(raw)
         except Exception as exc:
             if is_not_found_error(exc):
@@ -2053,6 +2101,7 @@ class _OpsMixin:
         real_ctx = self._ctx_or_default(ctx)
         uri = await self.resolve_uri(uri, real_ctx)
         await self._ensure_access(uri, ctx)
+        self._ensure_not_tombstoned(uri, ctx)
         primary_path = self._uri_to_path(uri, ctx=ctx)
         last_not_found: Optional[Exception] = None
         for path in self._read_paths(uri, ctx=ctx):
@@ -2075,7 +2124,8 @@ class _OpsMixin:
             )
         try:
             raw = self._handle_agfs_read(await self._async_agfs.read(path))
-            return raw
+            projection = await projected_content(self, uri, real_ctx)
+            return raw if projection is None else projection
         except Exception as exc:
             if is_not_found_error(exc):
                 raise NotFoundError(uri, "file") from exc
@@ -2099,12 +2149,13 @@ class _OpsMixin:
         path = self._uri_to_path(uri, ctx=ctx)
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
 
-        await self._async_agfs.write(
-            path,
-            content,
-            fs_ctx=self._pathlock_fs_ctx(ctx, lease_ref),
-            auto_pathlock=auto_pathlock,
-        )
+        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+            await self._async_agfs.write(
+                path,
+                content,
+                fs_ctx=self._pathlock_fs_ctx(ctx, lease_ref),
+                auto_pathlock=auto_pathlock,
+            )
 
     async def append_file(
         self,
@@ -2116,44 +2167,44 @@ class _OpsMixin:
         """Append content to file while holding one exact pathlock lease."""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
         path = self._uri_to_path(uri, ctx=ctx)
-
-        owned_lease = None
-        try:
-            await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
-            lease = lease_ref
-            if lease is None:
-                lease = await self._async_agfs.pathlock_acquire_exact(path)
-                owned_lease = lease
-            fs_ctx = self._pathlock_fs_ctx(ctx, lease)
-
-            # Read old content and rewrite the whole file to avoid lost updates.
-            existing = ""
+        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+            owned_lease = None
             try:
-                existing_bytes = self._handle_agfs_read(
-                    await self._async_agfs.read(path, fs_ctx=fs_ctx)
-                )
-                existing = self._decode_bytes(existing_bytes)
-            except FileNotFoundError:
-                pass
-            except AGFSHTTPError as e:
-                if e.status_code != 404:
+                await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
+                lease = lease_ref
+                if lease is None:
+                    lease = await self._async_agfs.pathlock_acquire_exact(path)
+                    owned_lease = lease
+                fs_ctx = self._pathlock_fs_ctx(ctx, lease)
+
+                # Read old content and rewrite the whole file to avoid lost updates.
+                existing = ""
+                try:
+                    existing_bytes = self._handle_agfs_read(
+                        await self._async_agfs.read(path, fs_ctx=fs_ctx)
+                    )
+                    existing = self._decode_bytes(existing_bytes)
+                except FileNotFoundError:
+                    pass
+                except AGFSHTTPError as e:
+                    if e.status_code != 404:
+                        raise
+                except AGFSClientError:
                     raise
-            except AGFSClientError:
-                raise
 
-            final_content = (existing + content).encode("utf-8")
-            await self._async_agfs.write(
-                path,
-                final_content,
-                fs_ctx=fs_ctx,
-            )
+                final_content = (existing + content).encode("utf-8")
+                await self._async_agfs.write(
+                    path,
+                    final_content,
+                    fs_ctx=fs_ctx,
+                )
 
-        except Exception as e:
-            logger.error(f"[VikingFS] Failed to append to file {uri}: {e}")
-            raise IOError(f"Failed to append to file {uri}: {e}")
-        finally:
-            if owned_lease is not None:
-                await self._async_agfs.pathlock_release(owned_lease)
+            except Exception as e:
+                logger.error(f"[VikingFS] Failed to append to file {uri}: {e}")
+                raise IOError(f"Failed to append to file {uri}: {e}")
+            finally:
+                if owned_lease is not None:
+                    await self._async_agfs.pathlock_release(owned_lease)
 
     async def ls(
         self,

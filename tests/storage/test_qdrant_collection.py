@@ -17,6 +17,18 @@ from openviking.storage.vectordb.collection.qdrant_collection import (
 from openviking.storage.vectordb.collection.qdrant_rest import QdrantRestError
 
 
+@pytest.fixture(autouse=True)
+def capture_collection_logs(caplog):
+    # The application routes logs asynchronously without root propagation.
+    # Attach directly so assertions inspect the same emitted records.
+    logger = qdrant_collection_module.logger
+    logger.addHandler(caplog.handler)
+    try:
+        yield
+    finally:
+        logger.removeHandler(caplog.handler)
+
+
 class _StubClient:
     def __init__(self, responses: List[Any]) -> None:
         self._responses = list(responses)

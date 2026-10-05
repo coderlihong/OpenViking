@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -29,6 +30,8 @@ from openviking.telemetry import (
     bind_telemetry,
     get_current_telemetry,
 )
+from openviking.utils.circuit_breaker import CircuitBreaker
+from openviking_cli.exceptions import NotFoundError
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -508,3 +511,77 @@ async def test_semantic_dag_skip_vectorization_does_not_schedule_tasks(monkeypat
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+@pytest.mark.asyncio
+async def test_vanished_file_is_skipped_without_poisoning_tree(monkeypatch):
+    root_uri = "viking://resources/root"
+    tree = {
+        root_uri: [
+            {"name": "gone.txt", "isDir": False},
+            {"name": "kept.txt", "isDir": False},
+        ],
+    }
+    fake_fs = _FakeVikingFS(tree)
+    monkeypatch.setattr("openviking.storage.queuefs.semantic_dag.get_viking_fs", lambda: fake_fs)
+    _patch_semantic_config(monkeypatch)
+
+    class _VanishingProcessor(_FakeProcessor):
+        async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None):
+            if file_path.endswith("gone.txt"):
+                raise NotFoundError(file_path, "file")
+            return await super()._generate_single_file_summary(
+                file_path, llm_sem=llm_sem, ctx=ctx
+            )
+
+    processor = _VanishingProcessor()
+    ctx = RequestContext(user=UserIdentifier("acc1", "user1"), role=Role.USER)
+    executor = SemanticDagExecutor(
+        processor=processor,
+        context_type="resource",
+        max_concurrent_llm=2,
+        ctx=ctx,
+    )
+
+    await executor.run(root_uri)
+
+    stats = executor.get_stats()
+    assert stats.done_nodes == stats.total_nodes == 3
+    assert stats.pending_nodes == 0
+    assert stats.in_progress_nodes == 0
+    # The surviving sibling is still summarized, vectorized and aggregated.
+    assert f"{root_uri}/kept.txt" in processor.vectorized_files
+    overview_inputs = [(uri, names) for uri, names, _, _ in processor.overview_inputs]
+    assert (root_uri, [{"name": "gone.txt", "summary": ""},
+                       {"name": "kept.txt", "summary": "summary"}]) in overview_inputs
+
+
+@pytest.mark.asyncio
+async def test_semantic_processor_drops_not_found_message_without_requeue(monkeypatch):
+    from openviking.storage.queuefs import semantic_lock
+    from openviking.storage.queuefs import semantic_processor as sp
+    from openviking.storage.queuefs.semantic_msg import SemanticMsg
+
+    async def raise_not_found(*args, **kwargs):
+        raise NotFoundError("viking://resources/missing-dir", "directory")
+
+    monkeypatch.setattr(semantic_lock.SemanticLockScope, "resolve", raise_not_found)
+
+    processor = sp.SemanticProcessor.__new__(sp.SemanticProcessor)
+    processor._circuit_breaker = CircuitBreaker()
+    requeued = []
+
+    async def fake_reenqueue(self, msg):
+        requeued.append(msg.uri)
+
+    monkeypatch.setattr(sp.SemanticProcessor, "_reenqueue_semantic_msg", fake_reenqueue)
+
+    msg = SemanticMsg(
+        uri="viking://resources/missing-dir", context_type="resource", account_id="acc1"
+    )
+    data = msg.to_dict()
+    result = await processor.on_dequeue({"data": json.dumps(data)})
+
+    assert result.outcome.value == "failed"
+    assert requeued == []
+    processor._circuit_breaker.check()

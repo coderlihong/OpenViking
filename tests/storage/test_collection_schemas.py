@@ -960,7 +960,7 @@ def test_volcengine_aksk_collection_ignores_unknown_fields_on_fetch_and_search()
     calls = []
 
     class _Collection(VolcengineCollection):
-        def _data_post(self, path, data):
+        def _data_post(self, path, data, *, raise_for_status=False):
             calls.append((path, data))
             return {}
 

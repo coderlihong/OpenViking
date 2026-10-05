@@ -9,6 +9,9 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote, unquote, urlsplit
 
+from openviking.indexing.batch import text_publication_batch
+from openviking.indexing.content import draft_source_job
+from openviking.indexing.publication import configured_store
 from openviking.observability.context import (
     bind_root_observability_context,
     reset_root_observability_context,
@@ -62,6 +65,7 @@ from openviking.utils.circuit_breaker import (
 )
 from openviking.utils.ingest_options import IngestOptions
 from openviking.utils.model_retry import ERROR_CLASS_INPUT_TOO_LARGE, ERROR_CLASS_PERMANENT
+from openviking_cli.exceptions import NotFoundError
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils import VikingURI
 from openviking_cli.utils.config import get_openviking_config
@@ -261,6 +265,15 @@ class SemanticProcessor(DequeueHandlerBase):
             or parent_uri == uri.rstrip("/")
         ):
             return
+        registry = configured_store()
+        if registry is not None:
+            namespaces = await asyncio.to_thread(registry.namespace_list, msg.account_id)
+            roots = [row["root_uri"] for row in namespaces
+                     if uri == row["root_uri"] or uri.startswith(row["root_uri"] + "/")]
+            if len(roots) > 1:
+                raise ValueError("Semantic target belongs to overlapping registered knowledge roots")
+            if roots and not (parent_uri == roots[0] or parent_uri.startswith(roots[0] + "/")):
+                return
         parent_ctx = self._ctx_from_semantic_msg(msg)
         semantic_config = get_openviking_config().semantic
         try:
@@ -323,6 +336,8 @@ class SemanticProcessor(DequeueHandlerBase):
             await semantic_queue.enqueue(parent_msg)
         logger.info("Enqueued parent semantic refresh: %s", parent_uri)
 
+    @draft_source_job
+    @text_publication_batch
     async def on_dequeue(
         self,
         data: Optional[Dict[str, Any]],
@@ -514,11 +529,27 @@ class SemanticProcessor(DequeueHandlerBase):
                     self._merge_request_stats(msg.telemetry_id, processed=1)
                     logger.info(f"Completed semantic generation for: {msg.uri}")
                     self._circuit_breaker.record_success()
+                    if msg.skip_vectorization and msg.context_type == "resource":
+                        images = getattr(executor, "image_summaries", {})
+                        if isinstance(images, dict) and images:
+                            return ProcessResult.success({"image_summaries": images})
                     return ProcessResult.success()
                 finally:
                     reset_root_observability_context(root_context_token)
 
         except Exception as e:
+            if isinstance(e, NotFoundError):
+                # The semantic target vanished (e.g. source tree replaced between
+                # attempts). Re-enqueueing can never succeed and poisons the API
+                # circuit breaker, so settle the message instead.
+                logger.warning("Semantic target not found, dropping message: %s", e)
+                if msg is not None:
+                    self._merge_request_stats(msg.telemetry_id, error_count=1)
+                    get_request_wait_tracker().mark_semantic_failed(
+                        msg.telemetry_id, msg.id, str(e)
+                    )
+                return ProcessResult.failed(str(e))
+
             if isinstance(e, LockAcquisitionError):
                 logger.warning(
                     "Lock error processing semantic message, re-enqueueing without "
@@ -1050,7 +1081,17 @@ class SemanticProcessor(DequeueHandlerBase):
                 prefix = None
             media_type = get_media_type(file_name, None, content=prefix)
         if media_type == "image":
-            return await generate_image_summary(file_path, file_name, llm_sem, ctx=ctx)
+            from openviking.indexing.image_context import collect_image_contexts
+
+            active_ctx = ctx or self._default_ctx
+            chunking = getattr(
+                getattr(get_openviking_config(), "embedding", None), "chunking", None
+            )
+            strict = bool(chunking and chunking.enabled)
+            contexts = await collect_image_contexts(get_viking_fs(), file_path, active_ctx)
+            return await generate_image_summary(
+                file_path, file_name, llm_sem, ctx=active_ctx, contexts=contexts, strict=strict
+            )
         elif media_type == "audio":
             return await generate_audio_summary(file_path, file_name, llm_sem, ctx=ctx)
         elif media_type == "video":

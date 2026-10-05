@@ -296,6 +296,17 @@ class QdrantCollectionAdapter(CollectionAdapter):
         if op == "must_not":
             field = payload.get("field")
             values = payload.get("conds", []) or []
+            if field in self._URI_FIELD_NAMES and payload.get("para") is not None:
+                parameter = payload["para"]
+                if not isinstance(parameter, str) or not parameter.startswith("-d="):
+                    raise ValueError("Path exclusion requires an explicit depth parameter")
+                depth = int(parameter[3:])
+                if depth < -1 or depth > 50:
+                    raise ValueError("Path exclusion depth is out of range")
+                return {"must_not": [
+                    self._compile_filter(PathScope(field, value, depth=depth))
+                    for value in values
+                ]}
             if field in self._URI_FIELD_NAMES:
                 values = [
                     self._normalize_path(self._encode_uri_field_value(value)) for value in values

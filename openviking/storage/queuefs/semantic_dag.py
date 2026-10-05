@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, List, Optional, Set
 from weakref import WeakKeyDictionary
 
+from openviking.indexing.batch import bind_text_batch, producer_batch_context
+from openviking.indexing.content import draft_sources
 from openviking.parse.parsers.media import get_media_type
 from openviking.server.identity import RequestContext
 from openviking.service.task_work_index import bind_task_context, get_task_context
@@ -24,9 +26,11 @@ from openviking.storage.abstract_overview import (
 )
 from openviking.storage.acl import CreatorAclGrant
 from openviking.storage.errors import LockAcquisitionError
+from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
 from openviking.storage.viking_fs import LS_ALL_NODES, get_viking_fs
 from openviking.telemetry import bind_telemetry, get_current_telemetry
 from openviking.utils.ingest_options import IngestOptions
+from openviking_cli.exceptions import NotFoundError
 from openviking_cli.utils import VikingURI
 from openviking_cli.utils.config import get_openviking_config
 from openviking_cli.utils.logger import get_logger
@@ -36,7 +40,7 @@ logger = get_logger(__name__)
 # Session-internal files that should never be summarized by the semantic pipeline.
 # These are canonical archives (e.g. session transcripts) whose content provides
 # no additional retrieval value and would only waste tokens and add latency.
-_SKIP_FILENAMES = frozenset({"messages.jsonl"})
+_SKIP_FILENAMES = frozenset({"messages.jsonl", *CHAPTER_METADATA_FILENAMES})
 
 
 @dataclass
@@ -199,6 +203,7 @@ class SemanticDagExecutor:
         self._generation_trigger = generation_trigger
         self._aggregate_directory = aggregate_directory
         self._copy_source_uri = copy_source_uri
+        self._publication_batch = producer_batch_context()
         self._task_context = get_task_context()
         self._telemetry = get_current_telemetry()
         self._stale = False
@@ -210,6 +215,7 @@ class SemanticDagExecutor:
         self._llm_sem = asyncio.Semaphore(max_concurrent_llm)
         self._viking_fs = get_viking_fs()
         self._nodes: Dict[str, DirNode] = {}
+        self.image_summaries: Dict[str, dict] = {}
         self._parent: Dict[str, Optional[str]] = {}
         self._root_uri: Optional[str] = None
         self._root_done: Optional[asyncio.Event] = None
@@ -345,7 +351,12 @@ class SemanticDagExecutor:
             if self._task_context is not None
             else nullcontext()
         )
-        with bind_telemetry(self._telemetry), task_context:
+        with (
+            bind_telemetry(self._telemetry),
+            task_context,
+            bind_text_batch(self._publication_batch),
+            draft_sources(),
+        ):
             await self._run_work_bound(work)
 
     async def _run_work_bound(self, work: DagWork) -> None:
@@ -768,7 +779,12 @@ class SemanticDagExecutor:
         need_vectorize = True
         try:
             summary_dict = None
-            if self._incremental_update:
+            chunking = getattr(getattr(get_openviking_config(), "embedding", None), "chunking", None)
+            contextual_image = bool(
+                self._context_type == "resource" and chunking and chunking.enabled
+                and get_media_type(file_name, None) == "image"
+            )
+            if self._incremental_update and not contextual_image:
                 content_changed = await self._check_file_content_changed(file_path)
                 self._file_change_status[file_path] = content_changed
                 node = self._nodes.get(parent_uri)
@@ -799,8 +815,34 @@ class SemanticDagExecutor:
                 summary_dict = await self._processor._generate_single_file_summary(
                     file_path, llm_sem=self._llm_sem, ctx=self._ctx
                 )
+        except NotFoundError:
+            # Source vanished between attempts (e.g. replaced tree). Retry can
+            # never succeed and re-enqueue loops poison the API circuit
+            # breaker; record an empty summary so sibling work and the parent
+            # aggregation still finish.
+            logger.warning("Skipping vanished semantic source: %s", file_path)
+            summary_dict = {"name": file_name, "summary": ""}
         except Exception as e:
-            logger.warning(f"Failed to generate summary for {file_path}: {e}")
+            chunking = getattr(
+                getattr(get_openviking_config(), "embedding", None), "chunking", None
+            )
+            contextual_image = bool(
+                self._context_type == "resource"
+                and chunking
+                and chunking.enabled
+                and get_media_type(file_name, None) == "image"
+            )
+            if contextual_image:
+                # One VLM outage must not discard sibling summaries: leave this
+                # image out of image_summaries; the embedding joint-input gate
+                # and reindex regeneration own the failure from here.
+                logger.warning(
+                    "Deferred image summary after generation failure: %s: %s",
+                    file_path,
+                    e,
+                )
+            else:
+                logger.warning(f"Failed to generate summary for {file_path}: {e}")
             summary_dict = {"name": file_name, "summary": ""}
         finally:
             self._stats.done_nodes += 1
@@ -808,6 +850,8 @@ class SemanticDagExecutor:
 
         if self._closed:
             return
+        if summary_dict.get("image_occurrences"):
+            self.image_summaries[file_path] = summary_dict
         if need_vectorize and not self._skip_vectorization:
             use_summary = self._is_code_repo and bool(summary_dict.get("summary"))
             try:
@@ -821,6 +865,8 @@ class SemanticDagExecutor:
                     ingest_options=self._ingest_options_for_file(file_path),
                     creator_acl_grant=self._creator_acl_grant(file_path),
                 )
+            except NotFoundError:
+                logger.warning("Skipping vectorization for vanished source: %s", file_path)
             except Exception as e:
                 logger.error(
                     "Failed to schedule vectorization for %s: %s",
@@ -1088,7 +1134,11 @@ class SemanticDagExecutor:
         except AbstractOverviewFormatError:
             raise
         except Exception as e:
+            # Propagate to the worker loop, which routes it through fail():
+            # root_done is set and run() re-raises, so no DAG path hangs, and
+            # callers observe a real VLM failure instead of a false success.
             logger.error(f"Failed to generate overview for {dir_uri}: {e}", exc_info=True)
+            raise
         else:
             if need_vectorize and not self._skip_vectorization:
                 assert overview is not None and abstract is not None

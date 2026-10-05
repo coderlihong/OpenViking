@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
@@ -10,10 +12,62 @@ from openviking.core.identifiers import validate_identifier_part, validate_user_
 from openviking.core.namespace import uri_parts
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.expr import FilterExpr, Or, PathScope
-from openviking_cli.exceptions import InvalidArgumentError
+from openviking_cli.exceptions import ConflictError, InvalidArgumentError
 
 if TYPE_CHECKING:
     from openviking.storage.viking_vector_index_backend import VikingVectorIndexBackend
+
+
+_ACL_CURRENT_VIEW = ContextVar('acl_current_publication_view', default=None)
+
+
+@contextmanager
+def _current_acl_view(ctx):
+    """Pin current heads for ACL projection, independently of a search snapshot."""
+    from openviking.indexing.publication import configured_store
+
+    registry = configured_store()
+    if registry is None:
+        yield None
+        return
+    view = _ACL_CURRENT_VIEW.get()
+    if view is not None:
+        if view[0] != ctx.account_id or view[1].path != registry.path:
+            raise RuntimeError('ACL projection view belongs to another account/store')
+        registry.renew(view[2])
+        yield view
+        return
+    lease, manifest = registry.capture(ctx.account_id)
+    token = None
+    try:
+        view = (ctx.account_id, registry, lease, manifest, registry.tombstones(ctx.account_id))
+        token = _ACL_CURRENT_VIEW.set(view)
+        yield view
+        registry.renew(lease)
+    finally:
+        if token is not None:
+            _ACL_CURRENT_VIEW.reset(token)
+        registry.release(lease)
+
+
+def _assert_current_acl_heads(root_uri, ctx):
+    """Detect a concurrent publication; a leased old head is not current ACL."""
+    view = _ACL_CURRENT_VIEW.get()
+    if view is None:
+        return
+    account, registry, _, manifest, _ = view
+    if account != ctx.account_id:
+        raise RuntimeError('ACL projection view belongs to another account')
+    lease, current = registry.capture(account)
+    try:
+        def subtree_heads(items):
+            return {uri: value['generation'] for uri, value in items.items()
+                    if uri == root_uri or uri.startswith(root_uri.rstrip('/') + '/')}
+
+        if subtree_heads(manifest) != subtree_heads(current):
+            raise ConflictError('ACL_PUBLICATION_CHANGED: subtree publication changed during ACL update; retry')
+    finally:
+        registry.release(lease)
 
 
 class AclLevel(str, Enum):
@@ -322,17 +376,31 @@ class AclManager:
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
         cursor: str | None = None
-        while True:
-            page, cursor = await self._context_store.scroll(
-                filter=filter_expr,
-                limit=500,
-                cursor=cursor,
-                output_fields=output_fields,
-                ctx=ctx,
-            )
-            records.extend(page)
-            if cursor is None:
-                return records
+        # Raw context scans include retired generations. ACLs belong to the
+        # current projection, so never rewrite those historical vector records.
+        fields = list(dict.fromkeys([*output_fields, 'uri', 'index_generation']))
+        with _current_acl_view(ctx) as view:
+            while True:
+                page, cursor = await self._context_store.scroll(
+                    filter=filter_expr,
+                    limit=500,
+                    cursor=cursor,
+                    output_fields=fields,
+                    ctx=ctx,
+                )
+                if view is not None:
+                    _, registry, lease, manifest, dead = view
+                    registry.renew(lease)
+                    page = [record for record in page if (
+                        not any(str(record.get('uri', '')) == uri
+                                or str(record.get('uri', '')).startswith(uri.rstrip('/') + '/')
+                                for uri in dead)
+                        and record.get('index_generation', '') ==
+                            manifest.get(record.get('uri'), {}).get('generation', '')
+                    )]
+                records.extend(page)
+                if cursor is None:
+                    return records
 
     async def _subtree_records(self, uri: str, ctx: RequestContext) -> list[dict[str, Any]]:
         refs = await self._scroll_all(PathScope("uri", uri, depth=-1), ["id"], ctx)
@@ -524,15 +592,18 @@ class AclManager:
             for record in records
             if str(record.get("uri") or "") in effective_by_uri
         ]
+        _assert_current_acl_heads(root_uri, ctx)
         ids = await self._context_store._upsert_many_raw(updated, ctx=ctx)
         if len(ids) != len(updated):
             raise RuntimeError(f"Failed to update {len(updated) - len(ids)} context ACL record(s)")
+        _assert_current_acl_heads(root_uri, ctx)
         return effective_by_uri[root_uri]
 
     async def refresh_context_subtree(self, uri: str, ctx: RequestContext) -> None:
-        records = await self._subtree_records(uri, ctx)
-        if records:
-            await self._apply_subtree(uri, records, ctx)
+        with _current_acl_view(ctx):
+            records = await self._subtree_records(uri, ctx)
+            if records:
+                await self._apply_subtree(uri, records, ctx)
 
     async def set_acl(
         self,
@@ -547,20 +618,21 @@ class AclManager:
         if entries is None and acl_mode is None:
             raise InvalidArgumentError("entries or acl_mode must be provided")
         proposed_direct = DirectAcl.from_entries(entries) if entries is not None else None
-        old_records = await self._subtree_records(uri, ctx)
-        try:
-            effective = await self._apply_subtree(
-                uri,
-                old_records,
-                ctx,
-                root_direct=proposed_direct,
-                root_mode=acl_mode,
-            )
-        except Exception:
-            if old_records:
-                await self._context_store._upsert_many_raw(old_records, ctx=ctx)
-            raise
-        return effective
+        with _current_acl_view(ctx):
+            old_records = await self._subtree_records(uri, ctx)
+            try:
+                effective = await self._apply_subtree(
+                    uri,
+                    old_records,
+                    ctx,
+                    root_direct=proposed_direct,
+                    root_mode=acl_mode,
+                )
+            except Exception:
+                if old_records:
+                    await self._context_store._upsert_many_raw(old_records, ctx=ctx)
+                raise
+            return effective
 
     @staticmethod
     def to_report(uri: str, effective: EffectiveAcl) -> dict[str, Any]:

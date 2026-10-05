@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import resolve_retrieval_targets
+from openviking.indexing.publication import query_snapshot
 from openviking.server.error_mapping import is_not_found_error, map_exception
 from openviking.server.identity import RequestContext
 from openviking.storage.abstract_overview import (
@@ -25,6 +26,17 @@ from openviking.storage.viking_fs._base import (
 from openviking.telemetry import get_current_telemetry
 from openviking.utils.image_search import build_multimodal_embedding_input
 from openviking_cli.exceptions import NotFoundError
+from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingleton
+
+
+def _live_rerank_config(init_bound):
+    """Prefer the live singleton's rerank section so runtime config hot-swaps
+    (e.g. the rerank on/off switch) take effect on the next retrieval; fall
+    back to the init-bound object when no singleton is initialized (tests,
+    standalone construction)."""
+    if OpenVikingConfigSingleton._instance is not None:
+        return OpenVikingConfigSingleton._instance.rerank
+    return init_bound
 
 
 class _SemanticMixin:
@@ -45,7 +57,15 @@ class _SemanticMixin:
         """
         file_path = f"{path}/.abstract.md"
         try:
-            content_bytes = self._handle_agfs_read(await self._async_agfs.read(file_path))
+            from openviking.indexing.content import projected_content
+
+            sidecar_uri = uri.rstrip("/") + (
+                "/.abstract.md" if file_path.endswith("/.abstract.md") else "/.overview.md"
+            )
+            await self._ensure_access(sidecar_uri, ctx)
+            content_bytes = await projected_content(self, sidecar_uri, self._ctx_or_default(ctx))
+            if content_bytes is None:
+                content_bytes = self._handle_agfs_read(await self._async_agfs.read(file_path))
             return body_for_preview(self._decode_bytes(content_bytes))
         except AbstractOverviewFormatError as exc:
             logger.warning("Malformed directory abstract for %s: %s", uri, exc)
@@ -177,7 +197,15 @@ class _SemanticMixin:
             return await self.overview(parent_uri, ctx=ctx)
         file_path = f"{path}/.overview.md"
         try:
-            content_bytes = self._handle_agfs_read(await self._async_agfs.read(file_path))
+            from openviking.indexing.content import projected_content
+
+            sidecar_uri = uri.rstrip("/") + (
+                "/.abstract.md" if file_path.endswith("/.abstract.md") else "/.overview.md"
+            )
+            await self._ensure_access(sidecar_uri, ctx)
+            content_bytes = await projected_content(self, sidecar_uri, self._ctx_or_default(ctx))
+            if content_bytes is None:
+                content_bytes = self._handle_agfs_read(await self._async_agfs.read(file_path))
             return body_for_preview(self._decode_bytes(content_bytes))
         except AbstractOverviewFormatError as exc:
             logger.warning("Malformed directory overview for %s: %s", uri, exc)
@@ -189,6 +217,7 @@ class _SemanticMixin:
                 raise
         return f"# {uri}\n\n[Directory overview is not ready]"
 
+    @query_snapshot
     async def find(
         self,
         query: str,
@@ -260,11 +289,15 @@ class _SemanticMixin:
         if not embedder:
             raise RuntimeError("Embedder not configured.")
 
+        from openviking.retrieve.lexical_recall import configured_lexical_recall
+
+        lexical_recall = configured_lexical_recall(self)
         retriever = HierarchicalRetriever(
             storage=storage,
             embedder=embedder,
-            rerank_config=self.rerank_config,
+            rerank_config=_live_rerank_config(self.rerank_config),
             retrieval_config=self.retrieval_config,
+            lexical_search=lexical_recall,
         )
 
         typed_query = TypedQuery(
@@ -287,7 +320,7 @@ class _SemanticMixin:
             typed_query,
             ctx=real_ctx,
             limit=limit,
-            mode=RetrieverMode.QUICK,
+            mode=RetrieverMode.HYBRID if lexical_recall is not None else RetrieverMode.QUICK,
             score_threshold=score_threshold,
             scope_dsl=filter,
             level=level,
@@ -371,6 +404,7 @@ class _SemanticMixin:
         telemetry.set("vector.returned", find_result.total)
         return find_result
 
+    @query_snapshot
     async def search(
         self,
         query: str,
@@ -473,11 +507,15 @@ class _SemanticMixin:
         # Concurrent execution
         storage = self._get_vector_store()
         embedder = self._get_embedder()
+        from openviking.retrieve.lexical_recall import configured_lexical_recall
+
+        lexical_recall = configured_lexical_recall(self)
         retriever = HierarchicalRetriever(
             storage=storage,
             embedder=embedder,
-            rerank_config=self.rerank_config,
+            rerank_config=_live_rerank_config(self.rerank_config),
             retrieval_config=self.retrieval_config,
+            lexical_search=lexical_recall,
         )
 
         async def _execute(tq: TypedQuery):

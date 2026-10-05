@@ -48,6 +48,13 @@ from openviking_cli.utils.uri import VikingURI
 logger = get_logger(__name__)
 
 RETRIEVAL_OUTPUT_FIELDS = [
+    "chunk_id",
+    "parent_chunk_id",
+    "chunk_text",
+    "parent_text",
+    "content_revision",
+    "index_plan_id",
+    "index_generation",
     "uri",
     "level",
     "context_type",
@@ -58,6 +65,7 @@ RETRIEVAL_OUTPUT_FIELDS = [
 ]
 
 LOOKUP_OUTPUT_FIELDS = [
+    "id",
     "uri",
     "level",
     "active_count",
@@ -201,6 +209,7 @@ class _AsyncVectorAdapter:
                 )
 
         await asyncio.to_thread(_update)
+
 
 class _SingleAccountBackend:
     """绑定单个 account 的后端实现（内部类）"""
@@ -440,8 +449,15 @@ class _SingleAccountBackend:
                 existing.update({k: v for k, v in payload.items() if v is not None})
                 payload = existing
 
+        managed_generation = payload.get("index_generation")
         payload = await self._async_adapter.run(self._prepare_upsert_payload, payload)
-        ids = await self._async_adapter.call("upsert", payload)
+        if managed_generation and payload.get("index_generation") != managed_generation:
+            raise RuntimeError("Managed generation must survive vector schema materialization")
+        from openviking.indexing.generation_write import managed_write_window
+        async with managed_write_window(self._adapter, [payload]):
+            ids = await self._async_adapter.call("upsert", payload)
+            if payload.get("index_generation") and [str(item) for item in (ids or [])] != [str(payload["id"])]:
+                raise RuntimeError("Managed vector write returned no matching confirmed record ID")
         return ids[0] if ids else ""
 
     async def upsert_many(self, data_list: List[Dict[str, Any]]) -> List[str]:
@@ -470,15 +486,21 @@ class _SingleAccountBackend:
             seen_ids.add(record_id)
             payloads.append(payload)
 
+        managed_generations = [payload.get("index_generation") for payload in payloads]
         payloads = await self._async_adapter.run(self._prepare_upsert_payloads, payloads)
-        ids = await self._async_adapter.call("upsert", payloads)
-        normalized_ids = [str(item) for item in (ids or []) if item is not None]
-        expected_ids = [str(payload["id"]) for payload in payloads]
-        if normalized_ids != expected_ids:
-            raise RuntimeError(
-                "bulk upsert adapter returned IDs that do not match the input count and order "
-                f"(expected {len(expected_ids)}, got {len(normalized_ids)})"
-            )
+        if any(generation and payload.get("index_generation") != generation
+               for generation, payload in zip(managed_generations, payloads)):
+            raise RuntimeError("Managed generation must survive vector schema materialization")
+        from openviking.indexing.generation_write import managed_write_window
+        async with managed_write_window(self._adapter, payloads):
+            ids = await self._async_adapter.call("upsert", payloads)
+            normalized_ids = [str(item) for item in (ids or []) if item is not None]
+            expected_ids = [str(payload["id"]) for payload in payloads]
+            if normalized_ids != expected_ids:
+                raise RuntimeError(
+                    "bulk upsert adapter returned IDs that do not match the input count and order "
+                    f"(expected {len(expected_ids)}, got {len(normalized_ids)})"
+                )
         return normalized_ids
 
     async def begin_bulk_ingest(self) -> None:
@@ -947,6 +969,7 @@ class VikingVectorIndexBackend:
     """单例门面，管理 per-account 后端实例"""
 
     ALLOWED_CONTEXT_TYPES = {"resource", "skill", "memory"}
+    acl_manager: Optional[AclManager] = None
 
     def __init__(self, config: Optional[VectorDBBackendConfig]):
         if config is None:
@@ -1386,7 +1409,15 @@ class VikingVectorIndexBackend:
         *,
         ctx: RequestContext,
     ) -> List[Dict[str, Any]]:
-        return await self.query(
+        from openviking.indexing.publication import visible_filter
+        from openviking.wiki.access import namespace_candidate_filter
+        from openviking.indexing.derived_access import derived_candidate_filter, recheck_derived_candidates
+
+        filter = self._merge_filters(
+            filter, visible_filter(ctx), await namespace_candidate_filter(self.acl_manager, ctx),
+            await derived_candidate_filter(self.acl_manager, ctx),
+        )
+        rows = await self.query(
             query_vector=query_vector,
             sparse_query_vector=sparse_query_vector,
             filter=filter,
@@ -1395,6 +1426,7 @@ class VikingVectorIndexBackend:
             output_fields=output_fields,
             ctx=ctx,
         )
+        return await recheck_derived_candidates(self.acl_manager, ctx, rows)
 
     async def filter(
         self,
@@ -1607,13 +1639,22 @@ class VikingVectorIndexBackend:
             raise InvalidArgumentError(
                 "A query-less lookup needs a filter or a target directory to scope by."
             )
-        return await self.filter(
-            filter=scope_filter,
+        from openviking.indexing.publication import visible_filter
+        from openviking.wiki.access import namespace_candidate_filter
+        from openviking.indexing.derived_access import derived_candidate_filter, recheck_derived_candidates
+
+        rows = await self.filter(
+            filter=self._merge_filters(
+                scope_filter, visible_filter(ctx),
+                await namespace_candidate_filter(self.acl_manager, ctx),
+                await derived_candidate_filter(self.acl_manager, ctx),
+            ),
             limit=limit,
             offset=offset,
             output_fields=RETRIEVAL_OUTPUT_FIELDS,
             ctx=ctx,
         )
+        return await recheck_derived_candidates(self.acl_manager, ctx, rows)
 
     async def search_children_in_tenant(
         self,

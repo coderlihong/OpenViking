@@ -20,7 +20,7 @@ consistent.
 
 import hashlib
 import re
-from typing import Any, Optional, Tuple
+from typing import Any
 
 _VECTOR_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -58,3 +58,37 @@ def vector_record_id(account_id: str, uri: str, level: Any = 2) -> str:
     """
     seed_uri = seed_uri_for_vector_id(uri, level)
     return hashlib.md5(f"{account_id}:{seed_uri}".encode("utf-8")).hexdigest()
+
+
+def chunk_vector_record_id(account_id: str, uri: str, chunk_id: str) -> str:
+    """Chunk identity includes revision/config; URI remains the readable citation."""
+    if not chunk_id:
+        raise ValueError("A chunk vector requires a chunk identity")
+    return hashlib.md5(f"{account_id}:{uri}:chunk:{chunk_id}".encode()).hexdigest()
+
+
+def vector_record_id_for_data(data: dict) -> str:
+    if data.get("chunk_id"):
+        if int(data.get("level", 2)) != 2:
+            raise ValueError("Chunk records must be at L2")
+        identity = data["chunk_id"]
+        if data.get("index_generation"):
+            identity += ":generation:" + data["index_generation"]
+        return chunk_vector_record_id(data.get("account_id", "default"), data["uri"], identity)
+    if data.get("index_generation"):
+        seed = seed_uri_for_vector_id(data["uri"], data.get("level", 2))
+        return hashlib.md5(
+            f"{data.get('account_id', 'default')}:{seed}:generation:{data['index_generation']}".encode()
+        ).hexdigest()
+    return vector_record_id(data.get("account_id", "default"), data["uri"], data.get("level", 2))
+
+
+def publication_member_id(data: dict) -> str:
+    if data.get("chunk_id"):
+        if int(data.get("level", 2)) != 2:
+            raise ValueError("Chunk publication member must be L2")
+        return data["chunk_id"]
+    level = int(data.get("level", 2))
+    if level not in (0, 1) or data.get("is_leaf"):
+        raise ValueError("Non-chunk publication member must be directory L0/L1")
+    return f"semantic:{level}"
