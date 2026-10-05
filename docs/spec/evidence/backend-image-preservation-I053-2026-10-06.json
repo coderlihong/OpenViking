@@ -1,0 +1,66 @@
+{
+  "probe": "teleocr+logics live end-to-end ingest v4",
+  "note": "provenance gate in parse artifact covered by teleocr-logics-image-preservation-I053-2026-10-05.json",
+  "results": [
+    {
+      "backend": "teleocr",
+      "submit": {
+        "status": "success",
+        "task_id": "5f1d2c38-994c-4017-9824-d349cff0b308",
+        "source_path": "backend-probe.pdf"
+      },
+      "task_status": "completed",
+      "task_result": {
+        "root_uri": "viking://resources/raw/backend-probe_8",
+        "status": "success",
+        "structure_source": "markdown_headings"
+      },
+      "root_uri": "viking://resources/raw/backend-probe_8",
+      "tree_names_sample": [
+        "9a9d8007372a5e7ebfe1ca1e91558f8da06f79e607ba983f7ea186940bbcd8df.png",
+        "Preserved_source_PDF_visuals",
+        "SANY_SY215C_excavator_test_page.md",
+        "Source_PDF_image_page_1_placement_1.md",
+        "_manifest.json",
+        "_toc.json",
+        "a2572ddcba7f1e257b7b6fff0ba4fef36c9be5a87f98d787b3d1c3cdf20588b9.jpeg",
+        "images",
+        "images",
+        "index.md",
+        "toc.md"
+      ],
+      "png_files": 1,
+      "assert_png_on_disk": true
+    },
+    {
+      "backend": "logics",
+      "submit": {
+        "status": "success",
+        "task_id": "b853c4b3-55a7-4ebc-8085-49f2805effd9",
+        "source_path": "backend-probe.pdf"
+      },
+      "task_status": "completed",
+      "task_result": {
+        "root_uri": "viking://resources/raw/backend-probe_9",
+        "status": "success",
+        "structure_source": "markdown_headings"
+      },
+      "root_uri": "viking://resources/raw/backend-probe_9",
+      "tree_names_sample": [
+        "00_backend-probe.md",
+        "2c47933f36adcbfb08bf21474bb8c4c2d5b686a69d18da5ddbf4f8e03ee6389f.png",
+        "9a9d8007372a5e7ebfe1ca1e91558f8da06f79e607ba983f7ea186940bbcd8df.png",
+        "Preserved_source_PDF_visuals",
+        "Source_PDF_image_page_1_placement_1.md",
+        "_manifest.json",
+        "_toc.json",
+        "images",
+        "images",
+        "index.md",
+        "toc.md"
+      ],
+      "png_files": 2,
+      "assert_png_on_disk": true
+    }
+  ]
+}

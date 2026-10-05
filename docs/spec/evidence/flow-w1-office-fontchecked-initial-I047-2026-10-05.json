@@ -1,0 +1,164 @@
+{
+  "scope": "three Office families through real API and remote Docker conversion to private drafts only",
+  "runs": [
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+        "job_id": null,
+        "build_id": null,
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "ingest_key": "office-I047-word-fontchecked",
+        "exec_key": "office-I047-exec-word-fontchecked",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_2f8f475d4e594215bde14c8ee6c2e348.docx",
+      "plan": {
+        "build_id": "be7839e4718a4a4fb12ac17f36b956f9",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/w1-office-word-fontchecked-I047/section_0001.md",
+        "viking://resources/raw/w1-office-word-fontchecked-I047/toc.md"
+      ],
+      "captured_count": 2,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "8e44e8fae07b4594b6a820672be45590",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 2,
+      "candidate_count": 2,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/Repair Alpha.md",
+        "viking://resources/wiki/sany/Thing/Repair Omega.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true,
+      "family": "word-fontchecked",
+      "fixture_sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+      "sample_class": "synthetic",
+      "gold": false,
+      "font_validation_enabled": true,
+      "elapsed_seconds": 53.007
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-I047/w1-office-sheets-fontchecked-I047.xlsx",
+        "job_id": null,
+        "build_id": null,
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "ingest_key": "office-I047-sheets-fontchecked",
+        "exec_key": "office-I047-exec-sheets-fontchecked",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_d136c769550545f9a3666db6b760c665.xlsx",
+      "plan": {
+        "build_id": "4e20e21fa2bb49968a4d2158ac3fc9a0",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/w1-office-sheets-fontchecked-I047/section_0001.md",
+        "viking://resources/raw/w1-office-sheets-fontchecked-I047/toc.md"
+      ],
+      "captured_count": 2,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "8075360c59b94eb18a1fd2b7dc595703",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "failed",
+        "kind": "W1",
+        "error": "Namespace export policy changed during source use",
+        "stage": "wiki_extract"
+      },
+      "assert_draft_ready": false,
+      "passed": false,
+      "family": "sheets-fontchecked",
+      "fixture_sha256": "50b0055589c5c035b0c858a65a1495f1c180cfc3df6aefee4ee245902278c31c",
+      "sample_class": "synthetic",
+      "gold": false,
+      "font_validation_enabled": true,
+      "elapsed_seconds": 24.729
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+        "job_id": null,
+        "build_id": null,
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "ingest_key": "office-I047-slides-fontchecked",
+        "exec_key": "office-I047-exec-slides-fontchecked",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_30f28b5499f04222a2fedebd803815c1.pptx",
+      "plan": {
+        "build_id": "3467c1f2cd5644c8a22cad7808160ce2",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/w1-office-slides-fontchecked-I047/00_w1-office-slides-fontchecked-I047.md",
+        "viking://resources/raw/w1-office-slides-fontchecked-I047/SLIDE_OMEGA.md",
+        "viking://resources/raw/w1-office-slides-fontchecked-I047/SLIDE_TAB_LE_23.md",
+        "viking://resources/raw/w1-office-slides-fontchecked-I047/SLIDE_TAB_LE_23_heading_b758365c5f0b.md",
+        "viking://resources/raw/w1-office-slides-fontchecked-I047/toc.md"
+      ],
+      "captured_count": 5,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "c183d3e6d65e471db450b053e1e2b790",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "failed",
+        "kind": "W1",
+        "error": "EVIDENCE_MISSING: Claim or verbatim quote lacks actual source/body support",
+        "stage": "wiki_extract"
+      },
+      "assert_draft_ready": false,
+      "passed": false,
+      "family": "slides-fontchecked",
+      "fixture_sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+      "sample_class": "synthetic",
+      "gold": false,
+      "font_validation_enabled": true,
+      "elapsed_seconds": 33.986
+    }
+  ],
+  "passed": false
+}

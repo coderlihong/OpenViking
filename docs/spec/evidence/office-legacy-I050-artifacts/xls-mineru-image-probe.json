@@ -1,0 +1,33 @@
+{
+  "protocol": "/v1/jobs worker artifact",
+  "endpoint": "http://127.0.0.1:19103",
+  "pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+  "artifact_sha256": "75d314006e480b0f8187e2b7f69052d6cd46860b0bf2e6dccfc024944713ea17",
+  "metadata": {
+    "artifact_version": 1,
+    "backend": "mineru",
+    "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+    "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+    "mode": "auto",
+    "options": {
+      "quality_tier": "standard"
+    },
+    "options_digest": "7d4e35fe22e7d80101eade62b01e0e8308510f6d8557e5e16f5ee234567f2672",
+    "coverage": {
+      "input_pages": 5,
+      "processed_pages": 5,
+      "complete": true
+    },
+    "warnings": [],
+    "resume_granularity": "document",
+    "effective_backend": "mineru",
+    "effective_mode": "auto",
+    "page_identity_verified": false,
+    "asset_count": 0,
+    "block_count": 8
+  },
+  "markdown": "EXCEL\\_TAIL\n\nHIDDEN\\_SHEET\\_VALUE\n\n机型:SY215C。\n\n部件:履带张紧装置。\n\n故障现象:行走跑偏。\n\n，再检查右侧履带张紧度。\n\n张紧度。\n\nThe pressure reading is 12.5 MPa.",
+  "asset_files": [
+    "parsed.json"
+  ]
+}

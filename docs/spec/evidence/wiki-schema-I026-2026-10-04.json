@@ -1,0 +1,211 @@
+{
+  "run_id": "I026-schema-adapter",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "input_digest": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+  "adapter_digest": "6a6f66c824681a465765afdc993a87388a125a259c2915f757c93d53c50e37c0",
+  "version": "2+openviking.1+structural.1",
+  "input_profile_direct_replay": {
+    "structure": "REJECTED",
+    "error": "Entity requires at least one declared source reference"
+  },
+  "zip_sha256": "c4eb70754e47b156cf0231d70634fbeb51b3f1cd6d6c082739c42d2210da7edf",
+  "entities": [
+    {
+      "kind": "Component",
+      "structure": "PASS",
+      "references": 3,
+      "explicit_gates": 0,
+      "pending_checks": [
+        "skeleton_index_profile_layout",
+        "bom_fields_manual_line_only",
+        "no_materialized_fault_reverse_index",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "ConfigSpec",
+      "structure": "PASS",
+      "references": 10,
+      "explicit_gates": 2,
+      "pending_checks": [
+        "host_code_identity",
+        "device_refs_authoritative",
+        "class_name_no_function_domain",
+        "std_table_columns_fixed",
+        "applicable_cond_controlled",
+        "no_symptom_semantics",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "DTC",
+      "structure": "REJECTED",
+      "error": "Reference must be a Viking URI",
+      "explicit_gates": 0,
+      "pending_checks": [
+        "identity_uniqueness",
+        "uri_no_translated_suffix",
+        "no_orphan",
+        "create_threshold",
+        "no_cross_model_merge",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "Device",
+      "structure": "PASS",
+      "references": 14,
+      "explicit_gates": 2,
+      "pending_checks": [
+        "one_model_one_page",
+        "one_index_per_model",
+        "specs_index_alignment",
+        "single_raw_ref_version",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "Fault",
+      "structure": "PASS",
+      "references": 13,
+      "explicit_gates": 2,
+      "pending_checks": [
+        "config_differentiation_required",
+        "affected_component_targets_exist",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "Procedure",
+      "structure": "PASS",
+      "references": 9,
+      "explicit_gates": 4,
+      "pending_checks": [
+        "fault_anchor_required",
+        "identity_triple",
+        "target_components_no_symptom",
+        "applicability_derived",
+        "criteria_reference_not_copy",
+        "step_addressable",
+        "work_type_verification_loop",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 2
+    },
+    {
+      "kind": "Profile",
+      "structure": "PASS",
+      "references": 10,
+      "explicit_gates": 5,
+      "pending_checks": [
+        "config_evidence_required",
+        "no_device_refs",
+        "exactly_one_device_anchor",
+        "possible_faults_ordered",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    },
+    {
+      "kind": "Symptom",
+      "structure": "PASS",
+      "references": 3,
+      "explicit_gates": 0,
+      "pending_checks": [
+        "no_legacy_relation_fields",
+        "profile_backing_required",
+        "asserted_fault_scope_required",
+        "no_wire_number",
+        "no_measured_value",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ],
+      "body_templates": 0
+    }
+  ],
+  "strict_compilation": "REJECTED: Schema rules or layout require executable adapters before strict registration",
+  "exclusions": [
+    "References only enumerated, not resolved to real production entities/sources",
+    "Path layouts, all prose policies, semantic evidence/identity/domain constraints not executed",
+    "No extraction, namespace/export authorization or publication"
+  ],
+  "dtc_blocker": "Upstream DTC fewshot source kb://chapters/813927429744789 is not a Viking URI; needs an explicit migration/mapping, not an invented source path"
+}

@@ -1,0 +1,97 @@
+{
+ "iteration": "I056",
+ "date": "2026-10-06",
+ "scope": "D1 image-vector gap root-cause closure: semantic-DAG single-point re-raise + reindex semantics_required 933 chain, two-layer fix deployed, live reindex verification running",
+ "context": {
+  "kind": "D1",
+  "account": "flowtest",
+  "namespace": "resources",
+  "root_uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh",
+  "book_tree": {
+   "pages_declared": 1072
+  },
+  "server": {
+   "pid": 70159,
+   "started": "2026-10-06T05:23:36+08:00",
+   "code_state": "fixed (semantic_dag defer + reindex regenerate)",
+   "log": "/tmp/ov-server-image-regen.log",
+   "port": 1933
+  }
+ },
+ "root_cause_chain": {
+  "evidence_basis": "prior failed reindex log: 5598 hits of SEMANTICS_REQUIRED image gate vs only 2 real VLM failures (04:24 Request timed out, 05:01 VLM returned an empty image summary)",
+  "layers": [
+   {
+    "id": "L1-dag-re-raise",
+    "file": "openviking/storage/queuefs/semantic_dag.py",
+    "finding": "contextual image summary exception re-raised; one VLM timeout/empty reply discarded the whole tree semantic batch (batch REQUEUED)"
+   },
+   {
+    "id": "L2-requeue-swallow",
+    "file": "openviking/service/reindex_executor.py",
+    "finding": "_run_semantic_processor returned None on ProcessOutcome.REQUEUED (handler re-enqueued); image_summaries lost for the run"
+   },
+   {
+    "id": "L3-gate-mass-trip",
+    "file": "openviking/utils/embedding_utils.py",
+    "finding": "vector phase fallback load_image_semantics cache never published unless enqueue_image_plan previously ran jointly -> 933 images hit SEMANTICS_REQUIRED gate while task completed with semantics_required_records=933"
+   }
+  ]
+ },
+ "fixes_deployed": [
+  {
+   "id": "F-defer-image-summary",
+   "file": "openviking/storage/queuefs/semantic_dag.py",
+   "change": "contextual image summary failure now defers that image instead of re-raising ('Deferred image summary after generation failure'); sibling summaries survive; joint-input gate and reindex regeneration own the failure downstream",
+   "invariant": "one VLM outage must not discard sibling summaries"
+  },
+  {
+   "id": "F-regenerate-image-semantics",
+   "file": "openviking/service/reindex_executor.py",
+   "change": "process_file: cache miss with SEMANTICS_REQUIRED calls new _regenerate_image_summary (collect_image_contexts + generate_image_summary, strict=chunking.enabled, shared vlm.max_concurrent semaphore); regeneration failure raises 'SEMANTICS_REQUIRED: image summary regeneration failed' and counts semantics_required_records; stale .overview.md text is never downgraded into joint publish",
+   "invariant": "a joint image record keeps its joint input; never publish stale abstract as substitute"
+   }
+ ],
+ "regression_evidence": {
+  "suites": [
+   "tests/storage/test_semantic_dag_incremental.py",
+   "tests/storage/test_semantic_dag_media_overview.py",
+   "tests/service/test_reindex_placeholder.py"
+  ],
+  "result": "21 passed (three suites, post-fix rerun before restart)"
+ },
+ "live_verification": {
+  "status": "RUNNING",
+  "baseline_failed_round": {
+   "task_id": "03dd006d-f791-4146-9e4c-0bf0333abb1f",
+   "status": "completed",
+   "created": "2026-10-06T04:31:29+08:00 (old process, pre-fix code)",
+   "finished": "~05:06 local",
+   "counters": "scanned=1620 rebuilt=685 failed=0 semantics_required=933 unsupported=2 duration_ms=2083588",
+   "warnings": "mass 'SEMANTICS_REQUIRED: image indexing requires a current image summary' per-image warnings",
+   "meaning": "the 933 figure in the record is the PRE-FIX baseline terminal state; the running round under the fixed process is the acceptance run"
+  },
+  "current_round": {
+   "process": "PID 70159 started 05:23:34 with fixed code; queue recovery re-dispatched the interrupted semantic batch",
+   "evidence_alive": [
+    "lock mtime data/viking/flowtest/resources/.path.ovlock advances every ~3s (holder 8b703b7e)",
+    "32 ESTABLISHED conns to :7890 churning (VLM calls in flight) at 05:57",
+    "05:42:50 single VLM 'Request timed out' on section_0455.md — Fix1 defer path exercised live without discarding batch"
+   ],
+   "post_rejections": "subsequent POSTs return 409 CONFLICT path_busy retryable"
+  },
+  "expected_terminal_signals": [
+   "reindex response counters: semantics_required_records sharply below prior 933; rebuilt_records includes images; failed_records small/zero",
+   "image semantics blobs in _system/index_blobs grow during embedding phase (pre-fix rounds wrote 0)",
+   "log INFO lines invisible in WARNING-only capture are expected absent; counters are authoritative"
+  ],
+  "pending_on_completion": [
+   "capture terminal counters from /api/v1/tasks (client HTTP response lost to ReadTimeout)",
+   "blob delta vs pre-fix 1122 files / 0-new-in-20min baseline",
+   "FLOW-D1 retrieval probe with URI provenance (task #23)"
+  ]
+ },
+ "notes": [
+  "goal text claim 'TeleOCR、Logics 尚未接入这套保全' is overturned by teleocr-logics-image-preservation-I053-2026-10-05.json (19/19 slots, RMS 1.50 MATCH, all via restored(source_pdf_visible_region_render))"
+ ]
+}

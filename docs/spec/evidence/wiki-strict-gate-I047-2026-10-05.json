@@ -1,0 +1,28 @@
+{
+  "scope": "real API strict policy rejection only, not complete FLOW or quality acceptance",
+  "schema_digest": "6a6f66c824681a465765afdc993a87388a125a259c2915f757c93d53c50e37c0",
+  "archive_sha256": "c4eb70754e47b156cf0231d70634fbeb51b3f1cd6d6c082739c42d2210da7edf",
+  "entity_kinds": [
+    "Component",
+    "ConfigSpec",
+    "DTC",
+    "Device",
+    "Fault",
+    "Procedure",
+    "Profile",
+    "Symptom"
+  ],
+  "pending_rule_instances": 118,
+  "build_id": "51e6e58c25fa4579b10e0db5a25690c8",
+  "http_status": 400,
+  "error_code": "INVALID_ARGUMENT",
+  "reason": "SCHEMA_POLICY_PENDING",
+  "assertions": {
+    "acl_after_reindex_succeeds": true,
+    "schema_pending": true,
+    "rejected_before_execution": true,
+    "no_job_created": true,
+    "fixed_plan_unchanged": true
+  },
+  "passed": true
+}

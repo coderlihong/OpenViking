@@ -1,0 +1,47 @@
+{
+  "run_id": "I015-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 488,
+    "new_cache_tests": 10,
+    "report": "tests-I015-regression.xml"
+  },
+  "verified": [
+    "Private AGFS cache references jointly published; no semantics body in SQL",
+    "Vectors-only restores occurrences with stable member identities",
+    "Asset/context/model/prompt invalidation and corruption/access fail explicitly",
+    "Standard completed-source-edit epochs guard begin and publication",
+    "Cache restore asset binding protects edit after cache read",
+    "Active/held-read/pending cache reachability roots"
+  ],
+  "fixtures": [
+    "SQLite/disk payload and VikingFS/queue consumer exercised",
+    "AGFS transport/VLM/embedder/vector DB fixtures; encryption and full E2E unverified"
+  ],
+  "scope_exclusions": [
+    "Standard write in-flight capture window needs fence/CAS",
+    "External write/dir reference-set/ACL transaction dependencies and auto invalidation",
+    "Legacy/manual missing context epochs",
+    "Cross-ACL prefilter/pagination/quality/multi-space/BM25/root/ready/lifecycle/Wiki/four FLOW"
+  ],
+  "file_sha256": {
+    "openviking/indexing/image_cache.py": "b79dc3f358bb1af20ca9a423cd3559056e5cf1a88a830331ff52478913509b62",
+    "openviking/indexing/image.py": "d21865cafcbf34d107f38dc8ec1aa6d4724085078f7c7f8ecb47673b80df4b62",
+    "openviking/indexing/image_context.py": "1e334e13a949543b45b9ea9efe902715e1de39e061c7e902a1a8b2260efa75d7",
+    "openviking/indexing/content.py": "7352aa2a1f9690242a3d49fcf098dd6a792cbc2312377facf603546f5911c0b6",
+    "openviking/indexing/publication.py": "26743d6613a54568fbd889c92a9f71b70674e68450fc010dfbe0c97430f372aa",
+    "openviking/utils/embedding_utils.py": "8aa7ed0143dd3ade29ee234549eade0674b4bae5cc6a17520be25cfcd9fcdff1",
+    "openviking/service/reindex_executor.py": "f5c8c15024ab5afb60363a9f12ba593dc7dd317486a04e12a23568c764c4a118",
+    "openviking/parse/parsers/media/utils.py": "96c1cecfe92a84421907047e726c801d704a0021a051c7698a4fc003df76eeba",
+    "tests/enterprise_kb/test_image_cache.py": "9becd7d2202d0c223b8682ff7c429a136008e6867b9fa839ceb6a1523c47b8c3",
+    "tests/enterprise_kb/test_image_publication.py": "d7c409293fa24c6ff859a1dff7e085d1721f08de3a4a3adf6e76aca5254cd319",
+    "docs/spec/evidence/tests-I015-regression.xml": "fe57bbc0daf7a33dba7e04c763bbee555653e65e13e1d5eb9cbcc7fceb301e7f",
+    "docs/spec/openviking-enterprise-kb-spec.md": "adeec8d33c5ae7d5fba5af62a79c49009d1d3c94b08c96edbb66eda8aefaa665",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "d3c08ee714856cfe7090ae9e81d93ad5c325f81e476835365e3b6b4db2b41f80",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "2fe23d2d2e8772734e04b2cbc7c238622bbece1bddb4222d4ac810af977da2da",
+    "docs/spec/openviking-enterprise-kb-review.md": "f22684c7c006b49cc83096f6e8603f2da50be8b86d319f5690dec1addf3dbb66",
+    "docs/spec/README.md": "7e02ce1c0d518d8e75a21399412a804264f166fe9a2966657250b8059406e62b"
+  }
+}

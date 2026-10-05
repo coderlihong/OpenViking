@@ -1,0 +1,101 @@
+{
+  "id": "parallel3-wiki-extraction-2026-10-05",
+  "timestamp": "2026-10-04T23:37:46.908712+00:00",
+  "status": "SCOPED_PASS",
+  "tasks": [
+    "KB-023",
+    "KB-024"
+  ],
+  "feature": "F10",
+  "complete_feature_acceptance": "NOT_RUN",
+  "complete_flows": {
+    "W1": "NOT_RUN",
+    "W2": "NOT_RUN"
+  },
+  "environment": {
+    "os": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14",
+    "storage": "actual SQLite + VikingFS with disk AGFS transport fixture",
+    "acl": "actual AclManager over a context/vector-store fixture",
+    "model_in_unit_tests": "fixture-model",
+    "real_model_probe": true
+  },
+  "source_sha256": {
+    "openviking/wiki/extraction.py": "285a675b7dbbd600db867de324e70a199ec1b684a47198cf362d5f12db8c7467",
+    "openviking/wiki/policies.py": "fe9824893faaeaa78b46a2ce80c6af51b9c044b5464669d270392c4f538a4873",
+    "tests/enterprise_kb/test_wiki_extraction.py": "2bc7df008e316e5c667e12221bcb9df5f53c6c842f474ac7e837a5abf85275e5",
+    "tests/enterprise_kb/test_wiki_extraction_model_probe.py": "d02f9a63b578c0dd302aab3537c789e5347c825bb6da16bfb1b4a5f0e78f35db",
+    "docs/deployment/wiki-draft-extraction.md": "d3f4b350c8a394d199e8cb6883e76f33f46c53e4f3856236754deddf3795b96c"
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_wiki_extraction.py tests/enterprise_kb/test_wiki_schema.py tests/enterprise_kb/test_wiki_structural_gates.py tests/enterprise_kb/test_wiki_validation.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/wiki-extraction-contract-2026-10-05.xml",
+      "tests": 116,
+      "passed": 116,
+      "failed": 0,
+      "new_extractor_tests": 32,
+      "xml": "docs/spec/evidence/wiki-extraction-contract-2026-10-05.xml"
+    },
+    {
+      "command": "OPENVIKING_WIKI_REAL_MODEL_PROBE=1 .venv/bin/python -m pytest tests/enterprise_kb/test_wiki_extraction_model_probe.py --no-cov -q --tb=no --junitxml=docs/spec/evidence/wiki-extraction-real-model-2026-10-05.xml",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "report": "docs/spec/evidence/wiki-extraction-real-model-2026-10-05.json",
+      "xml": "docs/spec/evidence/wiki-extraction-real-model-2026-10-05.xml",
+      "sample_class": "synthetic",
+      "gold": false
+    }
+  ],
+  "actual_model_probe": {
+    "status": "CONTRACT_PASS",
+    "model_profile": {
+      "model": "qwen3.8-27b",
+      "provider": "openai",
+      "temperature": 0.0
+    },
+    "candidate_count": 1,
+    "state": "draft_ready",
+    "authorization_revision": 3,
+    "diagnostic_publishable": false,
+    "elapsed_seconds": 5.641,
+    "sources": [
+      {
+        "uri": "viking://resources/raw/manual/one.md",
+        "sha256": "c42fbb1407f42b8bac82b107f9b2e006755176d124690b114c454de542a24d21",
+        "size": 34
+      }
+    ]
+  },
+  "policy_matrix": "docs/spec/evidence/wiki-policy-coverage-2026-10-05.json",
+  "implemented": [
+    "Fixed full schema bundle and versioned extractor/policy profile in every bounded model prompt",
+    "Actual configured VLM text completion for immutable source Markdown with no tool execution",
+    "Strict JSON and duplicate/nonfinite/size/incomplete-response guards",
+    "Declared entity fields/types/body/reference/source-field validation, provisional declared id only, no similarity merging",
+    "Exact source quotes and claim-in-body checks, without semantic truth claim",
+    "Private account-scoped candidate blobs with service-generated hash/size/account/plan references",
+    "Current source read, target write, domain/export checks before/after model and private read; all-plan contributor read gate",
+    "Per-source/chunk job checkpoint callback and verified ordered-prefix resume; completed chunks skip model calls",
+    "Typed counters, prompt hash, config/source/chunk/account/plan checks on resume",
+    "Current export authorization revision carried in progress/final receipt and checked during resume",
+    "Finite timeout retries and distinct timeout/format/evidence/empty/model failure outcomes",
+    "Strict diagnostic refusal before model when prose/path policy or joint-publication prerequisites remain pending"
+  ],
+  "pending": [
+    "38 entity rules, 9 shared policies and 8 entity path layouts remain uncompiled in audited full Sany package",
+    "Semantic entailment/evidence quality gold for actual maintenance manual",
+    "Full identity tuple/alias/merge/conflict and human revision lifecycle KB-025",
+    "Trusted validated entity catalog and same-batch closed relationship publication KB-026",
+    "Derived permission intersection and atomic ACL/policy/source/target commit fencing KB-027",
+    "Complete W1/W2 joint indexing/ready publication and multibackend crash/failure flows KB-028",
+    "Model call before checkpoint may repeat after worker crash; no exactly-once inference claim",
+    "All four full FLOWs and all 15 complete Feature acceptances remain unverified"
+  ],
+  "test_case_scope": {
+    "TC-10.2": "PARTIAL: real synthetic model extraction + strict output/provenance bounds; not complete Sany business quality",
+    "TC-16.11": "PARTIAL: immutable sources, bounded output/checkpoint/resume/authorization and real synthetic model; full execution/publication is separate root integration",
+    "TC-10.12": "PARTIAL: per-rule support matrix and strict refusal; no full policy compiler"
+  },
+  "documentation": "docs/deployment/wiki-draft-extraction.md"
+}

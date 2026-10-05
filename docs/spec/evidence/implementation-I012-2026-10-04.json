@@ -1,0 +1,43 @@
+{
+  "run_id": "I012-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 446,
+    "new_image_publication_tests": 8,
+    "report": "tests-I012-regression.xml"
+  },
+  "verified": [
+    "Image generation distinct physical vector IDs and queued summary content",
+    "Immutable image reference from same asset read as embedding request",
+    "Shared text/directory/image batch receipt and producer barriers",
+    "Standard asset edits/worker failure/newer attempt preserve old batch",
+    "Query holds old image revision, GC roots protect it; corrupt image fails",
+    "Rejected enqueue aborts batch"
+  ],
+  "fixtures": [
+    "Actual SQLite/disk assets/VikingFS and queue consumer",
+    "AGFS transport/embedding/vector DB fixtures"
+  ],
+  "scope_exclusions": [
+    "Occurrence-specific persistent index/cache and context mutation dependencies",
+    "Multiple spaces/query routing/fusion and BM25 common publication",
+    "First-root visibility/job ready/crash recovery/physical GC/complete lifecycle",
+    "Remote deployment/true VLM quality/retrieval E2E",
+    "Wiki collection/schema APIs and four complete FLOW acceptance"
+  ],
+  "file_sha256": {
+    "openviking/indexing/image.py": "fb87b64ee85a62e9d0f0da587171b83eb0348a75ea13b9042821bdb526f96d70",
+    "openviking/indexing/content.py": "ba48df28784583b4be0d6cf7ae29326332e382dbe11eb9d342576fce4c095ab0",
+    "openviking/utils/embedding_utils.py": "2c8b8d3e42e7aa4cefef8b1af8aa0845a79ebe30151f84529471826666ca2ad3",
+    "openviking/storage/collection_schemas.py": "953b019db028b6a598eb2b60851a9c78c6ff45902ff6c4e17391058847a7b6f1",
+    "tests/enterprise_kb/test_image_publication.py": "dfff609f2bff85ef17f2255fc0e05d35e652a7b868319f479340d88962b5f8bb",
+    "docs/spec/evidence/tests-I012-regression.xml": "bd92b07a53243d7083dcbe844c889d2b230db2b91e3fdf48dde4f0a6dd0e918a",
+    "docs/spec/openviking-enterprise-kb-spec.md": "e2590b4dfb70c2ce00b241c666fa902d010d6ba3085855995647752ce2c653ab",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "c2e1ba6a2e42f8649cc05e532bd69871351f43812f43abaedb89e146581e7255",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "4116d0ac0e4aafdbdef50cb2b81f3b84383debaad61f4468fa37c3e267174e72",
+    "docs/spec/openviking-enterprise-kb-review.md": "87edee1eb8f2dedc1c82ae9206ba0e70356d92364445d6a984bbc75ff154b820",
+    "docs/spec/README.md": "c474eda8fd4c60fad5ce61aa1a72e805f147f8ad9a03c1b94653359e40023c35"
+  }
+}

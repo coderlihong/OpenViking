@@ -1,0 +1,20 @@
+{
+  "pid": 99130,
+  "previous_pid": 96972,
+  "health": 200,
+  "started_at": 1791210503.217904,
+  "healthy_at": 1791210505.010189,
+  "source_hashes": {
+    "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+    "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+    "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+    "openviking/parse/model_backend.py": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076",
+    "openviking/parse/model_artifact.py": "9828bf1411eae83235f4e139a82c78916b7dca34cc212fb2a4f73d944a1d6388",
+    "openviking/parse/parsers/pdf.py": "2711b0856bedf90a5dad2041353e8730c19482892aa6cd58fb8ee4992ae43ac1",
+    "openviking/storage/viking_fs/__init__.py": "c5dceb2ad87855c1ee76678c66854d3068e3fd98713994ff3247ff5240658449",
+    "openviking/parse/office_converter.py": "811d52564ab3a6dfde2755d9610cea33cb7b8c5e3058c66bd81464b45e190aaa"
+  },
+  "office_environment_preserved": true,
+  "authority": "in-process PublicationStore",
+  "log_path": "/tmp/ov-server-office-latest.log"
+}

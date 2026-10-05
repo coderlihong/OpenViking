@@ -1,0 +1,51 @@
+{
+  "run_id": "I021-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "status": "PASS",
+    "tests": 540,
+    "new_tests": 24,
+    "report": "tests-I021-regression.xml"
+  },
+  "actual_example": {
+    "bundle_sha256": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+    "entity": "Profile",
+    "structure_status": "PASS",
+    "content_sha256": "a3f7fa71d579b79ae45c2525fae8b0312c161f487834b3a94cab796643094487",
+    "reference_count": 9,
+    "uncompiled_rules": [
+      "config_evidence_required",
+      "no_device_refs",
+      "exactly_one_device_anchor",
+      "possible_faults_ordered",
+      "no_wire_number"
+    ],
+    "scope": "Actual adapted example structural inspection only; no authorized storage resolver or full diagnostic validation"
+  },
+  "verified": [
+    "Generic frontmatter/required/type/enum/AST section structure",
+    "Explicit nested relation URI enumeration and nonempty declared sources",
+    "Canonical URI safety and Unicode identity",
+    "Trusted-resolver contract checks actual authorized versioned content and edge collection/type",
+    "Repeated reference revision changes rejected"
+  ],
+  "scope_exclusions": [
+    "Production VikingFS resolver/ACL/export and final reference CAS",
+    "Full natural-language/domain/identity/path/template-variant gate",
+    "Schema/collection persistence/API and WikiBuildPlan/W1/W2/four FLOW"
+  ],
+  "fixtures": [
+    "Reference resolver AsyncMock; no production storage authorization assertion"
+  ],
+  "file_sha256": {
+    "openviking/wiki/schema.py": "440330c3cf5fc06a1a59f4102bb80a14dfa57c6ec083adb90c37e0d51b4a966c",
+    "openviking/wiki/validation.py": "05a08e15f27eb3ef7b918c7480eba41e241d602da80ed1dffc96854aeb45517b",
+    "tests/enterprise_kb/test_wiki_validation.py": "666128c049bfb5d8a420271e0627192b9ae72204de251ac61b462f229bc52cc9",
+    "docs/spec/evidence/tests-I021-regression.xml": "4a480e15cda0a605856aac8628d92d405624a0dae4b3c887b8a12f39e0b09dd3",
+    "docs/spec/README.md": "b4b9a0c22911582f2ad5657540a8d6b2abd9dd926c3fbdc0bbb42486fae97f2a",
+    "docs/spec/openviking-enterprise-kb-spec.md": "bfd777ff757ac5b46e4481ade20453d01e488bc55efc5ee0df4270288acb7ada",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "0c3339e171c7fe3182484d3c5b5aad4ddf5405d885ca2a0dc3757919b1b8b813",
+    "docs/spec/openviking-enterprise-kb-review.md": "b7ddd8827014d9338dffa40d01f137adbff17a78bccd328887523af587cb7482",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "87570c2e562870279146f3e0afc632dcebeaa23fb876728af74c5528ad43a868"
+  }
+}

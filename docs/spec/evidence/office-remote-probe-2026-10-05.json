@@ -1,0 +1,220 @@
+{
+  "status": "CONTRACT_PASS",
+  "samples": [
+    {
+      "source": "excel.xls",
+      "source_sha256": "f7fab7c5e9549ddb11cb31294e4fb5a7ca189f8b7e199eaa7c8d62ac5712f24c",
+      "pdf_sha256": "4aa8208acfcc468c138560a0abff859fe7a35a916ccdc8b38ba6142e016861c8",
+      "pages": 3,
+      "images": 3,
+      "structure": {
+        "page_count": 3,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Main",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "HiddenData",
+            "page_num": 3
+          }
+        ],
+        "sheets": [
+          {
+            "name": "Main",
+            "ordinal": 0,
+            "original_state": "visible",
+            "used_range": "A1:E90",
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": true
+          },
+          {
+            "name": "HiddenData",
+            "ordinal": 1,
+            "original_state": "hidden",
+            "used_range": "A1:A1",
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": true
+          },
+          {
+            "name": "Empty",
+            "ordinal": 2,
+            "original_state": "visible",
+            "used_range": null,
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": false
+          }
+        ],
+        "print_policy": "all_used_sheets_ignore_source_print_area"
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    },
+    {
+      "source": "excel.xlsx",
+      "source_sha256": "f6d6ff41cb43f48073c4c4a076d49ee75cbcae62a0f9c1b856b6fb0276eb2f07",
+      "pdf_sha256": "8588fc10817dc2d7203742d566e44dd1b0e515b88008039d63ad51cfcf7e4c75",
+      "pages": 3,
+      "images": 3,
+      "structure": {
+        "page_count": 3,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Main",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "HiddenData",
+            "page_num": 3
+          }
+        ],
+        "sheets": [
+          {
+            "name": "Main",
+            "ordinal": 0,
+            "original_state": "visible",
+            "used_range": "A1:D90",
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": true
+          },
+          {
+            "name": "HiddenData",
+            "ordinal": 1,
+            "original_state": "hidden",
+            "used_range": "A1:A1",
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": true
+          },
+          {
+            "name": "Empty",
+            "ordinal": 2,
+            "original_state": "visible",
+            "used_range": null,
+            "pagination": "A4 at 100 percent; rows and columns may span multiple pages",
+            "printed": false
+          }
+        ],
+        "print_policy": "all_used_sheets_ignore_source_print_area"
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    },
+    {
+      "source": "slides.ppt",
+      "source_sha256": "3398a3cf9b3ec8182c2b564b84f0b3ad4bda8cb453cf99b6ff028a00bd25853b",
+      "pdf_sha256": "44718fce2ad6ba8834bc6cf60e1f3b4635e657aaf71fed94931ec9b2ddcac932",
+      "pages": 2,
+      "images": 2,
+      "structure": {
+        "page_count": 2,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Slide 1",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "Slide 2",
+            "page_num": 2
+          }
+        ]
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    },
+    {
+      "source": "slides.pptx",
+      "source_sha256": "fe02c978c00937f742424c15bd8ca9f627244480e8cf21eff1d16ac545be39b2",
+      "pdf_sha256": "f05f0ed6ff327328191c1edc74c8ea3297f6695b35f430f9395c8acd73e34d6f",
+      "pages": 2,
+      "images": 2,
+      "structure": {
+        "page_count": 2,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Slide 1",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "Slide 2",
+            "page_num": 2
+          }
+        ]
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    },
+    {
+      "source": "word.doc",
+      "source_sha256": "ba59ba823a81a050fdd0a7b60aee0fba2d41c519f5f091abcf8915d1de19c184",
+      "pdf_sha256": "cc293a56356421a6a9148beb2120371227fa758916a9e6ec59d9949b38b8d2ab",
+      "pages": 1,
+      "images": 1,
+      "structure": {
+        "page_count": 1,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Repair Alpha",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "Repair Omega",
+            "page_num": 1
+          }
+        ]
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    },
+    {
+      "source": "word.docx",
+      "source_sha256": "64d8babb346b1d2a846f705e33191e849b85db592b1c57bb452603a39f6c2284",
+      "pdf_sha256": "73b0a125f518a42917d5e859d56f7bddfdf4b44d41147d27469f38b884acd820",
+      "pages": 1,
+      "images": 1,
+      "structure": {
+        "page_count": 1,
+        "bookmark_count": 2,
+        "bookmarks": [
+          {
+            "level": 1,
+            "title": "Repair Alpha",
+            "page_num": 1
+          },
+          {
+            "level": 1,
+            "title": "Repair Omega",
+            "page_num": 1
+          }
+        ]
+      },
+      "version": "LibreOffice 7.4.7.2 40(Build:2)",
+      "status": "CONTRACT_PASS",
+      "sample_class": "synthetic_not_gold"
+    }
+  ],
+  "corrupt_rejected": true,
+  "actual_libreoffice_timeout_cleanup": true,
+  "actual_libreoffice_cancellation_cleanup": true,
+  "input_unchanged": true,
+  "quality_gold": "NOT_RUN"
+}

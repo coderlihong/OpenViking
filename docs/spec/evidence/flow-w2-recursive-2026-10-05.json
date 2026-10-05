@@ -1,0 +1,54 @@
+{
+  "id": "FLOW-W2-RECURSIVE-2026-10-05",
+  "flow": "FLOW-W2 (recursive directory source)",
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "deploy/wolf-viking (dirty: secondary-dev changes present)",
+  "scope": "FLOW-W2 recursive directory source: capture a nested Markdown tree under a registered raw namespace and build the Wiki from the directory URI.",
+  "harness": "tests/enterprise_kb/flows/flow_w2_recursive.py",
+  "environment": {
+    "server": "real HTTP server (openviking_cli.server_bootstrap) at http://127.0.0.1:1933, version 0.4.15.dev392, auth_mode=api_key",
+    "client": "openviking_sdk AsyncHTTPClient, account=flowtest user=flowadmin",
+    "collection": "sany (namespace sany-wiki, target viking://resources/wiki/sany)",
+    "source_root": "viking://resources/raw/w2rec",
+    "extraction_model": "remote svc/deepseek-v4-flash via http://api.ai.rootcloud.info/v1"
+  },
+  "run": {
+    "build_id": "1ea207bee557404297f97afaf76f91e1",
+    "captured_uris": [
+      "viking://resources/raw/w2rec/chapter/overview.md",
+      "viking://resources/raw/w2rec/index.md"
+    ],
+    "job_id": "ca3afb7dcd484b4c958f4284f287d800",
+    "job_kind": "W2",
+    "job_final": {"state": "draft_ready", "kind": "W2", "error": null},
+    "candidate_count": 1,
+    "candidate_uris": ["viking://resources/wiki/sany/Thing/行走系统.md"],
+    "assertions": {
+      "assert_plan_prepared": true,
+      "assert_captured_both": true,
+      "assert_image_excluded": true,
+      "assert_draft_ready": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_draft_under_target": true
+    },
+    "passed": true
+  },
+  "criteria_met": [
+    "a directory URI is accepted as a W2 source root and the recursive plan captures every nested Markdown document (index.md at root plus chapter/overview.md at depth 2)",
+    "non-Markdown siblings (the sibling JPEG) are excluded from the captured document set",
+    "the prepared plan is bound to the registered collection/schema and reaches the terminal draft_ready state as a W2 job",
+    "draft candidates remain traceable to the directory's Viking URIs and land under the collection target tree"
+  ],
+  "criteria_not_yet_covered": [
+    "accepted-draft publication into the VikingFS target tree",
+    "strict_diagnostic profile (publication gate pending by design)",
+    "FLOW-COMMON-1 parity between W1 and W2"
+  ],
+  "verdict": "FLOW-W2 recursive directory-source path PARTIAL: nested Markdown capture, image exclusion, W2 draft_ready and source traceability all verified on the real deployment. Publication, strict profile and COMMON-1 parity remain NOT_RUN.",
+  "ledger_impact": {
+    "FLOW-W2": "PARTIAL (strengthened: recursive directory-source path verified)"
+  }
+}

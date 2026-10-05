@@ -1,0 +1,51 @@
+{
+  "id": "I029",
+  "date": "2026-10-04",
+  "title": "W1 upload+collection Wiki ingestion HTTP/SDK entry over the shared WikiBuildPlanner",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "scope": "W1 POST /api/v1/kb/wiki/ingestions (temp_file_id, collection_id, update_policy, idempotency_key): materialize the uploaded Markdown under collection.raw_sources_prefix and reuse the shared WikiBuildPlanner.prepare_sources(input_kind='upload'); returns an immutable prepared source plan, does not extract, publish or index",
+  "verified": [
+    "WikiBuildPlanner.prepare_upload validates a plain .md file name, UTF-8 non-empty non-binary Markdown and the document size limit before touching storage",
+    "prepare_upload materializes at raw_sources_prefix/<name>/<name> so parser-produced relative image siblings stay addressable, then calls the same prepare_sources used by W2",
+    "an existing target with different bytes is refused unless update_policy='replace'; a byte-identical replay skips the rewrite so the same idempotency_key still returns the original build_id",
+    "prepare_sources was refactored into _persist_plan; W1 and W2 share the identical collection/schema binding, digest and plan persistence path",
+    "POST /api/v1/kb/wiki/ingestions resolves the temp upload through TempUploadStore.resolve_for_consume, reads the local copy, and always cleans it up",
+    "IngestionRequest is extra='forbid' with StrictStr fields and update_policy limited to fail|replace",
+    "async SDK kb.ingest_wiki and sync SDK wrapper call the new route",
+    "OpenAPI exposes /api/v1/kb/wiki/ingestions with a strict IngestionRequest model"
+  ],
+  "not_implemented": [
+    "PDF/Office upload parsing: W1 currently requires an already-Markdown upload; binary inputs must be parsed to Markdown before this stage (the parse->materialize step is not wired)",
+    "shared WikiBuildPlan execution: entity normalization, relation build, schema rule execution, publication and unified indexing (F10)",
+    "namespace/export authorization enforcement at build execution (authorize_inputs exists but is not invoked by this HTTP entry)",
+    "multi-file / directory uploads and batch task management",
+    "complete FLOW-W1 end-to-end (upload->parse->prepared->extract->publish->index) remains NOT_RUN"
+  ],
+  "boundaries": [
+    "The ACL context store, temp-upload store and embedding backend in the tests are fixtures; this is not a production authorization or extraction run",
+    "The returned state is 'prepared', not queued or ready; authorization_state stays 'namespace_export_pending'",
+    "The source URI is the materialized raw_sources_prefix path, not the original local upload path",
+    "No remote OpenViking/Wiki deployment or real model extraction was exercised"
+  ],
+  "regression": {
+    "status": "PASS",
+    "tests": 682,
+    "new_tests": 7,
+    "report": "tests-I029-regression.xml",
+    "scope": "I028 suite (675) + W1 ingestion HTTP/SDK tests (7), not full repository"
+  },
+  "focused_report": {
+    "tests": 7,
+    "failures": 0,
+    "report": "tests-I029-w1-ingestions.xml"
+  },
+  "file_sha256": {
+    "openviking/wiki/build_plan.py": "6d4d6eb32da0284feb034c0c6c35e6da42c5aedf8b2b0212913a57f7f637d524",
+    "openviking/server/routers/wiki.py": "b2ba72350031639ebd4aa9e386da4cec32758afea80d59e5afe14471c0caa835",
+    "sdk/python/openviking_sdk/kb.py": "6544b979becfb0aa26d113805a3834e8d34f5ac22fb1718eb41852c99005bcf3",
+    "tests/enterprise_kb/test_wiki_ingestion_http.py": "f89f636da43d85d29f90c77875fac7f9ab2158e3b4594d85c992169f9f355327",
+    "tests/enterprise_kb/test_wiki_http_sdk.py": "f5699b7e96f506d7976357393da62a8b91a766d047d3edc1d4ee1b74694ead99",
+    "tests-I029-regression.xml": "695a0bf40b8561101ae68c007902a21cd3f8a9d2d5c71336db161c1d1eb9db5c",
+    "tests-I029-w1-ingestions.xml": "067c325ff220d7416a0d8904be9e18b00aa4f8dcd1c0bc327fca23102b8d0621"
+  }
+}

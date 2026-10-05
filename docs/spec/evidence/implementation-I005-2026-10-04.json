@@ -1,0 +1,62 @@
+{
+  "run_id": "I005-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "chunker_version": "markdown-parents-v2",
+  "regression": {
+    "status": "PASS",
+    "tests": 125,
+    "report": "tests-I005-combined.xml"
+  },
+  "full_manual_index_plan": {
+    "scope": "All full MinerU replay chapter Markdown -> IndexPlan only. No production persistence/embeddings/retrieval or chapter quality gold",
+    "chunker_version": "markdown-parents-v2",
+    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    "files": 968,
+    "files_passed": 968,
+    "children": 1884,
+    "parents": 1066,
+    "max_child_tokens": 561,
+    "max_parent_tokens": 1965,
+    "failures": [],
+    "empty": 0,
+    "elapsed_seconds": 15.517,
+    "status": "PASS"
+  },
+  "remote_health": [
+    {
+      "backend": "teleocr",
+      "ready_for_jobs": true,
+      "model_verified": true
+    },
+    {
+      "backend": "logics",
+      "ready_for_jobs": true,
+      "model_verified": true
+    },
+    {
+      "backend": "mineru",
+      "ready_for_jobs": true,
+      "model_verified": true
+    }
+  ],
+  "scope_exclusions": [
+    "No full production indexing/retrieval",
+    "No atomic generation publication or old revision GC",
+    "No schema/collection Wiki implementation",
+    "No chapter quality gold PASS"
+  ],
+  "file_sha256": {
+    "openviking/indexing/plan.py": "0d389c1a331f592f55798479baac30a5bb28662a4b91e61e5277c2306e415089",
+    "openviking/service/reindex_executor.py": "e22ab1943ca5b4860cd8cfcd027e1e20247d3e8d516f57dc6edf869d2800fca1",
+    "openviking/storage/collection_schemas.py": "e2d9ab6e733385256c2f449d37c80a2fd76789c5cce862c1a31021819407937c",
+    "tests/enterprise_kb/test_index_plan.py": "650c356efabebc00e5fb5bda2a81c67329eab855fdc91dc41c4269bc6e50eea5",
+    "docs/spec/evidence/tests-I005-combined.xml": "c1ec654d997783fa6c43c90546bd035c14c8e25a764971bda46266ca30f05162",
+    "docs/spec/evidence/full-manual-index-plan-I005.json": "8d8f2a67fc7d6cdefae28e5319f17f550c7f687d5b07380cdc4935c18840dad7",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "a6dd0f20f3e3289f4cb04c115ce25dce8dcf64cd204882a429df286264d6f647",
+    "docs/spec/README.md": "54ac481b635f264c6d5c3435398af8de40a6602d4947a0e5c03bb23c6195cc47",
+    "docs/spec/openviking-enterprise-kb-review.md": "86869269a9884614ab6cc6acb2747ce19ca2d46c37a1b901bb89922b30126b47",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "571e1db8b8e1c05d22d096193c1419b7f5fa1ab2ad6c69d76c36de47854d37b4",
+    "docs/spec/openviking-enterprise-kb-spec.md": "13a120def362ec355dca360cb5cc1e2c9ba326870d16bf2f5f8f68ae9ae4814a"
+  }
+}

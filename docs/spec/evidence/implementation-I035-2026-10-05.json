@@ -1,0 +1,90 @@
+{
+  "id": "I035",
+  "date": "2026-10-05",
+  "spec_version": "0.11",
+  "recorded_at_utc": "2026-10-05T01:07:00+00:00",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14"
+  },
+  "change": "Wiki 抽取由单次整篇 LLM 调用改为拆解任务后分发抽取；新增独立 wiki 模型段，Wiki 抽取指向远端 svc/deepseek-v4-flash。",
+  "decompose_dispatch": {
+    "problem": "旧实现把整篇来源文本与完整 schema 包（bundle.members 原文）放进一次调用，上下文被撑爆，且不符合用户‘拆解任务再分发抽取’的要求。",
+    "approach": "参考 WeKnora 的 map-reduce：先按 Markdown 标题边界切分来源文本（超长段再硬切，限制 source_chars），对每个片段做词法 kind 短名单筛选（所有声明 kind 始终有资格，相关者前置），再对每个片段单独发起一次有界结构化调用。",
+    "functions": [
+      "openviking/wiki/extraction.py:_section_texts",
+      "openviking/wiki/extraction.py:_kind_tokens",
+      "openviking/wiki/extraction.py:_screen_kinds",
+      "openviking/wiki/extraction.py:WikiDraftExtractor._prompt"
+    ],
+    "prompt_payload": "每次调用仅带 schema id/version/digest + 声明列表 + 目标 URI + 单段来源文本；不再携带原始 schema 包成员正文。",
+    "resume": "逐片段 checkpoint 语义保持；分段函数确定性可重算，续跑校验同一 configuration。",
+    "extractor_version": "wiki-fixed-source-extractor-v2",
+    "tests": [
+      "test_decompose_splits_on_headings_and_bounds_oversized_sections",
+      "test_decompose_screens_kinds_by_relevance_but_never_drops_any",
+      "test_per_call_prompt_omits_raw_schema_package_but_keeps_identity"
+    ]
+  },
+  "wiki_model_section": {
+    "config_field": "OpenVikingConfig.wiki (Optional[VLMConfig])",
+    "accessor": "OpenVikingConfig.get_wiki_model()",
+    "fallback": "未设置或为空时回退到 vlm",
+    "runtime_config": {
+      "runtime_model_sections": ["vlm", "embedding", "rerank", "query_planner", "wiki"],
+      "hot_reloadable_sections": ["vlm", "rerank", "query_planner", "wiki"],
+      "optional_vlm_sections": ["query_planner", "wiki"]
+    },
+    "deployment": {
+      "api_base": "http://api.ai.rootcloud.info/v1",
+      "model": "svc/deepseek-v4-flash",
+      "provider": "openai",
+      "temperature": 0.0,
+      "note": "凭据写入本地 ~/.openviking/ov.conf；证据文件不持久化任何密钥。"
+    }
+  },
+  "scoped_tests": {
+    "command": "pytest tests/enterprise_kb/test_wiki_extraction.py tests/server/test_runtime_model_config.py tests/test_config_loader.py",
+    "tests": 94,
+    "passed": 94,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "report": "wiki-decompose-dispatch-I035-2026-10-05.xml"
+  },
+  "real_model_probe": {
+    "report": "wiki-extraction-real-model-2026-10-05.json",
+    "status": "CONTRACT_PASS",
+    "actual_model": true,
+    "model_profile": {
+      "model": "svc/deepseek-v4-flash",
+      "provider": "openai",
+      "temperature": 0.0
+    },
+    "candidate_count": 1,
+    "elapsed_seconds": 8.056,
+    "sample_class": "synthetic",
+    "gold": false,
+    "quality_claim": false
+  },
+  "acceptance": {
+    "features": "F1–F15 NOT_RUN",
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    },
+    "full_repository": "NOT_RUN",
+    "human_gold": "0; user confirmed none currently available",
+    "task_promotions": [],
+    "done_promotions": []
+  },
+  "limitations": [
+    "拆解/分发为工程结构改造，真实模型探针仍是 synthetic 合同级，不代表企业质量",
+    "词法 kind 筛选是召回辅助，不改变‘所有声明 kind 始终有资格’的语义，真实语料筛选效果未评估",
+    "118 条未执行规则、可信身份关系、完整诊断发布仍未完成",
+    "远端 wiki 端点连通性已用 curl 与探针验证，但未做长稳/限流/失败重试压测"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "engine_job": "job_2ee130227f4bf255022fd834",
+  "zip_members": [
+    "markdown.md",
+    "middle_json.json",
+    "structured_content.json",
+    "model_output.json"
+  ],
+  "markdown_image_references": 0,
+  "middle_keys": [
+    "metadata",
+    "extensions",
+    "pages",
+    "is_full_document",
+    "schema",
+    "schema_version"
+  ],
+  "markdown": "EXCEL\\_TAIL\n\nHIDDEN\\_SHEET\\_VALUE\n\n机型:SY215C。\n\n部件:履带张紧装置。\n\n故障现象:行走跑偏。\n\n，再检查右侧履带张紧度。\n\n张紧度。\n\nThe pressure reading is 12.5 MPa."
+}

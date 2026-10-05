@@ -1,0 +1,63 @@
+{
+  "id": "FLOW-D2-2026-10-05",
+  "flow": "FLOW-D2",
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "deploy/wolf-viking (dirty: secondary-dev changes present)",
+  "scope": "Viking MD-URI reindex only (file non-recursive + directory recursive); NOT the full FLOW-D2 acceptance",
+  "harness": "tests/enterprise_kb/flows/flow_d2.py",
+  "environment": {
+    "server": "real HTTP server (openviking_cli.server_bootstrap) at http://127.0.0.1:1933, version 0.4.15.dev392, auth_mode=api_key",
+    "client": "openviking_sdk AsyncHTTPClient, account=flowtest user=flowadmin",
+    "parse_backend": "not invoked (MD URI path must not call OCR)",
+    "embedding": "qwen3-vl-embed @ http://10.147.254.3:8020/v1, dim 4096, input=multimodal, wire_format=messages",
+    "rerank": "qwen3-vl-reranker-2b @ http://10.147.254.3:8029/v1/rerank",
+    "fixture": "in-harness MD body written to viking://resources/mdflow/manual.md"
+  },
+  "run": {
+    "source_uri": "viking://resources/mdflow/manual.md",
+    "dir_uri": "viking://resources/mdflow",
+    "query": "液压泵的检修间隙标准",
+    "write": {"status": "success", "mode": "replace"},
+    "reindex_file": {"status": "completed", "scanned_records": 1, "rebuilt_records": 1, "failed_records": 0, "unsupported_records": 0, "elapsed_s": 22.6},
+    "reindex_dir": {"status": "completed", "rebuilt_records": 3, "failed_records": 0, "elapsed_s": 34.5},
+    "search_uris": [
+      "viking://resources/mdflow/manual.md",
+      "viking://resources/mdflow/.overview.md",
+      "viking://resources/mdflow/.abstract.md",
+      "viking://resources/raw/slice_ch1_1/1_前言/images/811be90c474fe8fc162b69fd76b09cfc5b9cdb6f6e134c8c52edba2037fe2976.jpg",
+      "viking://resources/raw/slice_flowd1/1_前言/1.3_电气部件和液压部件的处理/images/90091d3db558ffdbd661c388361fabc0a99a0e4bb29cd047a20def45110b4ba6.jpg",
+      "viking://resources/raw/slice_flowd1/1_前言/images/d3c73e21b9cc384660f9e3be41c00049f7182441f9da063705328cbf7a84ab07.jpg",
+      "viking://resources/raw/slice_ch1/1_前言/images/9345a2033ef03293c4ca69aa6f7f65f8c15204ed9227b65d753ced50490b961f.jpg",
+      "viking://resources/raw/slice_ch1_1/1_前言/.overview.md"
+    ],
+    "assertions": {
+      "assert_file_reindex_clean": true,
+      "assert_dir_reindex_clean": true,
+      "assert_body_untouched": true,
+      "assert_uri_traceable": true,
+      "assert_hits_include_source": true
+    },
+    "passed": true
+  },
+  "criteria_met": [
+    "existing MD Viking URI reindexed non-recursively (1 record rebuilt, 0 failed) without invoking OCR or rewriting body",
+    "same directory reindexed recursively (3 records rebuilt, 0 failed) covering nested overview/abstract",
+    "source MD body is byte-identical before and after reindex (read_raw equality)",
+    "all search hits are traceable viking:// URIs, never bare text",
+    "search hits include the source MD URI itself (multiple chunks point back to the same source URI)"
+  ],
+  "criteria_not_yet_covered": [
+    "L0/L1 rebuild assertion (explicit overview/abstract layer check)",
+    "relative image shared semantic-chain resolution across the reindexed MD",
+    "parent-context boundedness for child chunks of a long MD",
+    "D1/D2 common-contract comparison (FLOW-COMMON-1)",
+    "Office/binary rejection path for D2 (FLOW-INPUT-1)"
+  ],
+  "verdict": "FLOW-D2 PARTIAL: the Viking MD-URI reindex path passes on the real server and real models. FLOW-D2 as a whole (L0/L1 layer, shared semantic chain, bounded parent context, COMMON-1 parity) remains NOT_RUN.",
+  "ledger_impact": {
+    "FLOW-D2": "PARTIAL (was NOT_RUN)",
+    "KB-032": "OPEN (unchanged; four-FLOW product acceptance still incomplete)"
+  }
+}

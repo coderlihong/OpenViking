@@ -1,0 +1,80 @@
+{
+  "initiative": "I053-teleocr-logics-image-preservation-live",
+  "date": "2026-10-06",
+  "task": "Verify TeleOCR/Logics real-backend image preservation live (#30)",
+  "claim_verified": "目标文本自述'TeleOCR、Logics 尚未接入这套保全'已在生产 worker 上不成立：两个后端都走 model_artifact.py 保全协议并通过全量校验",
+  "sample": {
+    "description": "SY215C 维修手册 p72-p88 切片（0-based 71-87），刻意选图密集簇",
+    "pages": 17,
+    "embedded_image_objects": 19,
+    "image_bearing_pages_1based": [2, 4, 6, 7, 14, 16],
+    "source_pdf_sha256": "e5a18e1913d8831970608d36e5bf172b3d5e7cf7ec70a0bed7eb388ad2df88ae"
+  },
+  "environment": {
+    "server": "10.147.254.3 docker",
+    "workers": {
+      "teleocr": "ov-parser-worker-teleocr 127.0.0.1:9101, ready_for_jobs=true, model_verified=true",
+      "logics": "ov-parser-worker-logics 127.0.0.1:9102, ready_for_jobs=true, model_verified=true"
+    },
+    "protocol": "POST /v1/jobs (multipart file/backend/mode/options) -> GET status -> GET artifact zip"
+  },
+  "results": {
+    "teleocr": {
+      "job_id": "2652825aefe04d2e800cc0079308ae7e",
+      "validate_document": "PASS (openviking/parse/model_artifact.py full gate)",
+      "processed_pages": "17/17",
+      "assets": 25,
+      "blocks": 215,
+      "source_image_preservation": {
+        "bound_to_submitted_pdf_sha256": true,
+        "visible_placements": 19,
+        "restored_placements": 19,
+        "placement_pages_match_source": true
+      },
+      "worker_version": "1e71f4fe792d12bbb86d2671c5ed6f3a1499b27d",
+      "model_revision": "74509a76263aece9003418db2a146693cfa3da93"
+    },
+    "logics": {
+      "job_id": "1c1f98c6fb4a400381cd362b8ee91cf9",
+      "validate_document": "PASS",
+      "processed_pages": "17/17",
+      "assets": 25,
+      "blocks": 179,
+      "source_image_preservation": {
+        "bound_to_submitted_pdf_sha256": true,
+        "visible_placements": 19,
+        "restored_placements": 19,
+        "placement_pages_match_source": true
+      },
+      "worker_version": "d75d42dbd92c518a4def19ac5895792828138d35",
+      "model_revision": "94a378ea8b5f20df05bea092f91e2d9cea71c569"
+    }
+  },
+  "pixel_spot_check": {
+    "method": "本地用 PyMuPDF 按 placement visible_bbox_pt 重渲源 PDF 区域，与 worker 出的 PNG 逐像素 RMS 对比（缩放到同尺寸）",
+    "placement_checked": "teleocr page_000002_draw_000001 (source_page_number=2, xref=71, restored=true, extraction_method=source_pdf_visible_region_render)",
+    "rms_pixel_diff": 1.50,
+    "verdict": "MATCH — worker 保全的 PNG 就是源 PDF 该图位的真实内容，不是凑出来的占位图",
+    "asset_sha256_matches_record": true
+  },
+  "gate_mechanics_exercised": [
+    "safe_extract 防路径穿越/重复项",
+    "options_digest 绑定",
+    "17 页 page_ids 全覆盖校验",
+    "每个 asset size+sha256 核验",
+    "Markdown AST 逐图引用必须落在 declared 资产集",
+    "_validate_source_image_preservation: 每图位 bbox 旋转矩阵/可见区交集/恢复计数一致性",
+    "客户端 ParseModelBackend 另有 submitted_pdf_sha256 绑定门"
+  ],
+  "truthful_boundaries": [
+    "本次证明的是'图片保全到 artifact 并可追溯回源 PDF 图位'，不证明图意理解或章节归属正确（与 I051 自述一致）",
+    "19/19 全走 restored(source_pdf_visible_region_render)，即两个引擎都没有提供精确像素级模型抽图，保全层是兜底渲染路径——这正是警告 SOURCE_PDF_IMAGES_RESTORED 的含义",
+    "样本为 17 页切片，非 1072 页整册；整册归属 FLOW-D1 任务"
+  ],
+  "artifacts_retained": {
+    "sample_pdf": "/tmp/i053-teleocr-logics/sample-cluster.pdf",
+    "teleocr_zip": "/tmp/i053-teleocr-logics/i053-teleocr-artifact.zip",
+    "logics_zip": "/tmp/i053-teleocr-logics/i053-logics-artifact.zip",
+    "summary": "/tmp/i053-teleocr-logics/live-report.json"
+  }
+}

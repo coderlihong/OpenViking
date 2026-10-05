@@ -1,0 +1,961 @@
+{
+  "run_id": "I020-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "schema_id": "sany-diagnostics",
+  "upstream_version": "2",
+  "upstream_bundle_sha256": "7c0b3aaf1995a4e18e8daed8f449402652d565e6ee7b3a4ee63f9b2591551ec4",
+  "adapter_version": "2+openviking.1",
+  "adapter_bundle_sha256": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+  "archive": "sany-schema-adapter-I020.zip",
+  "entities": [
+    {
+      "kind": "Component",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "spec",
+          "kind": "string",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "applicable_models",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "bom_path",
+          "kind": "string",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "configuration_bindings",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "bom_evidence",
+          "kind": "list",
+          "required": false,
+          "target": "source"
+        },
+        {
+          "name": "related_faults",
+          "kind": "list",
+          "required": false,
+          "target": "Fault"
+        }
+      ],
+      "required_sections": [
+        "总成概览",
+        "工作机理"
+      ],
+      "uncompiled_rules": [
+        "skeleton_index_profile_layout",
+        "bom_fields_manual_line_only",
+        "no_materialized_fault_reverse_index"
+      ]
+    },
+    {
+      "kind": "ConfigSpec",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "host_code",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "device_refs",
+          "kind": "list",
+          "required": true,
+          "target": "Device"
+        },
+        {
+          "name": "axes",
+          "kind": "dict",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "bom_composition",
+          "kind": "list",
+          "required": true,
+          "target": "Component"
+        },
+        {
+          "name": "capabilities",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "open_gaps",
+          "kind": "list",
+          "required": false,
+          "target": null
+        }
+      ],
+      "required_sections": [
+        "配置定义",
+        "BOM 组成",
+        "设计基准",
+        "配置能力声明",
+        "标准值参考",
+        "来源"
+      ],
+      "uncompiled_rules": [
+        "host_code_identity",
+        "device_refs_authoritative",
+        "class_name_no_function_domain",
+        "std_table_columns_fixed",
+        "applicable_cond_controlled",
+        "no_symptom_semantics"
+      ]
+    },
+    {
+      "kind": "DTC",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "code",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "machine_model",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "controller_role",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "fault_level",
+          "kind": "string",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "related_symptoms",
+          "kind": "list",
+          "required": true,
+          "target": "Symptom"
+        },
+        {
+          "name": "related_faults",
+          "kind": "list",
+          "required": false,
+          "target": "Fault"
+        }
+      ],
+      "required_sections": [
+        "代码定义",
+        "设备表现",
+        "排查步骤",
+        "可能失效机理"
+      ],
+      "uncompiled_rules": [
+        "identity_uniqueness",
+        "uri_no_translated_suffix",
+        "no_orphan",
+        "create_threshold",
+        "no_cross_model_merge"
+      ]
+    },
+    {
+      "kind": "Device",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "series",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "model",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "config_specs",
+          "kind": "list",
+          "required": true,
+          "target": "ConfigSpec"
+        },
+        {
+          "name": "raw_refs",
+          "kind": "list",
+          "required": true,
+          "target": "source"
+        },
+        {
+          "name": "current_manual",
+          "kind": "string",
+          "required": false,
+          "target": "source"
+        },
+        {
+          "name": "critical_components",
+          "kind": "list",
+          "required": true,
+          "target": "Component"
+        },
+        {
+          "name": "symptom_refs",
+          "kind": "list",
+          "required": false,
+          "target": "Symptom"
+        }
+      ],
+      "required_sections": [
+        "机型介绍",
+        "规格参数",
+        "hostcode 差异对照",
+        "常见的故障现象及故障机理",
+        "关重件 Component 清单",
+        "故障代码清单",
+        "故障案例"
+      ],
+      "uncompiled_rules": [
+        "one_model_one_page",
+        "one_index_per_model",
+        "specs_index_alignment",
+        "single_raw_ref_version"
+      ]
+    },
+    {
+      "kind": "Fault",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "affected_components",
+          "kind": "list",
+          "required": true,
+          "target": "Component"
+        }
+      ],
+      "required_sections": [
+        "失效描述",
+        "失效机理",
+        "配置差异化",
+        "常见原因",
+        "影响范围",
+        "关联故障现象",
+        "验证方法",
+        "修复方式"
+      ],
+      "uncompiled_rules": [
+        "config_differentiation_required",
+        "affected_component_targets_exist",
+        "no_wire_number"
+      ]
+    },
+    {
+      "kind": "Procedure",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "fault_refs",
+          "kind": "list",
+          "required": true,
+          "target": "Fault"
+        },
+        {
+          "name": "procedure_scope",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "target_components",
+          "kind": "list",
+          "required": true,
+          "target": "Component"
+        },
+        {
+          "name": "applicable_configs",
+          "kind": "list",
+          "required": false,
+          "target": "ConfigSpec"
+        },
+        {
+          "name": "applicable_conditions",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "specification_refs",
+          "kind": "list",
+          "required": false,
+          "target": "source"
+        },
+        {
+          "name": "open_gaps",
+          "kind": "list",
+          "required": false,
+          "target": null
+        }
+      ],
+      "required_sections": [
+        "操作目的",
+        "操作步骤",
+        "来源"
+      ],
+      "uncompiled_rules": [
+        "fault_anchor_required",
+        "identity_triple",
+        "target_components_no_symptom",
+        "applicability_derived",
+        "criteria_reference_not_copy",
+        "step_addressable",
+        "work_type_verification_loop"
+      ]
+    },
+    {
+      "kind": "Profile",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "parent_symptom",
+          "kind": "string",
+          "required": true,
+          "target": "Symptom"
+        },
+        {
+          "name": "config_spec_uri",
+          "kind": "string",
+          "required": false,
+          "target": "ConfigSpec"
+        },
+        {
+          "name": "device_uri",
+          "kind": "string",
+          "required": false,
+          "target": "Device"
+        },
+        {
+          "name": "direct_component_uri",
+          "kind": "string",
+          "required": true,
+          "target": "Component"
+        },
+        {
+          "name": "possible_faults",
+          "kind": "list",
+          "required": true,
+          "target": "Fault"
+        }
+      ],
+      "required_sections": [
+        "适用配置",
+        "本配置下的表现特征",
+        "与其他配置的差异",
+        "可能失效机理",
+        "推荐诊断流程",
+        "引用判据",
+        "来源"
+      ],
+      "uncompiled_rules": [
+        "config_evidence_required",
+        "no_device_refs",
+        "exactly_one_device_anchor",
+        "possible_faults_ordered",
+        "no_wire_number"
+      ]
+    },
+    {
+      "kind": "Symptom",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "class_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "object_name",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "sources",
+          "kind": "list",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "publication_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "validation_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "review_state",
+          "kind": "string",
+          "required": true,
+          "target": null
+        },
+        {
+          "name": "aliases",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "open_gaps",
+          "kind": "list",
+          "required": false,
+          "target": null
+        },
+        {
+          "name": "asserted_faults",
+          "kind": "list",
+          "required": false,
+          "target": "Fault"
+        }
+      ],
+      "required_sections": [
+        "现象定义",
+        "典型观察特征",
+        "相似现象区分",
+        "产品配置差异",
+        "Profile 索引",
+        "来源"
+      ],
+      "uncompiled_rules": [
+        "no_legacy_relation_fields",
+        "profile_backing_required",
+        "asserted_fault_scope_required",
+        "no_wire_number",
+        "no_measured_value"
+      ]
+    }
+  ],
+  "strict_result": {
+    "status": "REJECTED_UNCOMPILED_RULES",
+    "reason": "Natural-language rules require executable adapters before strict registration",
+    "count": 38
+  },
+  "regression": {
+    "status": "PASS",
+    "tests": 516,
+    "new_tests": 14,
+    "report": "tests-I020-regression.xml"
+  },
+  "scope_exclusions": [
+    "Runtime schema/collection registration and immutable persistence",
+    "Full example/body variant/enum/path/identity/nested-reference validation",
+    "Natural-language rule execution/authorization/storage/WikiBuildPlan/four FLOW"
+  ],
+  "file_sha256": {
+    "openviking/wiki/schema.py": "fd2bd4bf496719fe7f4ae65d794227f1d6168d83d60c892c0aabb162b6f4a53a",
+    "openviking/wiki/__init__.py": "fc9d9723892352e1c55ed24a7831a71d2f6bdc3a05db2c44d4721b1d5721c2db",
+    "tests/enterprise_kb/test_wiki_schema.py": "484d92562b097a091478b8c0bffcd947c51c2ee449a1d1e0daa4aef50192c7f3",
+    "docs/spec/evidence/tests-I020-regression.xml": "3794164256120fe3b51a33fbffeeb89d52fbb0111c7df153b4fd2f3929abc4bd",
+    "docs/spec/evidence/sany-schema-adapter-I020.zip": "e967b5639bf6b64ecd64247db5ae3d3a142c7c46ce77cbf8143f015a12fef31e",
+    "docs/spec/README.md": "d6b29f5277b792bebcbe78977d9adadee4242b805f0b6dc193b4d30a697afc13",
+    "docs/spec/openviking-enterprise-kb-spec.md": "06ee4a94b58793b174d8177c834e597abdf64afa45611ed6cabb37a1fc334e03",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "d91947366660d9cbce0672c2c17200d0d1a2f2615264cff642fa8ae9c797b6c6",
+    "docs/spec/openviking-enterprise-kb-review.md": "99201d3a21ef40ccbef48d3fc30c7208f53956d844e2ceb4c19cbc55bd5c1103",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "3b7a658965eef3bbab81ce21ea2d77dbdb46fb3e51109af8ddf890f96b9d66ff"
+  }
+}

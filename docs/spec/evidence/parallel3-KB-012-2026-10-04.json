@@ -1,0 +1,71 @@
+{
+  "task_id": "KB-012",
+  "feature": "F8",
+  "title": "Office -> PDF -> unified parse (Word/Excel/PowerPoint reuse the existing PDF parser)",
+  "date": "2026-10-04",
+  "workstream": "parallel3",
+  "status": "PARTIAL",
+  "status_reason": "Converter, router routing and unit tests are complete and passing. Real end-to-end LibreOffice conversion is NOT_RUN because no soffice/libreoffice binary is installed on this machine; those paths are covered only by @pytest.mark.integration tests that skip.",
+  "environment": {
+    "libreoffice_available": false,
+    "binary_probe": "which soffice libreoffice -> not found; /Applications/LibreOffice.app not present",
+    "python": ".venv/bin/python",
+    "notes": "Real conversion cannot be exercised locally; no fake green was produced."
+  },
+  "implemented": [
+    "New module openviking/parse/office_converter.py: OfficeConverter converts .doc/.docx/.xls/.xlsx/.ppt/.pptx to PDF via an isolated LibreOffice headless invocation (_run_libreoffice seam).",
+    "Isolation/hardening: per-run throw-away user profile dir (-env:UserInstallation), --headless/--norestore/--nolockcheck/--nodefault/--nofilemru, wall-clock timeout, best-effort POSIX rlimits (RLIMIT_CPU/AS/FSIZE), pinned export filters per document kind, macros always disabled.",
+    "Per-kind export filters: Word exports heading bookmarks; Excel sets SinglePageSheets=false (no shrink-to-one-page) and exports sheet bookmarks; Impress exports per-slide bookmarks to preserve page order.",
+    "Clear, machine-readable conversion errors (OfficeConversionError.reason): missing_fonts, password_protected, corrupt, timeout, macro_blocked, unsupported_extension, resource_limit, conversion_failed, converter_unavailable. No AnyDoc->markdown fallback anywhere.",
+    "Pre-flight input inspection before invoking LibreOffice: OLE/CFB magic detection for encrypted OOXML and legacy EncryptionInfo/EncryptedPackage; zip validation for OOXML corruption; vbaProject.bin / macro marker detection; declared-font vs installed-font (fc-list) comparison; input size limit.",
+    "Excel/PPT structure provenance read back from the converted PDF (_read_pdf_structure: page_count, bookmark_count, bookmarks) so sheets/slides are locatable via the existing PDF parser's bookmark path.",
+    "TTL lifecycle: cleanup(result) removes the intermediate PDF/profile after the parse materializes; cleanup_expired() sweeps by mtime TTL; cleanup_source() optionally removes the original Office file (delete_source_after_parse), which is safe because persisted results never re-read the original.",
+    "parser_router.py: Office extensions are detected (resolved_extension aware) and routed through OfficeConverter -> existing PDF parser via the same ParserRegistry.parse path; structure_policy/parse_backend no longer rejected for Office (still rejected for non-PDF/non-Office). Conversion errors propagate; no AnyDoc fallback. Provenance merged into result.meta and result.source_format set to the Office extension.",
+    "structure_policy=bookmarks_preferred semantics delegated to the PDF parser: bookmarks tried first, automatic fallback to Markdown headings/rules when absent or unaligned; real errors (password/failed conversion/empty/truncation) still surface."
+  ],
+  "files_touched": [
+    "openviking/parse/office_converter.py (NEW)",
+    "openviking/parse/parser_router.py (edited: office routing + converter accessor/injection)",
+    "tests/parse/test_office_conversion.py (NEW)",
+    "docs/spec/evidence/parallel3-KB-012-2026-10-04.json (NEW)"
+  ],
+  "test_commands": [
+    {
+      "command": ".venv/bin/python -m pytest tests/parse/test_office_conversion.py --no-cov -q",
+      "result": "38 passed, 3 skipped (integration tests skipped: soffice unavailable)",
+      "status": "PASS"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/parse/test_pdf_bookmark_extraction.py tests/parse/test_parser_router.py --no-cov -q",
+      "result": "39 passed (24 + 15), 0 failed",
+      "status": "PASS",
+      "note": "The 3 baseline named-destination failures noted in the task brief did not reproduce on this tree; all tests pass."
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/parse --no-cov -q",
+      "result": "1 failed, 694 passed, 34 skipped",
+      "status": "PRE_EXISTING_FAILURE",
+      "note": "tests/parse/test_feishu_unified_import.py::test_downloaded_file_routes_by_extension_but_normalized_markdown_does_not fails identically on the unmodified parser_router.py (KeyError 'resolved_name' in the untouched UnderstandingAPI branch). Verified by temporarily restoring HEAD version. Unrelated to KB-012."
+    }
+  ],
+  "not_run": [
+    "Real end-to-end LibreOffice conversion of Word/Excel/PowerPoint (integration-marked tests skipped; soffice/libreoffice not installed).",
+    "TC-8.1/TC-8.2/TC-8.3 gold quality checks (Chinese font/图文 fidelity, Excel multi-sheet/long-table pagination readability, PPT multi-page same-title ordering) require a real LibreOffice + gold fixtures.",
+    "TC-8.4 real bad-file/password/timeout behavior against LibreOffice (pre-flight heuristics are unit-tested; real LibreOffice error strings are not).",
+    "TC-8.5 end-to-end TTL cleanup across parse/index failure retries (unit-level TTL/cleanup logic is tested; no live job runtime exercised).",
+    "Missing-font detection against a real fontconfig inventory.",
+    "D1/W1 shared-conversion-module deployment wiring (module is shared by construction but not wired into service config)."
+  ],
+  "acceptance_cases": {
+    "TC-8.1": "PARTIAL - routing + Word bookmark-export filter implemented; gold fidelity NOT_RUN",
+    "TC-8.2": "PARTIAL - Excel sheet bookmarks + no-shrink pagination filter + formula-semantics disclaimer implemented; gold NOT_RUN",
+    "TC-8.3": "PARTIAL - PPT slide bookmark export preserves order; gold NOT_RUN",
+    "TC-8.4": "PARTIAL - macro/password/corrupt/timeout/missing-font errors unit-tested; real LibreOffice errors NOT_RUN",
+    "TC-8.5": "PARTIAL - TTL cleanup + source deletion unit-tested; live retry NOT_RUN"
+  },
+  "known_limitations": [
+    "Missing-font detection is best-effort: it relies on fc-list and on font names declared in OOXML parts; it no-ops when no font inventory is available.",
+    "Excel formula execution semantics are explicitly out of scope; a warning is attached to Excel parse results.",
+    "cleanup_source deletes the original Office file only when delete_source_after_parse is enabled (default off)."
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-04",
+  "tasks": [
+    "KB-002",
+    "KB-022"
+  ],
+  "status": "PARTIAL",
+  "complete_acceptance": "NOT_RUN",
+  "implemented": [
+    "Migrated every direct SQL transaction in WikiCatalog, NamespaceCatalog and WikiBuildPlanner to 17 explicit coordinator-owned repository domain commands",
+    "Schema immutable digest checks before/after blob I/O and capability refresh CAS; collection binding uniqueness, disjoint target/raw prefixes and immutable schema digest checked transactionally",
+    "Namespace root immutability, namespace root non-overlap, export mutation and monotonic policy revision transactions; export snapshots and revision rechecks preserve account isolation",
+    "Wiki prepared plan persistence performs source/directory writer+epoch fences, exact collection-body and binding digest validation, immutable manifest hash and idempotency CAS inside one authority transaction",
+    "Only version-1 private namespace_export_pending manifests accepted; schema states cannot certify execution/publication",
+    "Fixed RPC commands preserve NotFound/Conflict/PermissionDenied HTTP+SDK error semantics; no SQL or arbitrary method RPC added",
+    "Integrated separate agent DurableJobsMixin init_jobs and 12 fixed job commands into PublicationStore and authority dispatch"
+  ],
+  "files": [
+    "openviking/indexing/registry_domains.py",
+    "openviking/indexing/publication.py",
+    "openviking/indexing/registry_authority.py",
+    "openviking/wiki/catalog.py",
+    "openviking/wiki/namespaces.py",
+    "openviking/wiki/build_plan.py",
+    "tests/enterprise_kb/test_authority_wiki_catalog.py",
+    "docs/deployment/registry-authority.md"
+  ],
+  "validation": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_authority_wiki_catalog.py tests/enterprise_kb/test_wiki_catalog.py tests/enterprise_kb/test_wiki_build_plan.py tests/enterprise_kb/test_wiki_namespaces.py tests/enterprise_kb/test_wiki_http_sdk.py tests/enterprise_kb/test_wiki_namespaces_http.py tests/enterprise_kb/test_wiki_build_http.py tests/enterprise_kb/test_wiki_plan_read_http.py tests/enterprise_kb/test_wiki_ingestion_http.py tests/enterprise_kb/test_registry_authority.py -q --no-cov --junitxml=docs/spec/evidence/parallel2-registry-domain-2026-10-04.xml",
+    "passed": 129,
+    "failed": 0,
+    "new_tests": 5,
+    "duration_seconds": 23.04,
+    "real": [
+      "independent spawned authority process",
+      "authenticated Unix socket transport",
+      "SQLite/WAL and domain transactions",
+      "production Wiki/namespace router dependencies using configured_store",
+      "actual sync/async SDK calls over ASGI HTTP routing",
+      "VikingFS upload/captured source IO",
+      "current AclManager permission resolution"
+    ],
+    "substitutes": [
+      "AGFS disk transport fixture",
+      "ACL context/vector database fixture",
+      "temporary upload resolution fixture",
+      "embedding fixture"
+    ],
+    "covered": [
+      "schema/collection register+read",
+      "W1 HTTP uploaded Markdown materialization/prepared/idempotent replay",
+      "W2 URI prepared/idempotent replay",
+      "registered namespace HTTP/SDK configuration",
+      "export grant/revoke invalidates execution authorization",
+      "account-scoped 404 and immutable schema HTTP409/SDKConflict",
+      "binding and source writer/epoch CAS"
+    ],
+    "warnings": "4 existing Pydantic deprecation warnings",
+    "earlier_failure": "Expanded initial run 127/128 passed; legacy test expected broader child ACL to allow ordinary URI read. Parent KB-003 intentionally strengthens root intersection and updated that expectation; final suite passes."
+  },
+  "remaining": [
+    "KB-002 cross-host authenticated authority transport, real AGFS unknown/delayed write recovery and full joint disaster recovery remain incomplete",
+    "KB-022 strict new collection registration/read gate requiring registered target namespace remains incomplete; legacy prepared compatibility is retained explicitly",
+    "Execution authorization already requires registered namespaces, target containment, current actor/root ACL and explicit source export, but is not an atomic backend ACL/publication fence",
+    "Schema rule execution, trusted entity catalog, closed graph validation and Wiki publishing are not implemented by domain RPC migration",
+    "No multi-coordinator HA/leader election/failover claim"
+  ],
+  "acceptance_limits": {
+    "TC-13.16": "partial same-host authority/process evidence only",
+    "TC-14.1/TC-14.5/TC-16.9": "partial current configuration/source-use isolation checks; strict collection registration/read gate and complete enterprise acceptance pending",
+    "features_and_flows": "No complete Feature or four FLOW acceptance promoted"
+  }
+}

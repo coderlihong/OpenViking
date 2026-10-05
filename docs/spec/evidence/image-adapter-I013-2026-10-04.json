@@ -1,0 +1,14 @@
+{
+  "run_id": "I013-2026-10-04",
+  "status": "PASS",
+  "adapter": "OpenAIDenseEmbedder",
+  "protocol": "messages",
+  "model": "local/wemm-embedding-4b-v1",
+  "asset_sha256": "e63789a4820b8e34145c6aaf1c99993eb0fa4dd57b98248f58b31aff8a8b1e77",
+  "asset_bytes": 95628,
+  "joint_dimensions": 2560,
+  "query_dimensions": 2560,
+  "all_finite": true,
+  "elapsed_seconds": 4.708,
+  "scope": "Actual OpenViking configuration factory and async SDK adapter; no VLM quality or indexing/retrieval E2E"
+}

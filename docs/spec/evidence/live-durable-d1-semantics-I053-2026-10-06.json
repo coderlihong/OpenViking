@@ -1,0 +1,78 @@
+{
+  "iteration": "I053",
+  "date": "2026-10-06",
+  "scope": "FLOW-D1 semantics regression fixes + stale-code restart + long-run verdict on 1072-page manual",
+  "context": {
+    "job": "a8ac445b137242c98f6e8276572bb1aa",
+    "kind": "D1",
+    "account": "flowtest",
+    "namespace": "resources",
+    "root_uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1",
+    "book_tree": {
+      "sections_md": 685,
+      "pages_declared": 1072
+    },
+    "server_before": {
+      "pid": 34476,
+      "started": "2026-10-06T01:56:50+08:00",
+      "code_state": "stale (pre semantic_dag.py fix)"
+    },
+    "server_after": {
+      "pid": 39698,
+      "started": "2026-10-06T02:15:26+08:00",
+      "code_state": "fixed",
+      "log": "/tmp/ov-server-i053.log"
+    }
+  },
+  "fixes_deployed_this_round": [
+    {
+      "id": "F-require-semantics-gate",
+      "file": "openviking/storage/queuefs/semantic_dag.py",
+      "change": "removed require_semantics gate that re-raised generic sidecar write exceptions when configured_store() was non-None; transient LockAcquisitionError contention must be swallowed per HEAD contract; AbstractOverviewFormatError re-raise branch preserved",
+      "reason": "pytest-probed effect ordering proved the gate turned a mock transient lock error into a run-1 crash and, on the live server, made any real transient lock contention abort the whole reindex attempt (prior 320 attempts)"
+    },
+    {
+      "id": "F-notfound-skips",
+      "file": "openviking/storage/queuefs/semantic_dag.py",
+      "change": "file summary path and _vectorize_directory skip vanished sources with NotFoundError instead of aborting",
+      "evidence": "restart log shows 'Skipping vanished semantic source' for legacy trees SY215C_SY021NCB62788_维修手册_zh (no _1 suffix) and 履带式液压挖掘机/images — pre-existing ghost image refs from earlier parse generations no longer kill the walk"
+    }
+  ],
+  "regression": {
+    "suite": "tests/storage/test_semantic_dag_incremental.py + full storage group",
+    "result": "42 passed after fix; previously 1 failed (test_directory_vectorization_retries_after_matching_sidecar_write)"
+  },
+  "long_run_verdict": {
+    "question": "was D1 stuck in a fast-fail reindex loop (index_dispatched=false) or legitimately long-running?",
+    "verdict": "legitimately long-running on stale code; not an idle loop",
+    "evidence": [
+      "attempt frozen at 320 across 8s and 20s samples while lease kept renewing (30s window)",
+      "root resources/raw/.overview.md mtime 02:12:01 (fresh), root .path.ovlock touched 2s before check",
+      "ClashX proxy held ~100 onward ESTABLISHED connections to VLM endpoint 10.147.254.3:36688 during run",
+      "vectordb context version files (vector_index/scalar_index/store log) modified within 5min",
+      "receipts table static at 654 over 20s — receipts accrue only at batch seal, so zero growth is expected mid-walk"
+    ],
+    "remaining_risk": "server predating the fix could abort reindex on real transient LockAcquisitionError; prior attempts=320 consistent with such aborts before this round"
+  },
+  "crash_recovery": {
+    "action": "SIGKILL stale server (PID 34476) mid-reindex, restarted onto fixed code (PID 39698)",
+    "result": "D1 auto-resumed from checkpoint: new publication batch f5b15712 allocated, attempt 321, state running/stage index",
+    "batch_hygiene": "old building batch a4d7ee06 (0 members) handled by fail_batch-on-building path or orphaned; new batch has no duplicate-generation members",
+    "error_scan": "grep -c 'Traceback|ERROR' on new server log = 0"
+  },
+  "watch": {
+    "method": "background sampler every 120s appending state/log-lines/receipts to /tmp/d1-watch.log until terminal state",
+    "task_id": "bbv08u0xj"
+  },
+  "not_claimed": [
+    "FLOW-D1 complete acceptance — job not yet terminal; retrieval probe and head/mid/tail distribution pending",
+    "VLM image-summary quality or chapter attribution correctness",
+    "no fast-fail relapse proven over time (watcher running)"
+  ],
+  "auth_incident": {
+    "symptom": "probe UnauthenticatedError: Invalid API Key after server restart",
+    "root_cause": "~/.openviking/ovcli.conf carries key default.hai.wang, but the live server key registry (data/viking/*/users.json) only registers account flowtest user flowadmin; the hai.wang key was never registered server-side",
+    "resolution": "probe switched to flowtest/flowadmin key from data/viking/flowtest/_system/users.json",
+    "classification": "local CLI config mismatch, not a server defect"
+  }
+}

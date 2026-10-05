@@ -1,0 +1,102 @@
+{
+  "run_id": "implementation-I001-2026-10-03",
+  "spec_version": "0.6",
+  "recorded_at": "2026-10-03T12:58:46.247052+00:00",
+  "status": "PARTIAL_IMPLEMENTATION_TESTED",
+  "commit": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "working_tree": "uncommitted; existing unrelated user edits preserved; per-file hashes include current shared file content",
+  "worktree_digest": "66fd010062e052b73ca3f43b6ba5582cb011044d594fc6d90138732f835f4881",
+  "file_sha256": {
+    "openviking/parse/chapter_splitter.py": "bb7b9e71a97abefea39d725c9ea80f269ca4d1979f1f94b921a9046a17ec2b3b",
+    "openviking/parse/parser_router.py": "0db8a3782f27370883f2c27de1a9a95f7aa2a5da7d5d09caecaccf0ebf7e596e",
+    "openviking/parse/parsers/pdf.py": "5ec04641811257cd4f7f63b858b4e3235eb9e6d696a04417cdb74be453825c98",
+    "openviking/parse/parsers/markdown.py": "54a876fb2d15d09cc45ad71baa626ffda025dba3d67603de6d1e6223e76f318b",
+    "openviking/server/routers/resources.py": "59c70a874158434a45e580685f7dee79dc79ba6dafb3ef0c6cf8f7a3bccbdd05",
+    "openviking/service/resource_service.py": "29f31e71263368d2b7a9c62684af82cbe67d05feb7db784fdde1cfcaee9115c0",
+    "openviking/service/task_tracker.py": "58f2da3ef8eb49336bf776b500eb885d3532bb59be0feb0a8848c5d8aff667ed",
+    "openviking/utils/resource_processor.py": "8793276aafac537b1b6a1b35ded07f1ecf8bf20fcc749be11c2cb956f5fc67bf",
+    "openviking/storage/internal_names.py": "6302be67713583335398a37284d15170547f3ea1fc8de79c64dbd35cfbc5392e",
+    "openviking/storage/queuefs/semantic_dag.py": "91baeeca768c67a78467d107d19a6be40e34b109fdc21aabb2163cd69ab43329",
+    "openviking/service/reindex_executor.py": "5455be76a3511b514e84a9954fa996a4163db08402b4655a18d4f87579a62408",
+    "sdk/python/openviking_sdk/options.py": "aa3cffe94912d4597722e4c6f8cddd63b6d46d3e33e9ce53962192def5a085e9",
+    "pyproject.toml": "9e0a6d4fd590875019681d00f44074be7f78038b687dfd6aab2515c38949c775",
+    "uv.lock": "96833f311b8c2e8626c326b4d1cdbd4676e9be01b969ad8d3643656f8fa9c514",
+    "web-studio/src/routes/tasks/-components/task-detail-sheet.tsx": "bbbbd4271cfd997678f76b0a8d4a680feecf9d87dc6b756f359ec92ce50d723a",
+    "web-studio/src/routes/tasks/-components/task-detail-sheet.test.tsx": "a982a97656be7e0ae2ef2015b3e0e9b4ad497f0d4092d9cc91c34c3067f5d5e2",
+    "web-studio/src/routes/tasks/-lib/task-record.ts": "95c910176e4b89260d008ed48412b25b8e6711a439ffa129fc4b915d1033202b",
+    "web-studio/src/i18n/locales/en/workspace.ts": "e563864cb3f1d00f89ccaac909601e301b9d0933833862a930d3a75adcc5ab17",
+    "web-studio/src/i18n/locales/zh-CN/workspace.ts": "a0d663c1b860f2d687da8d049fecff66d05ac1cd0c25754ee215406231a4ac47",
+    "tests/parse/test_pdf_bookmark_extraction.py": "06be7e15f6095246f9f5e5894bfd2de280114c8451cbdade71494e0fec7c4683",
+    "tests/enterprise_kb/test_chapter_contracts.py": "ded672b54f06263c5ba42ed071ae7ebdf5fc08a11d7ada7d09dd1acabf7a239a",
+    "tests/enterprise_kb/test_chapter_metadata.py": "d436d9e294247a8f8dde23c5e44b11eb866d6ef32053271bd81ef2ef90275f26",
+    "tests/enterprise_kb/test_chapter_splitter.py": "5e3fb2c7f1ad17104ddba6b3e1db857f4d7aa2c9b625c654fe80dc2113b2509b",
+    "tests/enterprise_kb/test_pdf_chapter_pipeline.py": "bffeec31ffbb264b8babf0c1ce1f90d79ac95a291641351fac8ae4071f713aa5",
+    "docs/spec/README.md": "5b3138be747d5d28f97ad63d19f284ed579424bc5a1b5e78a6410c440c2c0a9f",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "3b7ac102d43233224578d40051df63fdd59b3aaf0503af4a8f8354e92dd51123",
+    "docs/spec/openviking-enterprise-kb-review.md": "67181c4d93f60ec8e29e5a2f55bef744ed875a326caa1a56f26d74490ad94bf6",
+    "docs/spec/openviking-enterprise-kb-spec.md": "eba0426b8b122158ec187e63ea8039187e63e8920339a9a779c2fd54424b6fbb",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "a49e8f8dba20f08a1b47aaf1265428189623a77bdde26c34ab472ab83981bda1"
+  },
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "python_tests": "3.13.14",
+    "pymupdf": "1.28.2",
+    "pdf_conversion": "real local pdfplumber synthetic 2-page PDF",
+    "external_model_response": "mocked, not deployment evidence",
+    "sdk": "repository editable installation"
+  },
+  "results": {
+    "backend": {
+      "status": "PASS",
+      "tests": 163,
+      "failures": 0,
+      "errors": 0,
+      "report": "docs/spec/evidence/implementation-I001-backend.xml",
+      "sha256": "08dd7b7ee50cabd124978af57f565c949f085c1f303ee1b8993731ca83995364"
+    },
+    "frontend": {
+      "status": "PASS",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "report": "docs/spec/evidence/implementation-I001-frontend.xml",
+      "sha256": "98316eb33f94696e313a6f62a63c6e51a66ed861c5fbacbd664d46fdf073fa15"
+    }
+  },
+  "validation": {
+    "ruff": "PASS",
+    "dependency_lock": "PASS (uv lock --check)",
+    "diff_whitespace": "PASS",
+    "prettier": "PASS",
+    "eslint": "0 errors, 9 pre-existing literal-string warnings in task detail"
+  },
+  "target_test_families": [
+    "TC-1.4/1.6/1.7 partial U/C",
+    "TC-2 partial U/local storage",
+    "TC-3 info persistence/UI subcontracts",
+    "TC-11 parser control records exclusion only"
+  ],
+  "fixture_method": "PDF generated in each test with explicit body/title expectations; generation code hashed above. No real-model fixture or SY215C gold established.",
+  "known_unavailable_check": {
+    "path": "tests/service/test_reindex_file_lock.py",
+    "status": "BLOCKED_SETUP",
+    "reason": "agfs_client/test_dir fixtures unavailable in this test scope; expanded run had 156 pass + 1 setup error; not counted as passed"
+  },
+  "remote_preflight": {
+    "server": "10.147.254.3",
+    "model_root": "/home/t-wanghai/models",
+    "access": "SSH key, read only",
+    "gpu": "8 H20 with existing allocations",
+    "home_free": "approximately 62 GB at preflight",
+    "models_deployed_this_run": false
+  },
+  "limitations": [
+    "No production queue worker end-to-end execution or multi-worker serialization proof.",
+    "No namespace registry, immutable publication or shared parent/child IndexPlan implemented.",
+    "No tokenizer-bounded child embedding, joint image+summary embedding, BM25/MMR or fuzzy metadata acceptance.",
+    "TeleOCR/Logics not implemented; MinerU reuses existing protocol without deployed version validation.",
+    "SY215C provided path could not be opened here; historical 1072 pages / 491 bookmarks are not this run evidence.",
+    "Reference-style image links and official model asset formats not yet adapted/validated.",
+    "Original TOC detection and fuzzy OCR heading alignment remain unimplemented; conservative automatic fallback applies."
+  ]
+}

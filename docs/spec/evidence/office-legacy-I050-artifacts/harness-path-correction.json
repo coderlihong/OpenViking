@@ -1,0 +1,70 @@
+{
+  "classification": "harness fixture name collision/path correction; original DOC retained; initial D1 XLS allocated a collision-safe alternate root and passed parsing/index/search but failed strict filename assertion",
+  "errors": {
+    "d1-xls": {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050.xls",
+        "url": "http://127.0.0.1:1933",
+        "account": null,
+        "user": null,
+        "backend": "mineru",
+        "timeout": 1800,
+        "query": "SY215C hydraulic pump low pressure inlet filter blockage 12.5 MPa"
+      },
+      "add_resource": {
+        "status": "success",
+        "root_uri": "viking://resources/raw/legacy-d1-I050_1",
+        "structure_source": "rule_blocks",
+        "alignment_status": "failed",
+        "elapsed_s": 35.9
+      },
+      "assert_root_appends_name": false,
+      "tree_names": [
+        "_manifest.json",
+        "_toc.json",
+        "section_0001.md",
+        "toc.md"
+      ],
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "reindex": {
+        "status": "completed",
+        "rebuilt_records": 4,
+        "failed_records": 0,
+        "elapsed_s": 32.1
+      },
+      "assert_reindex_clean": true,
+      "search_uris": [
+        "viking://resources/raw/legacy-d1-I050_1/section_0001.md",
+        "viking://resources/raw/legacy-d1-I050_1/toc.md"
+      ],
+      "assert_uri_traceable": true,
+      "passed": false,
+      "family": ".xls",
+      "flow": "d1",
+      "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860"
+    },
+    "w1-xls": {
+      "family": ".xls",
+      "flow": "w1",
+      "passed": false,
+      "error_type": "FileNotFoundError",
+      "error": "[Errno 2] No such file or directory: '/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.xls'"
+    },
+    "d1-ppt": {
+      "family": ".ppt",
+      "flow": "d1",
+      "passed": false,
+      "error_type": "PermissionDeniedError",
+      "error": "HTTP server only accepts remote resource URLs or temp-uploaded files; direct host filesystem paths are not allowed."
+    },
+    "w1-ppt": {
+      "family": ".ppt",
+      "flow": "w1",
+      "passed": false,
+      "error_type": "FileNotFoundError",
+      "error": "[Errno 2] No such file or directory: '/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.ppt'"
+    }
+  },
+  "repair": "XLS/PPT paths now have independent family-specific stems; reuse successful DOC results and existing job/build identifiers"
+}

@@ -1,0 +1,15 @@
+{
+  "scope": "All full MinerU replay chapter Markdown -> IndexPlan only. No production persistence/embeddings/retrieval or chapter quality gold",
+  "chunker_version": "markdown-parents-v2",
+  "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+  "files": 968,
+  "files_passed": 968,
+  "children": 1884,
+  "parents": 1066,
+  "max_child_tokens": 561,
+  "max_parent_tokens": 1965,
+  "failures": [],
+  "empty": 0,
+  "elapsed_seconds": 15.517,
+  "status": "PASS"
+}

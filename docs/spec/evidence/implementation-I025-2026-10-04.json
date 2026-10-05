@@ -1,0 +1,69 @@
+{
+  "run_id": "I025-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "status": "PASS",
+    "tests": 600,
+    "new_tests": 27,
+    "scope": "I024 feature regression + Wiki plan tests",
+    "report": "tests-I025-regression.xml"
+  },
+  "data_replay": {
+    "run_id": "I025-full-manual-plan",
+    "status": "PARTIAL_PASS",
+    "sources": 968,
+    "source_bytes": 1205623,
+    "directories": 3,
+    "schema_digest": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+    "schema_capability_state": "draft_rules_pending",
+    "namespace_authorization_state": "namespace_export_pending",
+    "upload_digest": "23cf52b08787af77e27ba688fee2d9e926f6549c89a090b665032ed5451b47b2",
+    "uri_digest": "c28c35fe5cac439101fc6025d189772ed9a12d4ee617866ffe0b99f44f6fc308",
+    "equivalence": "Same fixed schema binding and all source revisions",
+    "verification": "All expected Markdown URIs captured; every streamed immutable source matches its digest; current-source preflight passes",
+    "fixtures": [
+      "Actual full MinerU-derived manual and adapted Sany schema",
+      "Disk AGFS transport, SQLite and VikingFS methods; ACL mock"
+    ],
+    "excluded": [
+      "Actual extraction/domain rules, namespace/export registry, Wiki commit/index/HTTP E2E",
+      "Full-manual chapter alignment quality, production AGFS encryption/ACL"
+    ]
+  },
+  "verified": [
+    "Shared W1 materialized Markdown and W2 existing URI preparation",
+    "Fixed schema/collection/source revisions, original URI citations",
+    "Account/namespace idempotency and actual overlapping save recheck",
+    "Disk private captured content/reopen/GC protection",
+    "Authorized bounded directory walking, epoch/source preflight, streaming revocation checks"
+  ],
+  "fixtures": [
+    "Actual SQLite, disk transport, VikingFS; RequestContext and ACL substitute",
+    "Full actual MinerU manual derived source and Sany adapted schema"
+  ],
+  "not_implemented": [
+    "Namespace/member/export registry and 38 Sany rules",
+    "Actual W1 upload parsing to persistent Wiki task/W2 HTTP execution",
+    "Extraction/normalization/relations/final atomic publish/index/complete FLOW",
+    "Prepared-plan retirement/leasing/quota/physical GC",
+    "Directory membership/ACL/external-write commit fences",
+    "Five SDK compatibility baseline failures"
+  ],
+  "file_sha256": {
+    "openviking/wiki/build_plan.py": "bcc4e78c50659322eef90628bcbd2c01d6ec3c30f6a82c08883c119a192f4df4",
+    "openviking/indexing/publication.py": "6ec03db2c0f20b9bf18d6911372a10b15d546c55e22c6be77cbcb1f8c7cf2ebe",
+    "tests/enterprise_kb/test_wiki_build_plan.py": "c5e4a0c0778f34409d10862416c44f7e0350aae03fe97df2ad12aeec9fe6e8e4",
+    "docs/spec/tools/replay_wiki_plan.py": "f0bd769d758cf8da671051d5a22d00d1c162d43fff89ffbdfbf05fe94f672a1f",
+    "docs/spec/evidence/tests-I025-regression.xml": "f7cc27a4aba768cba209d5d537043076a0b73422292fc948b08d7870f0a5d94d",
+    "docs/spec/evidence/tests-I025-plan-initial.xml": "f98d1adabb7f4e1059c2e7c5caa9388f1325c3ed616b89bf6114bb787795df7e",
+    "docs/spec/evidence/tests-I025-plan.xml": "9ed0a0815d83f3f7a5edaa2e946d6261532f56b8d7606e31438ecdede4c0b1b5",
+    "docs/spec/evidence/tests-I025-full-plan.xml": "627cc0aadcf1a61f0bba7ec282871dcf21b1bca335896444cf680b73d1771202",
+    "docs/spec/evidence/tests-I025-full-plan-initial.xml": "3f052b632243b6c1876257625f76287c5861340b15c5672e8a44b8c2bbc2a3b2",
+    "docs/spec/evidence/wiki-plan-full-I025-2026-10-04.json": "44ac0c4b9e0e4c6c6604da32d169ca642e089605368b73dda7ec20760d7604c2",
+    "docs/spec/README.md": "e7fa8554348e1f8a8f1d63e318276f446f634b1679073de3adc2d23ee534ae1d",
+    "docs/spec/openviking-enterprise-kb-spec.md": "6fc89e56a250345f354db313dc202d8439d97974822f536e29c3efa3c7960042",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "45806906e8ad6aeccc59898c6a65896ae2b5772cae00699ee78ba484c6a27cd5",
+    "docs/spec/openviking-enterprise-kb-review.md": "4e8f870814d7464db0b38b26866474b637035f9fc82053ce7aaf388ec13112fc",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "7a378b81f99070095d4b575108e3e918c62df4946256da52a663db479e41c5f1"
+  }
+}

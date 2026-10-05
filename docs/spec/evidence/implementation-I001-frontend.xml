@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="11" failures="0" errors="0" time="0.47299425">
+    <testsuite name="src/routes/tasks/-components/task-detail-sheet.test.tsx" timestamp="2026-10-03T12:57:35.319Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.470546917">
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in en without synthetic lines" time="0.184405">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in zh without synthetic lines" time="0.047030084">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.062098833">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.052522167">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; retains the last recorded events and reports a refresh error" time="0.047725">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; keeps unfamiliar event types visible and never imports another identity cache" time="0.049076458">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="chapter fallback information &gt; shows persistent parsing notes without marking a completed task as failed" time="0.026939084">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-record.test.ts" timestamp="2026-10-03T12:57:35.320Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.002447333">
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; normalizes task records from API payloads" time="0.001191167">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; drops invalid list entries" time="0.00023425">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; only reports meaningful results" time="0.000188542">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; recognizes task statuses that still require polling" time="0.000152166">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,60 @@
+{
+  "id": "I038",
+  "date": "2026-10-05",
+  "spec_version": "0.14",
+  "recorded_at_utc": "2026-10-05T01:47:00+00:00",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "change": "KB-029（多源增量、证据撤回和投影重建）此前在台账中为 OPEN 且无证据；实际 openviking/wiki/merge.py 已实现逐候选来源依赖溯源、来源撤权后拒绝读取、并在仍有合法来源时用同一身份重建、丢弃被撤回来源的贡献。本轮补录证据并把实现状态修正为 PARTIAL（零证据 stale/移出热路径、权威边投影重建、迁移回滚仍未实现）。",
+  "task": "KB-029",
+  "features": ["F10", "F13"],
+  "implementation": {
+    "module": "openviking/wiki/merge.py",
+    "merge_version": "wiki-private-candidate-merge-v2",
+    "source_dependency": "每个候选的 provenance 记录 source_uri/source_sha256/source_epoch/build_id/plan_digest/draft_reference/candidate_uri/candidate_sha256；field_observations/body_variants/evidence 均带逐来源 provenance。",
+    "read_gate": "read_merge() 对 payload['inputs'] 的每个 build 重新 authorize_inputs 并重读 receipt；来源 ACL/export 撤权或 source epoch 变化即拒绝读取（不回退到剩余来源）。",
+    "withdrawal_rebuild": "撤权一个来源后，对仍有合法来源的 build 用同一 canonical_id 重新 merge：identity 保留，contributors/evidence 只含剩余合法来源，被撤回来源的贡献被丢弃。",
+    "no_write_across_collections": "merge 强制同 namespace/target_uri/schema 绑定，跨域直接 SchemaError，不跨 collection 乱写。",
+    "human_protection": "human_confirmed 覆盖层受 expected_revision CAS 保护，模型重跑不覆盖人工值；身份定义字段不得被手改。"
+  },
+  "scoped_tests": {
+    "command": "pytest tests/enterprise_kb/test_wiki_candidate_merge.py tests/enterprise_kb/test_wiki_identity_conservative_merge.py",
+    "tests": 44,
+    "passed": 44,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "report": "wiki-merge-withdrawal-I038-2026-10-05.xml",
+    "withdrawal_and_projection_tests": [
+      "test_explicit_rebuild_with_authorized_remaining_source_keeps_identity_but_drops_revoked_contribution",
+      "test_private_read_rechecks_all_sources_and_does_not_fall_back_to_remaining_source",
+      "test_standard_same_bytes_write_invalidates_merged_source_epoch",
+      "test_revoke_export_or_disable_acl_refuses_private_merge_read",
+      "test_cross_namespace_merge_is_rejected_even_when_both_inputs_authorized",
+      "test_exact_candidate_replays_do_not_create_duplicates"
+    ],
+    "evidence_and_human_tests": [
+      "test_same_explicit_identity_and_scope_groups_synonym_names_preserving_all_evidence",
+      "test_contradictory_parameters_preserve_values_and_do_not_choose_a_winner",
+      "test_human_confirmed_value_is_protected_and_multi_source_evidence_is_retained",
+      "test_stale_revision_write_is_refused_and_does_not_overwrite_human_value",
+      "test_human_confirmed_value_survives_a_later_model_rerun"
+    ]
+  },
+  "assertions": [
+    "撤权一源后重读旧 merge -> PermissionDeniedError（不静默回退剩余来源）",
+    "对仍有合法来源重建 -> 同一 candidate_id，contributors 仅含剩余来源，evidence 数量随之减少",
+    "同字节标准写入使 source epoch 失效 -> ConflictError('input changed')",
+    "跨 namespace 合并 -> SchemaError('cannot cross target namespace')",
+    "人工确认值在模型重跑后保留，且旧 revision 写入被 CAS 拒绝"
+  ],
+  "pending": [
+    "zero_evidence_stale_or_exit_hot_path（零证据事实置 stale/移出诊断热路径）",
+    "authority_edge_projection_rebuild（权威边反向投影重建）",
+    "migration_rollback_not_overwriting_human_knowledge"
+  ],
+  "limitations": [
+    "诊断发布仍 NOT_RUN（diagnostic_publishable=False）。",
+    "TC-10.8/10.9/TC-16.16 的完整端到端（含投影损坏重建与迁移回滚）仍未运行。"
+  ],
+  "task_promotions": ["KB-029 OPEN→PARTIAL"]
+}

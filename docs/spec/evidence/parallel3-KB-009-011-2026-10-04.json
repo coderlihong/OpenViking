@@ -1,0 +1,64 @@
+{
+  "evidence_id": "parallel3-KB-009-011-2026-10-04",
+  "task": ["KB-009", "KB-011"],
+  "title": "三模型产物适配：logics 未随产物下发的图片引用剥离",
+  "features": ["F1", "F2"],
+  "status": "PARTIAL",
+  "feature_acceptance": "NOT_RUN",
+  "date": "2026-10-04",
+  "scope": "Parser artifact client-validator adaptation for the logics backend; unit-level only. Deployed worker validator kept byte-identical to the client copy. No new live multi-page all-backend run in this increment.",
+  "defect": {
+    "observed": "logics backend artifact validation rejected with ValueError: Missing or external parser image: imgs/img_in_image_box_328_184_402_240.jpg",
+    "root_cause": "logics emits synthetic `imgs/img_in_image_box_<x0>_<y0>_<x1>_<y1>.jpg` placeholder references for detected regions it never crops to files, so those assets are absent from the artifact `assets` list; validate_document rejected the document.",
+    "fix": "Add _strip_unavailable_images(markdown, declared) applied only for backend == 'logics' before image-reference validation. It removes Markdown/HTML image references whose resolved path is not a declared asset, records a LOGICS_IMAGE_UNAVAILABLE warning with the stripped list, and re-derives blocks. Declared references are never stripped; fenced code and srcset violations still fall through to hard rejection."
+  },
+  "files_changed": [
+    "openviking/parse/model_artifact.py",
+    "deploy/parser-models/model_artifact.py"
+  ],
+  "implementation": {
+    "module": "openviking/parse/model_artifact.py",
+    "entry": "validate_document(root, backend='logics', ...)",
+    "guards": [
+      "logics-only: other backends keep strict image-reference rejection",
+      "declared asset reference -> kept verbatim (real figures shipped by worker survive)",
+      "undeclared reference -> stripped, warning LOGICS_IMAGE_UNAVAILABLE carries count and paths",
+      "external URL / absolute / traversal path still raises Missing or external parser image",
+      "srcset-bearing HTML tags left for hard rejection",
+      "deploy/parser-models/model_artifact.py is byte-identical to the client copy (test_parser_contract_hardening::test_client_and_deployed_artifact_validator_are_byte_identical)"
+    ]
+  },
+  "verification": {
+    "commands": [
+      ".venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/test_model_artifact.py",
+      ".venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/test_parser_contract_hardening.py tests/enterprise_kb/test_parser_worker_lifecycle.py tests/enterprise_kb/test_chapter_contracts.py tests/enterprise_kb/test_chapter_metadata.py tests/enterprise_kb/test_pdf_chapter_pipeline.py"
+    ],
+    "passed": 25,
+    "failed": 0,
+    "combined_passed": 115,
+    "combined_failed": 0,
+    "note": "test_model_artifact.py 25 passed; the six-file parser/chapter batch 115 passed after syncing the deployed validator."
+  },
+  "hashes": {
+    "openviking/parse/model_artifact.py": "1214b2fbbf69702e1368ba461d4a9519fb534a0a9af7c53f1a7638b34dba781a",
+    "deploy/parser-models/model_artifact.py": "1214b2fbbf69702e1368ba461d4a9519fb534a0a9af7c53f1a7638b34dba781a",
+    "tests/enterprise_kb/test_model_artifact.py": "3fcf802f9f2be73f70d0a038902e32d5bf5789fd8521b76511d7c30783578ee5"
+  },
+  "test_case_mapping": {
+    "TC-9.x": [
+      "test_logics_synthetic_box_images_are_stripped_with_warning: synthetic box refs removed, warning emitted, surrounding text kept",
+      "test_logics_declared_image_is_never_stripped: real shipped figure survives validation",
+      "test_unavailable_image_stripping_is_logics_only: mineru/teleocr keep strict rejection",
+      "test_logics_external_and_traversal_images_still_rejected: external/traversal still hard-fail"
+    ],
+    "TC-11.x": [
+      "test_client_and_deployed_artifact_validator_are_byte_identical: client and worker validators byte-identical"
+    ]
+  },
+  "NOT_RUN": [
+    "Live logics multi-page artifact round-trip against the remote Docker worker (real-e2e-parse-SY215C recorded the gap; adaptation now unit-verified only)",
+    "Full 1072-page SY215C three-backend quality run (KB-010)",
+    "Bookmark-aligned vs rule_blocks fallback structural quality acceptance (KB-011 done_when full)",
+    "Full F1/F2 / M1 gate acceptance; feature_acceptance remains NOT_RUN"
+  ]
+}

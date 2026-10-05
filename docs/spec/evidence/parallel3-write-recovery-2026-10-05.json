@@ -1,0 +1,58 @@
+{
+  "report_version": 1,
+  "date": "2026-10-05",
+  "recorded_at_utc": "2026-10-04T23:25:59.875457+00:00",
+  "task": "KB-005",
+  "status": "PARTIAL",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14"
+  },
+  "implementation": [
+    "Operator-configured trusted recovery adapter and current authorization provider, not selectable by worker/client",
+    "Registered knowledge namespace/root and policy revision bound at intent prepare and rechecked in final CAS",
+    "Actual backend operation terminal/fenced journal queried server-side; mutation lock spans source read and registry CAS",
+    "Audit, source epoch/hash, targeted token/ref clearing and intent completion are transactional; all retained on audit failure",
+    "Completed replay remains subject to current authorization; no failed job or build promoted to ready",
+    "Unreadable actual source bytes explicitly fail closed with FAILED_PRECONDITION"
+  ],
+  "verification": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_write_recovery.py tests/enterprise_kb/test_source_write_fence.py tests/enterprise_kb/test_registry_authority.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel3-write-recovery-2026-10-05.xml",
+    "junit_xml": "docs/spec/evidence/parallel3-write-recovery-2026-10-05.xml",
+    "tests": 31,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "result": "PASS",
+    "write_recovery_tests": 14,
+    "source_fence_tests": 10,
+    "authority_tests": 7
+  },
+  "evidence_scope": [
+    "Real independent delayed writer survives backend/registry reopen then fails to replay after fencing and rebuild",
+    "Real independent coordinator and HTTP recover/diagnose/get, client proof rejection and current authorization revocation",
+    "Cross-source/account/actor intent and bound operation rejection",
+    "Concurrent intent winner clears exactly once; other intent cannot consume stale proof",
+    "Domain policy revision changed before execution and during backend query rejects final CAS",
+    "Audit failure leaves epoch/hash, token/ref and prepared intent unchanged",
+    "Unreadable source remains protected"
+  ],
+  "limitations": [
+    "Only opt-in ControlledLocalWriteBackend supports verified recovery; ordinary AGFS/remote AGFS intentionally remains WRITE_RECOVERY_REQUIRED",
+    "Controlled backend is not a complete general AGFS implementation and requires every protected writer to use it; external direct writes are outside trust model",
+    "Enterprise identity/ACL provider integration not completed; independent operator policy-file provider tested",
+    "No full enterprise backup/restore, remote backend recovery, multi-coordinator failover or full FLOW acceptance",
+    "No general client-submitted proof, forced-clear API or automatic promotion of old failed builds"
+  ],
+  "source_sha256": {
+    "openviking/indexing/write_recovery.py": "64fad20d5f0736ec819ac1c045ce8b0a1c99682076bde9d952f89b7ef84d45cf",
+    "openviking/indexing/controlled_write_backend.py": "414fc4897257bde1b1f82c4bc637e02d5318e2ac2f3612f3035967d050766706",
+    "openviking/service/write_recovery_service.py": "8d454b6b4511c904227fadad723daaebf838bfa03906a04b74f465fdaa07107f",
+    "openviking/server/routers/write_recovery.py": "35358d717d92e9f6d74e0b56c476d1adea39b18a2c5354589471fb6c9b6db856",
+    "tests/enterprise_kb/test_write_recovery.py": "1c9118f9ddd2a7a51d4ad2fa241fee8b1ffdb19e8147fd58716dcfbf8e7d984c",
+    "docs/deployment/write-recovery.md": "ebb37c2dd40003bbce9dee4716a0fce52b3420b35b20a662a30451ca240d9f41"
+  },
+  "artifacts_sha256": {
+    "docs/spec/evidence/parallel3-write-recovery-2026-10-05.xml": "20c4f3d221d62061e12568340bc9995a1017e5dff34bf32884e70ed213ca7f64"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "task": "KB-012",
+  "feature": "F8",
+  "date": "2026-10-05",
+  "status": "PARTIAL",
+  "acceptance_status": "NOT_RUN",
+  "local_tests": {
+    "command": ".venv/bin/python -m pytest tests/parse/test_office_conversion.py tests/parse/test_office_used_sheets.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/office-completion-2026-10-05.xml",
+    "passed": 45,
+    "failed": 0,
+    "skipped": 0,
+    "junit": "docs/spec/evidence/office-completion-2026-10-05.xml",
+    "junit_sha256": "910870aabed867827619fd34a8549d62862f82948a3ee28d9e1a82d3ddebf34e",
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14 (main, Jul 23 2026, 14:48:16) [Clang 22.1.3 ]",
+    "libreoffice": "LibreOfficeDev 26.8.0.0.alpha0 2c87e51eeaa2b413ff4ae097b2705eea1995d8e5"
+  },
+  "remote": {
+    "host": "10.147.254.3",
+    "root": "/home/t-wanghai/models/openviking-office",
+    "image_id": "sha256:6a2cfcf932ad67e7f0445d50b87e446e0b5c9710053eee27324d54d06201cc70",
+    "libreoffice": "LibreOffice 7.4.7.2 40(Build:2)",
+    "probe_report": "docs/spec/evidence/office-remote-probe-2026-10-05.json",
+    "probe_report_sha256": "c28251055a1bf8a6013b937acd93af1d9624d02b5a805fb94b98fc8761897833",
+    "package_lock": "docs/spec/evidence/office-container-packages-2026-10-05.txt",
+    "package_lock_sha256": "731deef708a24b20a1759c86bac9298f1b7451f092f89cf99293fead68b18238",
+    "fonts": 23,
+    "container_options": {
+      "network": "none",
+      "read_only": true,
+      "user": "10001:10001",
+      "cap_drop": "ALL",
+      "no_new_privileges": true,
+      "memory": "4g",
+      "cpus": 2,
+      "pids_limit": 128,
+      "tmpfs_size": "1g"
+    },
+    "samples": 6,
+    "sample_class": "synthetic_not_gold",
+    "status": "CONTRACT_PASS",
+    "real_timeout_cleanup": true,
+    "real_cancellation_cleanup": true,
+    "inputs_unchanged": true
+  },
+  "changes": [
+    "Subprocess limits are enforced by a fresh Python exec wrapper; no preexec_fn in async thread workers",
+    "Readonly original preserved; converter-owned profiles/PDF cleaned on successful parser materialization or cancellation/error/TTL",
+    "Active TTL lock does not delete a running job",
+    "All used Excel sheets including hidden sheets; original print areas cannot truncate tail rows; wrapped/expanded narrow columns; source values/images/relationships preserved",
+    "Legacy XLS normalization before used-range policy; all six formats convert through unified PDF parser",
+    "Actual high-core Linux converter crash corrected with LibreOffice documented MAX_CONCURRENCY=2"
+  ],
+  "remaining": [
+    "Independent manually reviewed Office gold with content/structure/image thresholds",
+    "Real Office upload through all HTTP/SDK, persistence, indexing/publication, retrieval and source-cleanup failure FLOWs",
+    "Long/wide pathological Excel ranges, large merged-cell text and pagination quality across business workbooks",
+    "Actual password-protected legacy formats and missing-font business examples beyond error-contract fixtures",
+    "Remote Office CLI transport integration with a resident OpenViking worker; current remote image is an isolated conversion worker image, no separate remote HTTP service"
+  ],
+  "source_sha256": {
+    "openviking/parse/office_converter.py": "5b76718b6eeaadc5dd89db6441f2839f153ada0922bd69add2bd6018aeca9bd1",
+    "openviking/parse/office_layout.py": "c6a0871c6f5558d7a1a1dded2fd26f78572ef11227d9266b5ab438b082d05e5f",
+    "tests/parse/test_office_conversion.py": "684e074fd3821f3f6d38291f05b46bb06bffde55829efefb5e4666b19eec3637",
+    "tests/parse/test_office_used_sheets.py": "d4fe6c51e1551dbd549312c97663d5effb6eacefa6297e7ea0b6a1ec400d3d73",
+    "deploy/office-converter/Dockerfile": "f50422260fec7a29677cc311c18f334484f16d0585532be9d8931a74d98864e3",
+    "deploy/office-converter/convert.py": "9f10d267ea196bc6cd76ca5dcd1bf116df18394000a9f428942063853c5bfa32",
+    "deploy/office-converter/probe.py": "82b0b2b4f7a52dbdf2bea363d637cfcd286fee5088d99350c76e9dfea0311f11",
+    "deploy/office-converter/lock.json": "f73111147fb1ab06e628784c9b41e022da5df2ac38dad9dfeab1576dae1af32d"
+  },
+  "limitations": [
+    "No deployment/restart of the three existing parser model services",
+    "Synthetic legacy fixtures are generated from the OOXML fixtures with local LibreOffice; they are not independent gold",
+    "MacOS RLIMIT_AS unsupported; local CPU/file limits tested, memory containment verified in the Linux deployment",
+    "Apt package versions are preserved by the frozen image ID/package lock; rebuilding Dockerfile requires a new lock and probe"
+  ]
+}

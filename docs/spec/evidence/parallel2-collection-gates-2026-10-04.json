@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-04",
+  "task": "KB-022",
+  "status": "PARTIAL",
+  "registration_read_gates": "IMPLEMENTED_AND_LOCALLY_VERIFIED",
+  "complete_acceptance": "NOT_RUN",
+  "implemented": [
+    "New collection registration requires target URI inside its registered namespace and raw prefix inside a distinct registered source namespace; no empty-account exception",
+    "Coordinator transaction stores registered domain identity with collection binding, checks immutable schema identity, one collection per Wiki namespace and target/raw write prefix conflicts",
+    "Account-scoped collection GET/pin revalidate registered domain identity and current root/child ACL; pin repeats domain checks after schema I/O",
+    "Authority initialization marks historic bindings without domain metadata as legacy_domain_pending; GET/pin/preparation/execution reject until explicit admin migration",
+    "Admin-only migration-inspection returns immutable binding metadata/digest without source body; migration endpoint validates current domains, current schema, uniqueness and expected binding digest CAS",
+    "Illegal historical bindings remain blocked; legal migrated bindings retain 200/prepared contract without publication or permanent permission receipts",
+    "Async and sync SDK migration inspection/migration parity integrated by api_sdk_contract agent; actual async SDK migration and inspection exercised through production HTTP routes",
+    "Shared catalog setup and preparation fixtures now initialize real restricted AclManager roots and registered namespaces before creating collections"
+  ],
+  "files": [
+    "openviking/indexing/publication.py",
+    "openviking/indexing/registry_domains.py",
+    "openviking/wiki/catalog.py",
+    "openviking/server/routers/wiki.py",
+    "tests/enterprise_kb/test_wiki_catalog.py",
+    "tests/enterprise_kb/test_wiki_http_sdk.py",
+    "tests/enterprise_kb/test_authority_wiki_catalog.py",
+    "docs/deployment/registry-authority.md"
+  ],
+  "validation": {
+    "main_command": ".venv/bin/python -m pytest tests/enterprise_kb/test_authority_wiki_catalog.py tests/enterprise_kb/test_wiki_catalog.py tests/enterprise_kb/test_wiki_build_plan.py tests/enterprise_kb/test_wiki_namespaces.py tests/enterprise_kb/test_wiki_http_sdk.py tests/enterprise_kb/test_wiki_namespaces_http.py tests/enterprise_kb/test_wiki_build_http.py tests/enterprise_kb/test_wiki_plan_read_http.py tests/enterprise_kb/test_wiki_ingestion_http.py tests/enterprise_kb/test_registry_authority.py -q --no-cov --junitxml=docs/spec/evidence/parallel2-collection-gates-2026-10-04.xml",
+    "main_passed": 138,
+    "main_failed": 0,
+    "duration_seconds": 40.89,
+    "additional_command": ".venv/bin/python -m pytest tests/enterprise_kb/test_authority_wiki_catalog.py::test_one_registered_raw_domain_feeds_independent_collections_only_with_each_export -q --no-cov",
+    "additional_passed": 1,
+    "additional_failed": 0,
+    "unique_passed": 139,
+    "new_tests_this_gate_extension": 10,
+    "actual_components": [
+      "independent authority process and authenticated Unix socket",
+      "real SQLite/WAL/coordinator domain transactions",
+      "production HTTP router dependencies",
+      "actual SDK request/response and typed errors",
+      "VikingFS source materialization/capture",
+      "current AclManager ACL resolution"
+    ],
+    "fixtures": [
+      "AGFS disk transport",
+      "ACL context/vector DB",
+      "embedding",
+      "temporary upload resolution"
+    ],
+    "proofs": [
+      "new invalid bindings not persisted",
+      "unknown target/raw domain, target outside declared root and same-domain raw fail with HTTP/SDK412",
+      "account with no namespace cannot create collection",
+      "legacy ordinary GET/build blocked",
+      "admin inspection allowed/nonadmin403",
+      "wrong migration digest409",
+      "illegal legacy migration412",
+      "legal CAS migration200 and prepared200",
+      "root member revocation invalidates prior registered record",
+      "second collection using same Wiki namespace409",
+      "one raw domain reused by two target collections only after each explicit export; revoking one edge does not revoke the other"
+    ],
+    "test_result": "docs/spec/evidence/parallel2-collection-gates-2026-10-04.xml",
+    "earlier_failure_corrected": "Initial enlarged run 136/137 passed; OpenAPI exact path-set expectation updated for explicit migration route. Final main suite passes."
+  },
+  "remaining": [
+    "Production AGFS/ACL integration and full TC-14.1/14.5/16.9 end-to-end enterprise acceptance",
+    "Backend ACL mutation intent and atomic publication fencing are separate incomplete work",
+    "Actual extraction, trusted entity catalog and Wiki complete publication gates remain incomplete",
+    "No cross-host authority or multi-coordinator HA claim"
+  ],
+  "acceptance_limits": "KB-022 implementation gates now run through authority and actual API/SDK; task/Feature/FLOW completeness remains PARTIAL/NOT_RUN pending full target acceptance. Shared spec and machine status ledger untouched."
+}

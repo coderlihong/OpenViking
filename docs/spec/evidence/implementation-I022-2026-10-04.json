@@ -1,0 +1,37 @@
+{
+  "run_id": "I022-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "status": "PASS",
+    "tests": 552,
+    "new_tests": 12,
+    "report": "tests-I022-regression.xml"
+  },
+  "verified": [
+    "Actual VikingFS authorized method path and current working source capture",
+    "Before/after durable epochs and in-flight/unknown-write protection",
+    "Trusted namespace root binding and raw content validation digest",
+    "Entity targets require validation matching fixed schema hash"
+  ],
+  "fixtures": [
+    "SQLite/disk/VikingFS exercised; AGFS transport disk substitute",
+    "ACL and trusted binding catalog mocked, no production authorization assertion"
+  ],
+  "scope_exclusions": [
+    "Namespace/entity validation catalog persistence and HTTP/SDK APIs",
+    "Full domain validation/export/commit CAS/ACL revocation transaction",
+    "Wiki source-version GC protection/WikiBuildPlan/W1/W2/four FLOW"
+  ],
+  "file_sha256": {
+    "openviking/wiki/resolver.py": "33b52f3466b38fe0d17e4dc141f38a650813b44bd74f6afb1d6d94397f3a68c1",
+    "openviking/wiki/validation.py": "9cd1795ed45b23af397330ee28777f601568b8541c6f37fd9be32806fc153f1b",
+    "tests/enterprise_kb/test_wiki_resolver.py": "f66337ef167c09e5063491594cc8c17dc7f4baf7b1217d849f4d03c58aca1ef3",
+    "tests/enterprise_kb/test_wiki_validation.py": "ef44d77b16e034bcd5a9c3fbd3cc04917050f286ccdfa86977565b252ae511d4",
+    "docs/spec/evidence/tests-I022-regression.xml": "df796eca27d174f74602a3d1cd0e62fead25d582f75bcd1a2efe71978eb792d3",
+    "docs/spec/README.md": "9f111fb79e80dac6aedad21c84b0dcc5084e6340b0251923f0f25c37e2e401b3",
+    "docs/spec/openviking-enterprise-kb-spec.md": "af94892a421dec2ae3c5a29a086d887c9cbcba04b2577c1c6215ee8a8c72898a",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "1451b0e6f00c6708aaead5e1128d1dc1115a80b1ee28d0added9bb41fc33ff71",
+    "docs/spec/openviking-enterprise-kb-review.md": "c64a18d3d19190dce89685dafdb2a038d276df4f55f509858b3e1bcda475e6b4",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "47d66d31a8d9c87c881a8b49326440af3ad548f22f5ebb9f37833d13833f5cac"
+  }
+}

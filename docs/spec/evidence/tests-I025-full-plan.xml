@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="7.466" timestamp="2026-10-04T15:44:01.088486+08:00" hostname="whdeMacBook-Pro.local"><testcase classname="" name="test_full_manual_preparation" time="5.362" /></testsuite></testsuites>

@@ -1,0 +1,44 @@
+{
+  "args": {
+    "pdf": "/tmp/ov-flow/office-image-I051/legacy-d1-I051-visible-image.xls",
+    "url": "http://127.0.0.1:1933",
+    "account": null,
+    "user": null,
+    "backend": "mineru",
+    "timeout": 1800,
+    "query": "source PDF image SY215C hydraulic pump pressure"
+  },
+  "add_resource": {
+    "status": "success",
+    "root_uri": "viking://resources/raw/legacy-d1-I051-visible-image",
+    "structure_source": "markdown_headings",
+    "alignment_status": "failed",
+    "elapsed_s": 105.6
+  },
+  "assert_root_appends_name": true,
+  "tree_names": [
+    "00_legacy-d1-I051-visible-image.md",
+    "Preserved_source_PDF_visuals",
+    "_manifest.json",
+    "_toc.json",
+    "toc.md"
+  ],
+  "assert_manifest_present": true,
+  "assert_chapter_written": true,
+  "reindex": {
+    "status": "completed",
+    "rebuilt_records": 11,
+    "failed_records": 0,
+    "elapsed_s": 59.7
+  },
+  "assert_reindex_clean": true,
+  "search_uris": [
+    "viking://resources/raw/legacy-d1-I051-visible-image/00_legacy-d1-I051-visible-image.md",
+    "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/index.md",
+    "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md",
+    "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+    "viking://resources/raw/legacy-d1-I051-visible-image/toc.md"
+  ],
+  "assert_uri_traceable": true,
+  "passed": true
+}

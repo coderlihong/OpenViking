@@ -1,0 +1,42 @@
+{
+  "change_id": "CR-011",
+  "date": "2026-10-04",
+  "spec_version": "0.10",
+  "type": "DOCUMENTATION_REVIEW_ONLY",
+  "validation": {
+    "status": "PASS",
+    "scope": "documentation consistency only, not product acceptance",
+    "version": "0.10",
+    "features": 15,
+    "tasks": 33,
+    "cross_acceptance_cases": 19,
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    }
+  },
+  "product_changes_this_round": false,
+  "product_acceptance_changed": false,
+  "product_baseline": "I030: 692 scoped tests PASS; five known SDK compatibility baseline failures remain",
+  "fixes": [
+    "Current Feature table and interface semantics aligned to I030",
+    "Existing namespace SDK name and W2 accepted fields corrected",
+    "Explicit separate Wiki job APIs and draft_ready versus diagnostic ready",
+    "33 dependency tasks with done conditions and 19 cross acceptance cases",
+    "Single authoritative coordinator deployment; HA is not currently validated",
+    "Root visibility/complete index receipts/ACL contributions/export commit and lifecycle made explicit",
+    "Backward compatible prepared responses, replacement CAS/URI layout and error code migration recorded"
+  ],
+  "sha256": {
+    "docs/spec/README.md": "95d545c0d93ed0514bbb9c1ec97842db03bdd5f7ff1c5d7e1525100607ef14a3",
+    "docs/spec/openviking-enterprise-kb-spec.md": "1bff69dfcd7507b151b6d704067ec2d3b886a7780a7bc2b3cc841726f2384df6",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "4ffc45cd5b9ff2b56cc5b067435854591fe5e2b89fb9f712b69a897ec7dbc6c6",
+    "docs/spec/openviking-enterprise-kb-review.md": "deaa72ed756608192aa8ef256bed0cc81e32dddb55727a1c05d9ac58804117bf",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "b7c700cc6900d6211fa89a00e8cc9ea7d5a752f8ea22bd07e2cff7871d04f1d1",
+    "docs/spec/openviking-enterprise-kb-backlog.md": "90f192c3cd4976ec72a2b8ede329f6a07c0a27537dcaa12609fc7d47fcdc7a25",
+    "docs/spec/feature-status.json": "243c4a4f6c2cc4ed851f3877e1449ad8f537c20c952400c161d96f47cc5e65c1",
+    "docs/spec/tools/check_spec_status.py": "076ac66d054ab82ef2542d9edaec9a53187241ede7dfeb3b53ba41c5e0c5ee72"
+  }
+}

@@ -1,0 +1,252 @@
+{
+  "schema_version": "kb-evaluation-v1",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "SY215C-C001: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C001: generator provenance incomplete",
+    "SY215C-C001: title-derived query bias; not independent semantic evidence",
+    "SY215C-C002: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C002: generator provenance incomplete",
+    "SY215C-C003: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C003: generator provenance incomplete",
+    "SY215C-C004: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C004: generator provenance incomplete",
+    "SY215C-C005: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C005: generator provenance incomplete",
+    "SY215C-C006: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C006: generator provenance incomplete",
+    "SY215C-C007: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C007: generator provenance incomplete",
+    "SY215C-C008: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C008: generator provenance incomplete",
+    "SY215C-C008: title-derived query bias; not independent semantic evidence",
+    "SY215C-C009: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C009: generator provenance incomplete",
+    "SY215C-C010: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C010: generator provenance incomplete",
+    "SY215C-C011: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C011: generator provenance incomplete",
+    "SY215C-C012: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C012: generator provenance incomplete",
+    "SY215C-C013: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C013: generator provenance incomplete",
+    "SY215C-C014: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C014: generator provenance incomplete",
+    "SY215C-C015: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C015: generator provenance incomplete",
+    "SY215C-C016: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C016: generator provenance incomplete",
+    "SY215C-C017: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C017: generator provenance incomplete",
+    "SY215C-C018: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C018: generator provenance incomplete",
+    "SY215C-C019: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C019: generator provenance incomplete",
+    "SY215C-C020: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C020: generator provenance incomplete",
+    "SY215C-C021: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C021: generator provenance incomplete",
+    "SY215C-C022: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C022: generator provenance incomplete",
+    "SY215C-C023: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C023: generator provenance incomplete",
+    "SY215C-C024: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C024: generator provenance incomplete",
+    "SY215C-C025: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C025: generator provenance incomplete",
+    "SY215C-C026: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C026: generator provenance incomplete",
+    "SY215C-C027: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C027: generator provenance incomplete",
+    "SY215C-C028: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C028: generator provenance incomplete",
+    "SY215C-C028: title-derived query bias; not independent semantic evidence",
+    "SY215C-C029: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C029: generator provenance incomplete",
+    "SY215C-C030: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C030: generator provenance incomplete",
+    "SY215C-C030: title-derived query bias; not independent semantic evidence",
+    "SY215C-C031: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C031: generator provenance incomplete",
+    "SY215C-C032: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C032: generator provenance incomplete",
+    "SY215C-C032: title-derived query bias; not independent semantic evidence",
+    "SY215C-C033: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C033: generator provenance incomplete",
+    "SY215C-C033: title-derived query bias; not independent semantic evidence",
+    "SY215C-C034: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C034: generator provenance incomplete",
+    "SY215C-C034: title-derived query bias; not independent semantic evidence",
+    "SY215C-C035: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C035: generator provenance incomplete",
+    "SY215C-C035: title-derived query bias; not independent semantic evidence",
+    "SY215C-C036: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C036: generator provenance incomplete",
+    "SY215C-C037: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C037: generator provenance incomplete",
+    "SY215C-C037: title-derived query bias; not independent semantic evidence",
+    "SY215C-C038: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C038: generator provenance incomplete",
+    "SY215C-C038: title-derived query bias; not independent semantic evidence",
+    "SY215C-C039: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C039: generator provenance incomplete",
+    "SY215C-C039: title-derived query bias; not independent semantic evidence",
+    "SY215C-C040: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C040: generator provenance incomplete",
+    "SY215C-C040: title-derived query bias; not independent semantic evidence",
+    "SY215C-C041: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C041: generator provenance incomplete",
+    "SY215C-C041: title-derived query bias; not independent semantic evidence",
+    "SY215C-C042: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C042: generator provenance incomplete",
+    "SY215C-C042: title-derived query bias; not independent semantic evidence",
+    "SY215C-C043: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C043: generator provenance incomplete",
+    "SY215C-C044: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C044: generator provenance incomplete",
+    "SY215C-C045: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C045: generator provenance incomplete",
+    "SY215C-C046: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C046: generator provenance incomplete",
+    "SY215C-C047: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C047: generator provenance incomplete",
+    "SY215C-C047: title-derived query bias; not independent semantic evidence",
+    "SY215C-C048: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C048: generator provenance incomplete",
+    "SY215C-C049: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C049: generator provenance incomplete",
+    "SY215C-C049: title-derived query bias; not independent semantic evidence",
+    "SY215C-C050: unassigned; cannot be used for held-out evaluation",
+    "SY215C-C050: generator provenance incomplete"
+  ],
+  "leakage": [],
+  "counts": {
+    "gold": {},
+    "synthetic": {
+      "total": 50,
+      "kind:retrieval": 50,
+      "title_derived_lookup": 50
+    }
+  },
+  "category_counts": {
+    "gold": {
+      "model": 0,
+      "dtc": 0,
+      "semantic": 0,
+      "table": 0,
+      "image": 0,
+      "tail": 0,
+      "fuzzy_meta": 0,
+      "exact_term": 0,
+      "paraphrase": 0,
+      "fuzzy_model": 0,
+      "negative": 0,
+      "section_boundary": 0,
+      "diagnostic": 0,
+      "title_derived_lookup": 0
+    },
+    "synthetic": {
+      "model": 0,
+      "dtc": 0,
+      "semantic": 0,
+      "table": 0,
+      "image": 0,
+      "tail": 0,
+      "fuzzy_meta": 0,
+      "exact_term": 0,
+      "paraphrase": 0,
+      "fuzzy_model": 0,
+      "negative": 0,
+      "section_boundary": 0,
+      "diagnostic": 0,
+      "title_derived_lookup": 50
+    }
+  },
+  "sample_kind_counts": {
+    "gold": {
+      "retrieval": 0,
+      "image_annotation": 0,
+      "section_boundary": 0,
+      "diagnostic": 0
+    },
+    "synthetic": {
+      "retrieval": 50,
+      "image_annotation": 0,
+      "section_boundary": 0,
+      "diagnostic": 0
+    }
+  },
+  "independent_groups": {
+    "document_id": 1,
+    "machine_id": 1
+  },
+  "unmet_gold_coverage": {
+    "exact_term": {
+      "required": 15,
+      "actual": 0
+    },
+    "paraphrase": {
+      "required": 15,
+      "actual": 0
+    },
+    "fuzzy_model": {
+      "required": 15,
+      "actual": 0
+    },
+    "image": {
+      "required": 15,
+      "actual": 0
+    },
+    "negative": {
+      "required": 15,
+      "actual": 0
+    },
+    "retrieval_total": {
+      "required": 100,
+      "actual": 0
+    },
+    "image_annotation_total": {
+      "required": 30,
+      "actual": 0
+    },
+    "section_boundary_total": {
+      "required": 50,
+      "actual": 0
+    },
+    "diagnostic_total": {
+      "required": 20,
+      "actual": 0
+    },
+    "model": {
+      "required": 1,
+      "actual": 0
+    },
+    "dtc": {
+      "required": 1,
+      "actual": 0
+    },
+    "semantic": {
+      "required": 1,
+      "actual": 0
+    },
+    "table": {
+      "required": 1,
+      "actual": 0
+    },
+    "tail": {
+      "required": 1,
+      "actual": 0
+    },
+    "fuzzy_meta": {
+      "required": 1,
+      "actual": 0
+    }
+  },
+  "full_gold_acceptance": false,
+  "limitations": [
+    "Human attestations require external review of cited originals; this tool cannot prove their truth.",
+    "Coverage alone cannot establish quality, production FLOW, or parser acceptance.",
+    "Declared passage groups are mandatory; semantic paraphrase detection requires human review."
+  ]
+}

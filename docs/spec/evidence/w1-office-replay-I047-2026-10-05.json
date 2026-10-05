@@ -1,0 +1,11 @@
+{
+  "scope": "real W1 Office same binary / same key replay only",
+  "build_id": "5e5fe9e0a04b4defbdfbcf64ae95fb10",
+  "captured_count": 2,
+  "assertions": {
+    "same_fixed_plan": true,
+    "source_epochs_unchanged": true,
+    "binary_identity_persisted": true
+  },
+  "passed": true
+}

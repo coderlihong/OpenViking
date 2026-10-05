@@ -1,0 +1,10 @@
+{
+  "package": "Pillow",
+  "version": "12.1.1",
+  "filename": "pillow-12.1.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "url": "https://files.pythonhosted.org/packages/ff/79/6df7b2ee763d619cda2fb4fea498e5f79d984dae304d45a8999b80d6cf5c/pillow-12.1.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "sha256": "7aac39bcf8d4770d089588a2e1dd111cbaa42df5a94be3114222057d68336bd0",
+  "size": 7041540,
+  "source": "official PyPI JSON digest",
+  "target": "CPython 3.12 Linux x86_64"
+}

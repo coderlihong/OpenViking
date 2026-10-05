@@ -1,0 +1,22 @@
+{
+  "run_id": "I025-full-manual-plan",
+  "status": "PARTIAL_PASS",
+  "sources": 968,
+  "source_bytes": 1205623,
+  "directories": 3,
+  "schema_digest": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+  "schema_capability_state": "draft_rules_pending",
+  "namespace_authorization_state": "namespace_export_pending",
+  "upload_digest": "23cf52b08787af77e27ba688fee2d9e926f6549c89a090b665032ed5451b47b2",
+  "uri_digest": "c28c35fe5cac439101fc6025d189772ed9a12d4ee617866ffe0b99f44f6fc308",
+  "equivalence": "Same fixed schema binding and all source revisions",
+  "verification": "All expected Markdown URIs captured; every streamed immutable source matches its digest; current-source preflight passes",
+  "fixtures": [
+    "Actual full MinerU-derived manual and adapted Sany schema",
+    "Disk AGFS transport, SQLite and VikingFS methods; ACL mock"
+  ],
+  "excluded": [
+    "Actual extraction/domain rules, namespace/export registry, Wiki commit/index/HTTP E2E",
+    "Full-manual chapter alignment quality, production AGFS encryption/ACL"
+  ]
+}

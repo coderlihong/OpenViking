@@ -1,0 +1,240 @@
+{
+  "initial": {
+    "kind": "D2",
+    "profile": "synthetic_live_protocol_probe",
+    "full_flow_acceptance": false,
+    "started_at": 1791208923.652034,
+    "source_uri": "viking://resources/raw/durable-joint-I051.md",
+    "job_id": "a80f243d0f054825af8e6bf6369f4639",
+    "source_sha256": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+    "transitions": [
+      [
+        "queued",
+        "validate",
+        null
+      ],
+      [
+        "running",
+        "index",
+        null
+      ],
+      [
+        "backoff",
+        "index",
+        "published"
+      ]
+    ],
+    "final_state": "backoff",
+    "stage": "index",
+    "attempt": 1,
+    "publication_batch_id": "6d0ed0ff85e642a5a070b80c0c0ae727",
+    "index_result": {
+      "duration_ms": 705,
+      "failed_records": 0,
+      "mode": "vectors_only",
+      "object_type": "resource",
+      "rebuilt_records": 1,
+      "scanned_records": 1,
+      "semantics_required_records": 0,
+      "status": "completed",
+      "unsupported_records": 0,
+      "uri": "viking://resources/raw/durable-joint-I051.md",
+      "warnings": []
+    },
+    "index_publication": {
+      "all_submitted_members_complete": true,
+      "batch_id": "6d0ed0ff85e642a5a070b80c0c0ae727",
+      "document_ready_verified": false,
+      "expected_count": 3,
+      "member_count": 1,
+      "membership_sha256": "9d6fedc61c200b1650de197ccacd913bf0f7d670b4f8b04db3f1138605715ab4",
+      "received_count": 3,
+      "state": "published"
+    },
+    "publication_gate": {
+      "code": "PUBLICATION_GATE_PENDING",
+      "missing_joint_receipts": [
+        "body_tree",
+        "images",
+        "parent_child",
+        "semantic_levels",
+        "bm25",
+        "metadata",
+        "version_switch"
+      ],
+      "verified": false
+    },
+    "reason_code": "PUBLICATION_GATE_PENDING",
+    "error": null,
+    "read_sha256": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+    "assertions": {
+      "batch_published": true,
+      "actual_members_nonempty": true,
+      "actual_receipts_complete": true,
+      "receipt_counts_match": true,
+      "full_ready_not_claimed": true,
+      "full_gate_pending": true
+    },
+    "passed": true,
+    "finished_at": 1791208925.787064
+  },
+  "after_process_crash": {
+    "kind": "D2",
+    "profile": "synthetic_live_protocol_probe",
+    "full_flow_acceptance": false,
+    "started_at": 1791209046.099083,
+    "source_uri": "viking://resources/raw/durable-joint-I051.md",
+    "job_id": "a80f243d0f054825af8e6bf6369f4639",
+    "transitions": [
+      [
+        "backoff",
+        "index",
+        "published"
+      ]
+    ],
+    "final_state": "backoff",
+    "stage": "index",
+    "attempt": 5,
+    "publication_batch_id": "6d0ed0ff85e642a5a070b80c0c0ae727",
+    "index_result": {
+      "duration_ms": 705,
+      "failed_records": 0,
+      "mode": "vectors_only",
+      "object_type": "resource",
+      "rebuilt_records": 1,
+      "scanned_records": 1,
+      "semantics_required_records": 0,
+      "status": "completed",
+      "unsupported_records": 0,
+      "uri": "viking://resources/raw/durable-joint-I051.md",
+      "warnings": []
+    },
+    "index_publication": {
+      "all_submitted_members_complete": true,
+      "batch_id": "6d0ed0ff85e642a5a070b80c0c0ae727",
+      "document_ready_verified": false,
+      "expected_count": 3,
+      "member_count": 1,
+      "membership_sha256": "9d6fedc61c200b1650de197ccacd913bf0f7d670b4f8b04db3f1138605715ab4",
+      "received_count": 3,
+      "state": "published"
+    },
+    "publication_gate": {
+      "code": "PUBLICATION_GATE_PENDING",
+      "missing_joint_receipts": [
+        "body_tree",
+        "images",
+        "parent_child",
+        "semantic_levels",
+        "bm25",
+        "metadata",
+        "version_switch"
+      ],
+      "verified": false
+    },
+    "reason_code": "PUBLICATION_GATE_PENDING",
+    "error": null,
+    "read_sha256": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+    "assertions": {
+      "batch_published": true,
+      "actual_members_nonempty": true,
+      "actual_receipts_complete": true,
+      "receipt_counts_match": true,
+      "full_ready_not_claimed": true,
+      "full_gate_pending": true
+    },
+    "passed": true,
+    "finished_at": 1791209046.129614
+  },
+  "deployment": {
+    "terminated_pid": 95236,
+    "signal": "SIGKILL",
+    "replacement_pid": 95836,
+    "health": 200,
+    "baseline": {
+      "build_count": 150,
+      "receipt_count": 483
+    },
+    "authority": "in-process PublicationStore"
+  },
+  "cancel_state": "cancelled",
+  "published_batch_after_cancel": "published",
+  "assertions": {
+    "same_job": true,
+    "same_batch": true,
+    "same_membership": true,
+    "worker_reclaimed_after_restart": true,
+    "no_duplicate_generations_or_receipts": true,
+    "source_bytes_preserved": true,
+    "cancel_does_not_withdraw_published_batch": true
+  },
+  "source_hashes": {
+    "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+    "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+    "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+    "openviking/service/reindex_executor.py": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+    "openviking/storage/queuefs/semantic_processor.py": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74"
+  },
+  "full_flow_acceptance": false,
+  "passed": true,
+  "recovery_observation": {
+    "job_updated_at_observed_before_cancel": 1791209045.523697,
+    "restart_completed_at": 1791209012.4097066,
+    "source": "read-only SQLite pre-cancel probe"
+  },
+  "recovery_boundary": "SIGKILL after batch publication while job in backoff; no active parser/backend writes",
+  "inflight_write_crash_verified": false,
+  "source_snapshot_at_evidence_export": {
+    "openviking/service/kb_job_runtime.py": {
+      "sha256": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+      "mtime": 1791206980.808443
+    },
+    "openviking/indexing/jobs.py": {
+      "sha256": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+      "mtime": 1791206980.7968616
+    },
+    "openviking/indexing/registry_authority.py": {
+      "sha256": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+      "mtime": 1791206980.8039937
+    },
+    "openviking/service/reindex_executor.py": {
+      "sha256": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+      "mtime": 1791208765.1812963
+    },
+    "openviking/storage/queuefs/semantic_processor.py": {
+      "sha256": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74",
+      "mtime": 1791208899.5629234
+    },
+    "openviking/parse/model_backend.py": {
+      "sha256": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076",
+      "mtime": 1791209079.0369105
+    },
+    "tests/enterprise_kb/flows/flow_durable_joint.py": {
+      "sha256": "212c25c0bd733558c184deae8fef2e04f5ee9cea810711ba7324af0afc9af6de",
+      "mtime": 1791209322.9385715
+    }
+  },
+  "exported_at": 1791209494.997321,
+  "acceptance_scope": "Real API + SDK + configured models + local authority submitted-member publication; full document-ready gates unverified",
+  "final_api_deployment": {
+    "pid": 96972,
+    "previous_pid": 95836,
+    "started_at": 1791209496.3380811,
+    "healthy_at": 1791209498.488821,
+    "health": 200,
+    "authority": "in-process PublicationStore",
+    "source_snapshot_at_startup": {
+      "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+      "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+      "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+      "openviking/service/reindex_executor.py": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+      "openviking/storage/queuefs/semantic_processor.py": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74",
+      "openviking/parse/model_backend.py": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076"
+    },
+    "sources_unchanged_during_startup": true,
+    "office_environment_preserved": true,
+    "log_path": "/tmp/ov-server-I051-final.log",
+    "preflight_active_jobs": 0,
+    "preflight_active_queue_work": 0
+  }
+}

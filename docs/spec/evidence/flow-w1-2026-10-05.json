@@ -1,0 +1,59 @@
+{
+  "id": "FLOW-W1-2026-10-05",
+  "flow": "FLOW-W1",
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "deploy/wolf-viking (dirty: secondary-dev changes present)",
+  "scope": "Wiki upload (W1): temp-upload Markdown -> materialize under collection raw prefix -> prepare plan -> execute extraction -> draft_ready. Runs against the real deployment with the real remote extraction model.",
+  "harness": "tests/enterprise_kb/flows/flow_w1.py",
+  "environment": {
+    "server": "real HTTP server (openviking_cli.server_bootstrap) at http://127.0.0.1:1933, version 0.4.15.dev392, auth_mode=api_key",
+    "client": "openviking_sdk AsyncHTTPClient, account=flowtest user=flowadmin",
+    "namespace": "sany-wiki root=viking://resources/wiki/sany (restricted ACL, manage grant to user:flowadmin); sany-raw root=viking://resources/raw; export sany-raw -> sany-wiki allowed for user:flowadmin",
+    "schema": "business v1 digest 5f954f13e60810b453a7efc57e381c0e38342453fb88e78e0a8d58d76bd4ae35 (capability_state=structural_ready)",
+    "collection": "sany target=viking://resources/wiki/sany raw_prefix=viking://resources/raw",
+    "extraction_model": "svc/deepseek-v4-flash @ http://api.ai.rootcloud.info/v1 (wiki profile)",
+    "chunking": "embedding.chunking enabled, tokenizer Qwen3-VL-Embedding-8B (sha256 def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a), publication_path=/Users/wh/.openviking/state/publication.db, publish_content=true, lexical_enabled=true"
+  },
+  "run": {
+    "temp_file_id": "upload_e0715c0440d545c1916e702be1906c68.md",
+    "materialized_uri": "viking://resources/raw/w1-manual.md/w1-manual.md",
+    "plan": {"build_id": "2ccc14a78aff40619f05f6b59363234d", "state": "prepared"},
+    "job": {"job_id": "980f327da1db4f2fa965867375773859", "kind": "W1", "final_state": "draft_ready", "error": null},
+    "draft": {
+      "candidate_count": 1,
+      "candidate_uris": ["viking://resources/wiki/sany/Thing/SY215C-行走系统维修.md"]
+    },
+    "assertions": {
+      "assert_plan_prepared": true,
+      "assert_materialized": true,
+      "assert_job_kind_w1": true,
+      "assert_draft_ready": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_evidence_verbatim": true,
+      "assert_draft_under_target": true
+    },
+    "passed": true
+  },
+  "criteria_met": [
+    "uploaded Markdown is materialized under the collection raw prefix at raw_sources_prefix/<name>/<name>",
+    "the prepared plan binds to the registered collection and schema (digest 5f954f13...)",
+    "the W1 extraction job reaches the terminal draft_ready state with no error",
+    "the draft carries an entity candidate whose evidence source_uri is the materialized Viking URI",
+    "every evidence quote appears verbatim in the uploaded source body",
+    "every candidate URI is written under the collection target tree (viking://resources/wiki/sany/Thing/...)"
+  ],
+  "criteria_not_yet_covered": [
+    "PDF/Office materialized-upload path (prepare_materialized_upload) — requires the D1 parser worker",
+    "publication of accepted draft nodes into the Viking filesystem (draft_ready is the terminal stage for this run)",
+    "strict_diagnostic profile (executed with profile=draft)",
+    "W1/W2 common-contract comparison (FLOW-COMMON-1)"
+  ],
+  "verdict": "FLOW-W1 PARTIAL: the Markdown upload -> materialize -> prepare -> execute -> draft_ready path passes on the real deployment with the real remote extraction model. PDF/Office materialized upload and accepted-draft publication remain NOT_RUN.",
+  "ledger_impact": {
+    "FLOW-W1": "PARTIAL (was NOT_RUN)",
+    "KB-032": "OPEN (unchanged; four-FLOW product acceptance still incomplete)"
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "run_id": "parse-real-manual-I039-2026-10-05",
+  "spec_version": "0.14",
+  "recorded_at": "2026-10-05T10:45:00+08:00",
+  "status": "REAL_MANUAL_THREE_BACKEND_PARSE_PASS",
+  "objective_item": 1,
+  "scope": "F1 真实三后端在真实 SANY 维修手册切片上的产物验证（TOC 元数据可读场景）；不覆盖全卷 1072 页解析与产品 114 TC（仍 NOT_RUN）",
+  "commit": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "working_tree": "uncommitted; parse client/config files hashed below include this run's state",
+  "file_sha256": {
+    "openviking/parse/model_backend.py": "3eaa64d0837a5d94b6429db21934b06a90a4bc8b1e3702f07a3d3c976f4c755e",
+    "openviking/parse/model_artifact.py": "a8f603b3d0f90005b8eb5809b1c175b3fd2fb59dfba6d2f3e65bb38624fe2f07",
+    "openviking/parse/parsers/pdf.py": "2711b0856bedf90a5dad2041353e8730c19482892aa6cd58fb8ee4992ae43ac1",
+    "deploy/parser-models/worker.py": "dc31d06739501827e4c8e26bdefcb7bad2be4309b5d5e6933256543b7188d63b"
+  },
+  "input": {
+    "source_manual": "SY215C_SY021NCB62788_维修手册_zh.pdf",
+    "source_pages": 1072,
+    "source_bytes": 379089082,
+    "source_toc_entries": 491,
+    "slice": "/tmp/ovparse/slice_ch1.pdf",
+    "slice_construction": "pymupdf insert_pdf pages 21..31 (1-based source) with rebased bookmark tree",
+    "slice_pages": 11,
+    "slice_toc_entries": 6,
+    "slice_bytes": 789908,
+    "note": "validate_options exposes no page-range option; a locally sliced PDF is used so a bounded run covers the real manual content rather than a synthetic sample"
+  },
+  "transport": {
+    "client": "openviking.parse.model_backend.ParseModelBackend",
+    "call": "parse(source, backend=<name>, mode='auto', options=None, expected_pages=11)",
+    "auth": "Authorization: Bearer <model_api_key> (ov.conf parsers.pdf.model_api_key); production router passes it at openviking/parse/parsers/pdf.py:167",
+    "tunnel": "ssh -L 19101:127.0.0.1:9101 -L 19102:127.0.0.1:9102 -L 19103:127.0.0.1:9103 t-wanghai@10.147.254.3 (remote backends bound to remote loopback)"
+  },
+  "workers": {
+    "teleocr": {"remote_port": 9101, "local_port": 19101, "source_commit": "1e71f4fe792d12bbb86d2671c5ed6f3a1499b27d", "model_revision": "74509a76263aece9003418db2a146693cfa3da93"},
+    "logics": {"remote_port": 9102, "local_port": 19102, "source_commit": "d75d42dbd92c518a4def19ac5895792828138d35"},
+    "mineru": {"remote_port": 9103, "local_port": 19103, "source_commit": "ed50cc15bc2c9bfb00520dadfe61979866e62236", "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c"}
+  },
+  "e2e_runs": [
+    {
+      "backend": "mineru",
+      "mode": "auto",
+      "options": {"quality_tier": "standard"},
+      "elapsed_s": 7.3,
+      "coverage": {"input_pages": 11, "processed_pages": 11, "complete": true},
+      "md_chars": 6306,
+      "heading_lines": 42,
+      "asset_files": 26,
+      "images": 25,
+      "images_valid_sig": 25,
+      "block_count": 158,
+      "md_sha256_16": "6fee0e4d4f4cb906",
+      "md_head": "## SANY\n\n## 前言\n\n- 1.1 阅读维修手册的方法.... 1-3\n- 1.2 保养标准术语的说明.... 1-4\n- 1.3 电气部件和液压部件的处理.... 1-6"
+    },
+    {
+      "backend": "teleocr",
+      "mode": "auto",
+      "options": {"layout_mode": "Detection"},
+      "elapsed_s": 115.4,
+      "coverage": {"input_pages": 11, "processed_pages": 11, "complete": true},
+      "md_chars": 7684,
+      "heading_lines": 44,
+      "asset_files": 23,
+      "images": 22,
+      "images_valid_sig": 22,
+      "block_count": 180,
+      "md_sha256_16": "9233a9188b7fcadc",
+      "md_head": "SY215(Stage III)液压挖掘机\n\n前言\n\n# SANY\n\n# 前言\n\n1.1 阅读维修手册的方法······1-3"
+    },
+    {
+      "backend": "logics",
+      "mode": "auto",
+      "options": {"window_size": 2, "max_model_len": 32768, "enforce_eager": true},
+      "elapsed_s": 292.1,
+      "coverage": {"input_pages": 11, "processed_pages": 11, "complete": true},
+      "md_chars": 5928,
+      "heading_lines": 31,
+      "asset_files": 16,
+      "images": 15,
+      "images_valid_sig": 15,
+      "block_count": 153,
+      "md_sha256_16": "292bfe872fea92de"
+    }
+  ],
+  "chapter_tree": {
+    "component": "openviking.parse.chapter_splitter.split_chapters",
+    "input": "mineru markdown of the 11-page slice + real PDF bookmark tree (6 entries) read via the same pymupdf get_toc path used by openviking/parse/parsers/pdf.py",
+    "structure_source": "pdf_bookmarks",
+    "alignment_status": "matched",
+    "bookmark_count": 6,
+    "chapter_count": 7,
+    "coverage_valid": true,
+    "hierarchy": [
+      {"id": "preface_242b07f0f300", "title": "前置内容", "level": 1, "parent_id": null, "page_start": null, "match_status": "matched", "content_chars": 732},
+      {"id": "bookmark_1e2a97ab508c", "title": "1 前言 ", "level": 1, "parent_id": null, "page_start": 1, "match_status": "structural_only", "content_chars": 0},
+      {"id": "bookmark_4703b5576d9a", "title": "1.1 阅读维修手册的方法 ", "level": 2, "parent_id": "bookmark_1e2a97ab508c", "page_start": 3, "match_status": "matched", "content_chars": 1770},
+      {"id": "bookmark_3dab908dfffa", "title": "1.2 保养标准术语的说明 ", "level": 2, "parent_id": "bookmark_1e2a97ab508c", "page_start": 4, "match_status": "matched", "content_chars": 1243},
+      {"id": "bookmark_2de72163ce59", "title": "1.3 电气部件和液压部件的处理 ", "level": 2, "parent_id": "bookmark_1e2a97ab508c", "page_start": 6, "match_status": "matched", "content_chars": 223},
+      {"id": "bookmark_d1cfcab79bf7", "title": "1.3.1 概述 ", "level": 3, "parent_id": "bookmark_2de72163ce59", "page_start": 6, "match_status": "matched", "content_chars": 148},
+      {"id": "bookmark_e0492caaff5f", "title": "1.3.2 处理电气部件时的注意事项 ", "level": 3, "parent_id": "bookmark_2de72163ce59", "page_start": 7, "match_status": "matched", "content_chars": 2190}
+    ]
+  },
+  "assertions": {
+    "all_backends_covered_all_pages": true,
+    "all_image_assets_valid_signature": true,
+    "distinct_markdown_per_backend": true,
+    "real_manual_content_not_synthetic": true,
+    "toc_meta_readable": true,
+    "chapter_tree_matches_pdf_bookmarks": true,
+    "chapter_coverage_lossless": true,
+    "credentials_not_persisted": "api key supplied at call time only; not written into evidence"
+  },
+  "verification_method": "Each backend produced an artifact zip; markdown and assets were extracted via ParseModelBackend.parse and validated: page coverage from artifact metadata, image assets checked for JPEG SOI / PNG signature, markdown hashed per backend.",
+  "code_fix": {
+    "file": "openviking/parse/parser_router.py",
+    "issue": "The office-routing path read LocalResource.meta['resolved_name'] / ['resolved_extension'] with hard subscript, raising KeyError when a Feishu-normalized resource carried neither key.",
+    "fix": "Fall back to Path(source_path).name and the already-resolved extension.",
+    "regression_check": "tests/parse 697 passed/35 skipped (2 failures pre-existing/environmental: LibreOffice not installed, pymupdf broken-PDF error text); tests/enterprise_kb 918 passed/1 skipped."
+  },
+  "not_covered": [
+    "full 1072-page manual parse for any backend",
+    "chapter-tree directory materialization into a user namespace (D1 flow)",
+    "post-parse reindex into text vectors + image summary + joint VL vector",
+    "product 114 TC and the four FLOWs remain NOT_RUN"
+  ],
+  "promotion": "F1 evidence strengthened; F1 remains PARTIAL (full-volume and D1 product acceptance still NOT_RUN)"
+}

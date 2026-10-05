@@ -1,0 +1,59 @@
+{
+  "round": "I052",
+  "date": "2026-10-05",
+  "scope": "Seven-category joint-publication evidence gate + legacy-contract migration",
+  "changes": {
+    "openviking/service/reindex_executor.py": [
+      "_reindex_resource_vectors_from_entries managed-store branch no longer fabricates overview=abstract: include flags follow real sidecar existence (mirrors content_write._vectorize_semantic_directory), so a directory carrying only .abstract.md reindexes cleanly instead of failing archive_source on the missing .overview.md"
+    ],
+    "openviking/indexing/jobs.py": [
+      "_gate_observation evaluates all seven categories (body_tree, images, parent_child, semantic_levels, bm25, metadata, version_switch) from committed authority artifacts only: builds+batch_members+receipts for body_tree; sources.image_semantics for image-cache presence; publication_lexical payloads for parent_chunk_id linkage; lexical:/metadata: receipt markers vs durable publication_lexical/publication_metadata rows; semantic_sources bindings with sha256 checked against the build's OWN declared semantic:* members (an L0-only directory is no longer forced to fabricate a missing L1); snapshot head manifest for version_switch",
+      "job_publication_ready returns {batch_id, verified, missing} over the seven gates",
+      "job_complete ready path raises PUBLICATION_GATE_REQUIRED (canonical code for every early failure: unbound batch, non-index stage, or any missing category) and finalizes state=ready with verified receipt when all categories pass",
+      "registry_authority COMMANDS adds job_publication_ready for IPC dispatch"
+    ],
+    "openviking/service/kb_job_runtime.py": [
+      "_document_publication_gate now delegates to repository.job_publication_ready",
+      "index() resolves PUBLICATION_VERIFIED vs PUBLICATION_GATE_PENDING from the real gate; unverified work stays resumable with the checkpointed gate reason"
+    ],
+    "tests/enterprise_kb/test_document_joint_publication.py": [
+      "test_durable_outer_batch_holds_all_members_and_resumes_without_reindex: fully received published batch now reaches ready with verified gate",
+      "test_real_text_image_semantic_consumers_finish_before_outer_seal_without_deadlock: request-wait path also ends ready when receipts complete"
+    ],
+    "tests/enterprise_kb/test_document_job_index_gate.py": [
+      "mocked reindex enqueuing nothing leaves exactly body_tree as the real gap; other categories have no submitted members to prove or deny"
+    ],
+    "tests/enterprise_kb/test_kb_jobs_http.py": [
+      "TC-3.6 binds a real empty publication batch before asserting PUBLICATION_GATE_REQUIRED on self-reported ready"
+    ],
+    "tests/enterprise_kb/test_durable_jobs.py": [
+      "no-job-can-report-ready contract kept canonical via the normalized PUBLICATION_GATE_REQUIRED error"
+    ],
+    "tests/enterprise_kb/flows/flow_durable_joint.py": [
+      "assertions moved from placeholder document_ready_verified=False to gate-decision contract: gate_decision_present, ready_matches_gate, gate_pending_when_unverified"
+    ],
+    "tests/enterprise_kb/test_worker_image_preservation_backends.py": [
+      "fixture writes official-snapshot.json under weights/<backend> matching worker.snapshot_revision source; artifact markdown read from parsed.json['markdown'] (no separate zip entry)"
+    ]
+  },
+  "verification": {
+    "targeted": [
+      "tests/enterprise_kb/test_document_joint_publication.py + test_kb_jobs_http.py + test_document_job_index_gate.py: 20 passed",
+      "durable-job suite (durable_jobs, durable_job_executor, wiki_execution_jobs, kb_jobs_http, joint_publication, index_gate): 42 passed",
+      "gate+semantic+reindex-contract suites after L0-only directory fixes: 77 passed"
+    ],
+    "backend_image_preservation": "mineru/teleocr/logics all preserve 1 dropped source image with restored placement: 3 passed",
+    "full_enterprise_kb_rerun": "1045 passed, 1 skipped, 0 failed in 315.77s (real-model probe skip is separately enabled); previous 3 failures fixed",
+    "live_directory_d2": "live-durable-joint-dir-I052 evidence now records the fixed rerun: state ready, PUBLICATION_VERIFIED with empty missing, 3/3 rebuilt 0 failed (L0-only directory), source bytes preserved"
+  },
+  "ledger_updates": {
+    "KB-006.latest_progress": "I052: seven evidence categories implemented and enforced; ready requires verified committed artifacts; gate semantic-level expectation follows each build's declared semantic:* members so an L0-only directory publishes without fabricating .overview.md; reindex managed-store branch uses existence-based include flags",
+    "KB-006.evidence": "I006..I050 + I052"
+  },
+  "remaining": [
+    "Four FLOW end-to-end acceptance against real backends",
+    "Full SANY wiki schema",
+    "Three-parser + Office full quality acceptance",
+    "Cross-channel derived permissions"
+  ]
+}

@@ -1,0 +1,381 @@
+{
+  "version": "wiki-policy-coverage-v1",
+  "schema_id": "sany",
+  "schema_version": "2+openviking.1+structural.1",
+  "schema_digest": "6a6f66c824681a465765afdc993a87388a125a259c2915f757c93d53c50e37c0",
+  "entities": [
+    {
+      "kind": "Component",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [],
+      "uncompiled_rules": [
+        "skeleton_index_profile_layout",
+        "bom_fields_manual_line_only",
+        "no_materialized_fault_reverse_index",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "ConfigSpec",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [
+        {
+          "kind": "nonempty",
+          "fields": [
+            "device_refs"
+          ],
+          "section": null
+        },
+        {
+          "kind": "distinct",
+          "fields": [
+            "device_refs"
+          ],
+          "section": null
+        }
+      ],
+      "uncompiled_rules": [
+        "host_code_identity",
+        "device_refs_authoritative",
+        "class_name_no_function_domain",
+        "std_table_columns_fixed",
+        "applicable_cond_controlled",
+        "no_symptom_semantics",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "DTC",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [],
+      "uncompiled_rules": [
+        "identity_uniqueness",
+        "uri_no_translated_suffix",
+        "no_orphan",
+        "create_threshold",
+        "no_cross_model_merge",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "Device",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [
+        {
+          "kind": "forbid",
+          "fields": [
+            "sources"
+          ],
+          "section": null
+        },
+        {
+          "kind": "nonempty",
+          "fields": [
+            "raw_refs"
+          ],
+          "section": null
+        }
+      ],
+      "uncompiled_rules": [
+        "one_model_one_page",
+        "one_index_per_model",
+        "specs_index_alignment",
+        "single_raw_ref_version",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "Fault",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [
+        {
+          "kind": "nonempty",
+          "fields": [
+            "affected_components"
+          ],
+          "section": null
+        },
+        {
+          "kind": "distinct",
+          "fields": [
+            "affected_components"
+          ],
+          "section": null
+        }
+      ],
+      "uncompiled_rules": [
+        "config_differentiation_required",
+        "affected_component_targets_exist",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "Procedure",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [
+        {
+          "kind": "nonempty",
+          "fields": [
+            "fault_refs"
+          ],
+          "section": null
+        },
+        {
+          "kind": "distinct",
+          "fields": [
+            "fault_refs"
+          ],
+          "section": null
+        },
+        {
+          "kind": "nonempty",
+          "fields": [
+            "target_components"
+          ],
+          "section": null
+        },
+        {
+          "kind": "distinct",
+          "fields": [
+            "target_components"
+          ],
+          "section": null
+        }
+      ],
+      "uncompiled_rules": [
+        "fault_anchor_required",
+        "identity_triple",
+        "target_components_no_symptom",
+        "applicability_derived",
+        "criteria_reference_not_copy",
+        "step_addressable",
+        "work_type_verification_loop",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "Profile",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [
+        {
+          "kind": "exactly_one",
+          "fields": [
+            "config_spec_uri",
+            "device_uri"
+          ],
+          "section": null
+        },
+        {
+          "kind": "nonempty",
+          "fields": [
+            "possible_faults"
+          ],
+          "section": null
+        },
+        {
+          "kind": "distinct",
+          "fields": [
+            "possible_faults"
+          ],
+          "section": null
+        },
+        {
+          "kind": "parent_profiles",
+          "fields": [
+            "parent_symptom"
+          ],
+          "section": null
+        },
+        {
+          "kind": "body_reference_order",
+          "fields": [
+            "possible_faults"
+          ],
+          "section": "可能失效机理"
+        }
+      ],
+      "uncompiled_rules": [
+        "config_evidence_required",
+        "no_device_refs",
+        "exactly_one_device_anchor",
+        "possible_faults_ordered",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    },
+    {
+      "kind": "Symptom",
+      "supported": [
+        "declared_field_types",
+        "required_fields",
+        "declared_enums",
+        "required_body_sections",
+        "body_template_selection",
+        "declared_source_fields",
+        "reference_object_shape"
+      ],
+      "structural_gates": [],
+      "uncompiled_rules": [
+        "no_legacy_relation_fields",
+        "profile_backing_required",
+        "asserted_fault_scope_required",
+        "no_wire_number",
+        "no_measured_value",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance",
+        "schema:path_layout"
+      ]
+    }
+  ],
+  "publication_pending": [
+    "semantic_evidence_validation",
+    "schema_identity_resolution",
+    "trusted_entity_catalog",
+    "closed_relationships",
+    "derived_access_intersection",
+    "atomic_joint_publication"
+  ],
+  "diagnostic_publishable": false,
+  "basis": "Immutable audited I020 adapter plus explicit structural adapter; upstream not modified",
+  "pending_rule_instances": 118,
+  "pending_entity_rules": 38,
+  "pending_shared_rule_ids": [
+    "gap_discipline",
+    "inline_citation",
+    "live_narration",
+    "no_repeat_call",
+    "no_skill_system",
+    "read_truncation",
+    "ref_uri_provenance",
+    "ref_value_form",
+    "uri_normalization"
+  ],
+  "path_layouts_pending": 8
+}

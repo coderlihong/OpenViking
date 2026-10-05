@@ -1,0 +1,63 @@
+{
+  "kind": "D2",
+  "profile": "synthetic_live_protocol_probe",
+  "full_flow_acceptance": false,
+  "started_at": 1791214229.213141,
+  "source_uri": "viking://resources/raw/durable-joint-dir-I052c",
+  "job_id": "6d366ec1630d43de98299d5583b8b61f",
+  "sources_sha256": {
+    "viking://resources/raw/durable-joint-dir-I052c/chapter-one.md": "51a8b5081702080c0e8db284dc39b39f737dc760924ce8790e80f43a4fcb8b46",
+    "viking://resources/raw/durable-joint-dir-I052c/chapter-two.md": "872af3202d89bae1f796869feeb8eccf8ef78701b4a5aabfc5f4f5df7bf01e1b"
+  },
+  "transitions": [
+    [
+      "queued",
+      "validate",
+      null
+    ],
+    [
+      "ready",
+      "index",
+      null
+    ]
+  ],
+  "final_state": "ready",
+  "stage": "index",
+  "attempt": 1,
+  "publication_batch_id": "b1456db89256466d9f2b75c08ef051f4",
+  "index_result": {
+    "duration_ms": 1067,
+    "failed_records": 0,
+    "mode": "vectors_only",
+    "object_type": "resource",
+    "rebuilt_records": 3,
+    "scanned_records": 3,
+    "semantics_required_records": 0,
+    "status": "completed",
+    "unsupported_records": 0,
+    "uri": "viking://resources/raw/durable-joint-dir-I052c",
+    "warnings": []
+  },
+  "publication_gate": {
+    "batch_id": "b1456db89256466d9f2b75c08ef051f4",
+    "code": "PUBLICATION_VERIFIED",
+    "missing": {},
+    "verified": true
+  },
+  "reason_code": null,
+  "error": null,
+  "directory_listing_count": 2,
+  "assertions": {
+    "job_ready": true,
+    "gate_decision_present": true,
+    "gate_verified": true,
+    "no_failed_records": true,
+    "dir_without_overview_processed": true,
+    "source_bytes_preserved": true
+  },
+  "read_sources_sha256": {
+    "viking://resources/raw/durable-joint-dir-I052c/chapter-one.md": "51a8b5081702080c0e8db284dc39b39f737dc760924ce8790e80f43a4fcb8b46",
+    "viking://resources/raw/durable-joint-dir-I052c/chapter-two.md": "872af3202d89bae1f796869feeb8eccf8ef78701b4a5aabfc5f4f5df7bf01e1b"
+  },
+  "passed": true
+}

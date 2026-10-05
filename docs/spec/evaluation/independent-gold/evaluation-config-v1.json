@@ -1,0 +1,10 @@
+{
+  "version": "I003-independent-audit-v1",
+  "parser": {"name": "MinerU", "original_version": "unknown"},
+  "embedding": {"model": "NOT_RUN", "space": "NOT_RUN"},
+  "retrieval": {"R": "NOT_RUN", "F": "NOT_RUN", "reranker": "NOT_RUN", "MMR": "NOT_RUN"},
+  "chunking": {"version": "I003-heading-fallback"},
+  "schema": "kb-evaluation-v1",
+  "evaluation_status": "NOT_RUN",
+  "purpose": "Freeze existing synthetic candidates without upgrading them to independent gold"
+}

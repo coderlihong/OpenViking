@@ -1,0 +1,65 @@
+{
+  "task_id": "KB-017",
+  "run_id": "parallel3-KB-017-2026-10-04",
+  "date": "2026-10-04",
+  "feature": "F6",
+  "title": "RRF -> rerank -> MMR unified retrieval profile",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "branch": "deploy/wolf-viking",
+  "implemented": [
+    "openviking/retrieve/fusion.py (NEW): pure, network-free fusion primitives",
+    "reciprocal_rank_fusion: RRF over 1-based rank positions with score = sum(1/(k+rank)); raw scores from different vector spaces are never added; dedup by (uri, chunk_id)",
+    "RRF constant default 60 (configurable); deterministic ordering: fused score desc, first-seen order, uri, chunk_id; path iteration sorted by name so insertion order cannot affect output",
+    "normalize_scores: min-max into [0,1]; degenerate/all-equal/non-finite input collapses to 1.0",
+    "mmr_select: MMR at the FINAL selection stage; relevance (min-max normalized) and redundancy both in [0,1]; default lambda=0.7; lambda=1 pure relevance, lambda=0 pure diversity; ties follow deterministic input order",
+    "jaccard_similarity / token_set: cross-space redundancy via unified text/summary token/Jaccard, reusing openviking.indexing.lexical.tokenize (version-locked); explicitly NOT cross-space vector math",
+    "apply_rerank: rerank model count validation (wrong count rejected, never zipped positionally); on exception/None/count-mismatch -> permissive profile keeps fused order and marks degraded=true; strict_rerank profile raises RerankRequiredError; no rerank client configured is NOT a degradation",
+    "expand_parents: greedy parent-context expansion in rank order within a token budget; budget<=0 disables",
+    "aggregate_by_uri: aggregate by original source_uri while keeping every matches[] chunk (chunk_id/parent_chunk_id/text/parent_text/score/score_components); namespace_id preserved",
+    "run_fusion: single pure orchestration point (recall budget -> RRF -> rerank -> MMR -> parent expansion -> URI aggregation) with effective config + degraded flag recorded in trace",
+    "FusionProfile/profile_for: defaults recall 100, fused 100, rerank 50, MMR top 10, rrf_k 60, lambda 0.7; validation of name/limits/lambda; as_trace() for trace recording",
+    "hierarchical_retriever.py: new RetrieverMode.HYBRID and _retrieve_hybrid; leaf/global L2 recall always executed independent of navigation/rerank/lexical/ACL toggles; lexical recall path is an injected callable (no second user-facing search API); pipeline run via asyncio.to_thread; _build_fusion_reranker adapts RerankClient to the pure rerank callable; trace written via telemetry.set('hybrid.*'); quick/thinking paths untouched",
+    "tests/retrieve/test_fusion.py (NEW, 31 tests)",
+    "tests/enterprise_kb/test_hybrid_profile.py (NEW, 9 tests)"
+  ],
+  "test_command": ".venv/bin/python -m pytest tests/retrieve/test_fusion.py tests/enterprise_kb/test_hybrid_profile.py --no-cov -q",
+  "test_result": {
+    "passed": 40,
+    "failed": 0,
+    "counts": "40 passed (31 test_fusion + 9 test_hybrid_profile)"
+  },
+  "regression_command": ".venv/bin/python -m pytest tests/retrieve/ --no-cov -q",
+  "regression_result": {
+    "passed": 92,
+    "failed": 0,
+    "note": "No new failures. Pre-existing tests/retrieve/test_hierarchical_retriever_rerank.py failures reported in the task brief did NOT reproduce in this working tree; the whole tests/retrieve/ suite passed (92 passed)."
+  },
+  "acceptance_evidence": {
+    "TC-6.2": "test_rrf_uses_rank_positions_not_raw_scores, test_rrf_score_is_rank_reciprocal_sum_for_multiple_paths, test_hybrid_fuses_dense_and_lexical_by_rank (raw 999.0 vs 0.001 magnitudes proven irrelevant)",
+    "TC-6.3": "test_mmr_lambda_extremes, test_rrf_tie_break_is_stable_and_first_seen_order, test_mmr_tie_break_follows_input_order, test_mmr_applied_after_rerank_not_before",
+    "TC-6.4": "test_hybrid_leaf_recall_runs_without_lexical_or_rerank, test_hybrid_leaf_recall_survives_lexical_failure (leaf recall independent of navigation/rerank/lexical toggles)",
+    "TC-6.5": "test_hybrid_aggregates_same_uri_chunks_into_one_result_with_matches, test_aggregate_by_uri_keeps_multiple_chunk_matches, test_candidate_roundtrip_keeps_provenance_fields",
+    "TC-6.6": "test_rerank_count_mismatch_degrades_to_fused_order, test_rerank_exception_degrades_to_fused_order, test_strict_rerank_failure_raises_instead_of_degrading, test_hybrid_rerank_failure_keeps_fused_order",
+    "TC-6.7": "NOT_RUN - requires a frozen evaluation set and real backends; only the ordering/diversity mechanisms are unit-proven here",
+    "determinism": "test_rrf_is_deterministic_across_path_insertion_order, test_run_fusion_is_deterministic_end_to_end"
+  },
+  "not_run": [
+    "TC-6.7 ablation over a frozen eval set (dense/BM25/hybrid/+rerank/+MMR) with Recall/NDCG/diversity and confidence intervals",
+    "Perf baselines (p95 latency, candidate blow-up) and RRF/MMR cost measurement",
+    "Real backend execution: real SQLite FTS5 lexical index, real vector store, real rerank provider (all fakes in tests)",
+    "Real ACL/namespace authorization service end-to-end (TC-6.4 real I layer)",
+    "E2E: opening a returned source_uri through the real Viking content read API",
+    "Wiring the hybrid profile into the HTTP find/search route (no user-facing API change was made; profile is constructed by the caller)"
+  ],
+  "files_touched": [
+    "openviking/retrieve/fusion.py (NEW)",
+    "openviking/retrieve/hierarchical_retriever.py (edited: imports, RetrieverMode.HYBRID, constructor fusion_profile/lexical_search params, hybrid branch in retrieve(), _retrieve_hybrid, _build_fusion_reranker)",
+    "tests/retrieve/test_fusion.py (NEW)",
+    "tests/enterprise_kb/test_hybrid_profile.py (NEW)",
+    "docs/spec/evidence/parallel3-KB-017-2026-10-04.json (NEW)"
+  ],
+  "notes": [
+    "No other module was modified; openviking/indexing/lexical.py was read only (tokenize imported for unified token similarity).",
+    "quick/thinking behavior is unchanged: the hybrid path is only entered for mode == RetrieverMode.HYBRID, which is an explicit opt-in and never inferred from reranker presence."
+  ]
+}

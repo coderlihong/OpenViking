@@ -1,0 +1,73 @@
+{
+  "task_id": "KB-004",
+  "started": "2026-10-04",
+  "finalized": "2026-10-05",
+  "status": "PARTIAL",
+  "scope": "Durable authority-owned job lifecycle, global parser/write slot, D1/D2 job API and async/sync SDK; internal W1/W2 typed lifecycle only",
+  "sources": [
+    "openviking/indexing/jobs.py",
+    "openviking/service/kb_job_executor.py",
+    "openviking/service/kb_job_service.py",
+    "openviking/server/routers/kb_jobs.py",
+    "sdk/python/openviking_sdk/kb.py",
+    "tests/enterprise_kb/test_durable_jobs.py",
+    "tests/enterprise_kb/test_durable_job_executor.py",
+    "tests/enterprise_kb/test_durable_jobs_http.py",
+    "sdk/python/tests/test_kb_job_and_migration_contract.py"
+  ],
+  "implemented": [
+    "Same authority SQLite database persists kind/stage/state, account+namespace+key request digest, effective configuration, original user principal, attempt/owner/fence/lease, checkpoint and info",
+    "Atomic authority commands claim/recover/renew jobs, reject late-owner heartbeat/checkpoint/parse writes and enforce stage progression",
+    "One database parser/write slot serializes all accounts, namespaces and backend jobs; confirmed written/aborted callbacks release it",
+    "Expired ordinary worker leases become resumable backoff; parser worker loss or cancellation quarantines the slot as write_recovery_required across authority restart",
+    "Known queued/ordinary-stage cancellation is durable; parser cancellation invalidates owner and retains unknown-write protection",
+    "Ready always requires a complete authority-verified publication gate; existing vector receipts and caller-supplied all_gates cannot produce ready",
+    "Internal Wiki draft_ready requires wiki_draft profile, wiki_validate stage, candidate checkpoint and diagnostic_published=false; job reads remain original-user and current-ACL restricted",
+    "POST /api/v1/kb/ingestion-jobs submits supported D1/D2 only with 202; GET /api/v1/kb/jobs/{job_id} and POST /api/v1/kb/jobs/{job_id}/cancel use current account/original user/current namespace and source ACL",
+    "Mixed upload/URI/build inputs, invalid to+parent combinations, D2 target overrides and unsupported D2 PDF/Office binary indexing are rejected before job persistence",
+    "Async/sync SDK create/get/cancel match current real job endpoints; collection migration inspection and expected-binding-digest CAS migration SDK parity added for KB-022"
+  ],
+  "authority_integration_owner": "registry_authority agent incorporated DurableJobsMixin/init_jobs and the 12 fixed job command proxies into PublicationStore and authority",
+  "runtime_integration_owner": "root agent owns DocumentJobRuntime and real resource/reindex handlers plus app lifecycle registration; this report does not replace its integration evidence",
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_durable_jobs.py tests/enterprise_kb/test_durable_job_executor.py tests/enterprise_kb/test_durable_jobs_http.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel2-durable-jobs-2026-10-04.xml",
+      "result": "21 passed; 4 existing Pydantic deprecation warnings",
+      "report": "docs/spec/evidence/parallel2-durable-jobs-2026-10-04.xml"
+    },
+    {
+      "command": ".venv/bin/python -m pytest sdk/python/tests --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel2-durable-jobs-sdk-2026-10-04.xml",
+      "result": "138 passed; 1 existing AsyncMock RuntimeWarning",
+      "report": "docs/spec/evidence/parallel2-durable-jobs-sdk-2026-10-04.xml"
+    },
+    {
+      "command": ".venv/bin/python -m py_compile openviking/indexing/jobs.py openviking/service/kb_job_executor.py openviking/service/kb_job_service.py openviking/server/routers/kb_jobs.py sdk/python/openviking_sdk/kb.py",
+      "result": "PASS"
+    }
+  ],
+  "process_evidence": {
+    "source": "tests/enterprise_kb/test_durable_jobs.py",
+    "two_worker_three_job_test": "test_two_worker_processes_three_jobs_share_single_parse_slot",
+    "description": "Two independent spawned worker processes and a separately spawned authority serialize three differently scoped D1/D2/W1 jobs; real monotonic start/end events prove no overlap; persisted checkpoints survive handoff. Workers use timed parser callbacks, not real PDF/Office/model inference.",
+    "kill_restart_test": "test_worker_kill_restart_and_unknown_writer_quarantine",
+    "description2": "An independently spawned worker is terminated before/after acquiring parser slot; authority process is restarted; ordinary stage retries with higher attempt/fence, unknown parser retains its slot and rejects both late owner and another parser."
+  },
+  "current_boundary": {
+    "D1_D2": "Durable document submission/API lifecycle and registered worker callbacks implemented; parent integrates current resource/reindex services",
+    "W1_W2": "Core lifecycle records support these kinds, but generic document API rejects them; current Wiki prepare remains HTTP 200 prepared; no unfinished execution endpoint is exposed",
+    "ready": "Fail closed without a complete authority commit receipt; no queue-done or old vector-publication ready shortcut",
+    "draft_ready": "Internal original-user private status only; real candidate body ACL/materialization/complete schema validation remains unverified",
+    "unknown_write": "Slot protection persists; no TTL/operator self-report releases unknown writes"
+  },
+  "remaining_conditions": [
+    "Trusted real backend terminal/fencing proof and atomic recovery of a quarantined parse slot are not implemented; unknown writes can block all parsers until that recovery exists",
+    "Authority fence rejects lifecycle state mutations, but real AGFS/model/backend delayed writes still need enforced writer fencing and fault-injection validation",
+    "Actual parser outputs, Office-to-PDF flow, full three-model quality, original upload-byte digest pinning and long-job parser costs are not proven by timed worker callback tests",
+    "Index dispatch crash window and full generation publication/ACL intersection receipt protocol remain to be closed; real ready remains unavailable",
+    "Persisted principal is refreshed by parent runtime's identity service; complete permission revocation throughout actual parser/index backend calls is not proven here",
+    "Wiki execution/extraction/identity merge/schema coverage and physical private candidate validation remain unimplemented or unverified",
+    "Worker attempt retention/operational metrics, job list UI, quotas, durable audit history, physical deletion and GC remain follow-up work",
+    "No complete Feature or D1/D2/W1/W2 FLOW acceptance is claimed"
+  ],
+  "workspace_handling": "No commits/resets; preserved existing changes; did not directly edit publication.py/registry_authority.py/shared spec; coordinated authority inheritance with its owner and runtime integration with root."
+}

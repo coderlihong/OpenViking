@@ -1,0 +1,39 @@
+{
+  "run_id": "I028-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "scope": "W2 URI+collection Wiki build HTTP/SDK entry over the shared WikiBuildPlanner; prepares an immutable source plan, does not extract or publish",
+  "regression": {
+    "status": "PASS",
+    "tests": 675,
+    "new_tests": 6,
+    "report": "tests-I028-regression.xml",
+    "scope": "I027 suite (669) + W2 build HTTP/SDK tests (6), not full repository"
+  },
+  "verified": [
+    "POST /api/v1/kb/wiki/builds prepares a W2 plan (input_kind=uri) via WikiBuildPlanner.prepare_sources and returns the immutable plan",
+    "Async and sync SDK expose client.kb.build_wiki over the same route and result contract",
+    "Idempotent replay of the same source set/collection/key returns the same build_id",
+    "Extra or missing request fields are rejected with HTTP 422; BuildRequest forbids additional properties",
+    "A non-Markdown source URI is rejected as HTTP 400 INVALID_ARGUMENT before any model or expensive work",
+    "OpenAPI path set now includes /api/v1/kb/wiki/builds alongside the four configuration paths"
+  ],
+  "not_implemented": [
+    "W1 upload+collection ingestion entry (POST /api/v1/kb/wiki/ingestions) and temp-upload materialization",
+    "Shared WikiBuildPlan execution: entity normalization, relation build, schema rules, publication and shared indexing",
+    "Persistent build job queue/state beyond prepared; no queued/ready lifecycle",
+    "Namespace/export authorization enforcement at build execution (authorize_inputs exists but is not invoked by the HTTP entry)",
+    "Full FLOW-W1/W2, F10, TC-4.5/F13 and production height availability"
+  ],
+  "boundaries": [
+    "The route only prepares an immutable source plan; it does not run extraction, schema rules or publication",
+    "ACL context store and embedding backend are fixtures; disk AGFS; not production authorization",
+    "I024 five legacy SDK baseline failures remain unfixed; the 675-test run is not full-repository acceptance"
+  ],
+  "file_sha256": {
+    "openviking/server/routers/wiki.py": "6a63d1584a3b6b0688c8662bbd15a748ede4e78decda67f9f6b8b862dd3ce476",
+    "sdk/python/openviking_sdk/kb.py": "35ca8212415de15a9b59d3f55ed773ea5087442f455b285c23630addd6424056",
+    "tests/enterprise_kb/test_wiki_build_http.py": "97e154865e11f76050965ccd7a15041639f0b9e29bf0ee04d666ebdf9a1b2bb0",
+    "tests/enterprise_kb/test_wiki_http_sdk.py": "b7f57ceb08d63683022584aeff7bc28336381060fd9e3f3fed2c4f112debe47a",
+    "docs/spec/evidence/tests-I028-regression.xml": "55a46ca0bbecd5e1f6b74538f295f5b48705edc291d789cd1a9530a3f47d966f"
+  }
+}

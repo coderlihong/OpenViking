@@ -1,0 +1,67 @@
+{
+  "scope": "explicit synthetic Excel repair sheet through real API and remote Docker conversion to private drafts only",
+  "runs": [
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+        "job_id": null,
+        "build_id": null,
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "ingest_key": "office-I047-sheets-diagnostic",
+        "exec_key": "office-I047-exec-sheets-diagnostic",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_bbfe4d64a2cb4a818d57666eeda024a1.xlsx",
+      "plan": {
+        "build_id": "2c8d4a545e9f431283039bdec0663c7c",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/w1-office-sheets-diagnostic-I047/section_0001.md",
+        "viking://resources/raw/w1-office-sheets-diagnostic-I047/toc.md"
+      ],
+      "captured_count": 2,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "8f60852da0154077aede9e82ef345b5a",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 2,
+      "candidate_count": 2,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/SY215C.md",
+        "viking://resources/wiki/sany/Thing/文档目录.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true,
+      "family": "sheets-diagnostic",
+      "fixture_sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+      "sample_class": "synthetic",
+      "gold": false,
+      "font_validation_enabled": true,
+      "elapsed_seconds": 56.112
+    }
+  ],
+  "passed": true
+}

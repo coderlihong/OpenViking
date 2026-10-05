@@ -1,0 +1,161 @@
+{
+  "source_media": [
+    {
+      "path": "xl/media/image1.png",
+      "sha256": "4387a6df5d217e8e7040da98a363dccdbf4f61c5e2df8f201d2db14527d3c54a",
+      "bytes": 256,
+      "signature_hex": "89504e470d0a1a0a0000000d"
+    }
+  ],
+  "drawing_parts": {
+    "xl/drawings/drawing1.xml": "<?xml version='1.0' encoding='utf-8'?>\n<ns0:wsDr xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:ns1=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:ns2=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><ns0:oneCellAnchor><ns0:from><ns0:col>2</ns0:col><ns0:colOff>0</ns0:colOff><ns0:row>3</ns0:row><ns0:rowOff>0</ns0:rowOff></ns0:from><ns0:ext cx=\"1143000\" cy=\"762000\" /><ns0:pic><ns0:nvPicPr><ns0:cNvPr id=\"1\" name=\"Image 1\" descr=\"Picture\" /><ns0:cNvPicPr /></ns0:nvPicPr><ns0:blipFill><ns1:blip cstate=\"print\" ns2:embed=\"rId1\" /><ns1:stretch><ns1:fillRect /></ns1:stretch></ns0:blipFill><ns0:spPr><ns1:prstGeom prst=\"rect\" /><ns1:ln><ns1:prstDash val=\"solid\" /></ns1:ln></ns0:spPr></ns0:pic><ns0:clientData /></ns0:oneCellAnchor></ns0:wsDr>",
+    "xl/drawings/_rels/drawing1.xml.rels": "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"/xl/media/image1.png\" Id=\"rId1\"/></Relationships>"
+  },
+  "sheet_parts_with_drawing": {
+    "xl/worksheets/sheet1.xml": "<?xml version='1.0' encoding='utf-8'?>\n<ns0:worksheet xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><ns0:sheetPr><ns0:outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><ns0:pageSetUpPr /></ns0:sheetPr><ns0:dimension ref=\"A1:B90\" /><ns0:sheetViews><ns0:sheetView workbookViewId=\"0\"><ns0:selection activeCell=\"A1\" sqref=\"A1\" /></ns0:sheetView></ns0:sheetViews><ns0:sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><ns0:sheetData><ns0:row r=\"1\"><ns0:c r=\"A1\" t=\"inlineStr\"><ns0:is><ns0:t>Pressure MPa</ns0:t></ns0:is></ns0:c><ns0:c r=\"B1\" t=\"inlineStr\"><ns0:is><ns0:t>Reading</ns0:t></ns0:is></ns0:c></ns0:row><ns0:row r=\"2\"><ns0:c r=\"A2\" t=\"inlineStr\"><ns0:is><ns0:t>EXCEL_HEAD</ns0:t></ns0:is></ns0:c><ns0:c r=\"B2\" t=\"n\"><ns0:v>12.5</ns0:v></ns0:c></ns0:row><ns0:row r=\"3\"><ns0:c r=\"A3\" t=\"inlineStr\"><ns0:is><ns0:t>MERGED_CELL</ns0:t></ns0:is></ns0:c></ns0:row><ns0:row r=\"90\"><ns0:c r=\"A90\" t=\"inlineStr\"><ns0:is><ns0:t>EXCEL_TAIL</ns0:t></ns0:is></ns0:c></ns0:row></ns0:sheetData><ns0:mergeCells count=\"1\"><ns0:mergeCell ref=\"A3:B3\" /></ns0:mergeCells><ns0:pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /><ns0:drawing ns1:id=\"rId1\" /></ns0:worksheet>",
+    "xl/worksheets/_rels/sheet1.xml.rels": "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"/xl/drawings/drawing1.xml\" Id=\"rId1\"/></Relationships>"
+  },
+  "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+  "pdf": {
+    "sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+    "pages": 5,
+    "image_count": 5,
+    "page_images": [
+      {
+        "page": 1,
+        "images": [
+          [
+            4,
+            0,
+            120,
+            80,
+            8,
+            "DeviceRGB",
+            "",
+            "Im4",
+            "FlateDecode"
+          ]
+        ]
+      },
+      {
+        "page": 2,
+        "images": [
+          [
+            4,
+            0,
+            120,
+            80,
+            8,
+            "DeviceRGB",
+            "",
+            "Im4",
+            "FlateDecode"
+          ]
+        ]
+      },
+      {
+        "page": 3,
+        "images": [
+          [
+            4,
+            0,
+            120,
+            80,
+            8,
+            "DeviceRGB",
+            "",
+            "Im4",
+            "FlateDecode"
+          ]
+        ]
+      },
+      {
+        "page": 4,
+        "images": [
+          [
+            4,
+            0,
+            120,
+            80,
+            8,
+            "DeviceRGB",
+            "",
+            "Im4",
+            "FlateDecode"
+          ]
+        ]
+      },
+      {
+        "page": 5,
+        "images": [
+          [
+            4,
+            0,
+            120,
+            80,
+            8,
+            "DeviceRGB",
+            "",
+            "Im4",
+            "FlateDecode"
+          ]
+        ]
+      }
+    ],
+    "text": "Main\nPressure MPa\nReading\nEXCEL_HEAD\n12.5\nMERGED_CELL\n\nMain\nEXCEL_TAIL\n\nHiddenData\nHIDDEN_SHEET_VALUE\n\nRepair\n部件：履带张紧装置。\n故障现象：行走跑偏。\n机型：SY215C。\n，再检查右侧履带张紧度。\n张紧度。\n\nLegacyContract\nThe pressure reading is 12.5 MPa.\n",
+    "displayed_images": [
+      {
+        "page": 1,
+        "images": [
+          {
+            "number": 2,
+            "bbox": [
+              224.78700256347656,
+              121.86175537109375,
+              314.67401123046875,
+              181.75775146484375
+            ],
+            "transform": [
+              89.88700103759766,
+              0.0,
+              -0.0,
+              59.895999908447266,
+              224.78700256347656,
+              121.86175537109375
+            ],
+            "width": 120,
+            "height": 80,
+            "colorspace": 3,
+            "cs-name": "DeviceRGB",
+            "xres": 96,
+            "yres": 96,
+            "bpc": 8,
+            "size": 1081,
+            "digest": "413aa0abf1c524962ccb00e31ce6e398",
+            "has-mask": false,
+            "xref": 4
+          }
+        ]
+      },
+      {
+        "page": 2,
+        "images": []
+      },
+      {
+        "page": 3,
+        "images": []
+      },
+      {
+        "page": 4,
+        "images": []
+      },
+      {
+        "page": 5,
+        "images": []
+      }
+    ],
+    "displayed_image_count": 1
+  },
+  "pdf_path": "/tmp/ov-flow/office-legacy-I050/legacy-xls-intermediate.pdf",
+  "converter": "frozen SSH transport same product OfficeConverter"
+}

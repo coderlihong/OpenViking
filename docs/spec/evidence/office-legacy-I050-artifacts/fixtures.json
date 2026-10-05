@@ -1,0 +1,92 @@
+[
+  {
+    "family": ".doc",
+    "flow": "d1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+    "original_sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.docx",
+    "ooxml_sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050.doc",
+    "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  },
+  {
+    "family": ".doc",
+    "flow": "w1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+    "original_sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.docx",
+    "ooxml_sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.doc",
+    "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  },
+  {
+    "family": ".xls",
+    "flow": "d1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+    "original_sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.xlsx",
+    "ooxml_sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-xls.xls",
+    "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  },
+  {
+    "family": ".xls",
+    "flow": "w1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+    "original_sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.xlsx",
+    "ooxml_sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-xls.xls",
+    "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  },
+  {
+    "family": ".ppt",
+    "flow": "d1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+    "original_sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.pptx",
+    "ooxml_sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-ppt.ppt",
+    "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  },
+  {
+    "family": ".ppt",
+    "flow": "w1",
+    "original_path": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+    "original_sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+    "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.pptx",
+    "ooxml_sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+    "declared_ooxml_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-ppt.ppt",
+    "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+    "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+    "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+  }
+]

@@ -1,0 +1,204 @@
+{
+  "checked_at": "2026-10-04T06:29:44.890452+00:00",
+  "root": "/home/t-wanghai/models/openviking-parsers",
+  "services": {
+    "teleocr": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "teleocr",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "teleocr",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr"
+          ],
+          "resume_granularity": "document",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    },
+    "logics": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "logics",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "logics",
+          "modes": [
+            "auto",
+            "layout"
+          ],
+          "resume_granularity": "document",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    },
+    "mineru": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "mineru",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "mineru",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr",
+            "text"
+          ],
+          "resume_granularity": "document",
+          "dependencies_ready": true,
+          "worker_state": "running",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    }
+  },
+  "files": {
+    "worker.py": "96a277b8ac36aadae9c51021fe0b1823839836f97efe0bd307820a9ad1725597",
+    "model_artifact.py": "600bd3c3a4260c6eabe26629257e80e76a67a59860ba7d3cbacea1023971dd2b",
+    "serve.sh": "9b8e29c0af757721d8604e8954c7a18bcb202390f113e6894fe6845b5d727bd7"
+  },
+  "queue_counts": [
+    {
+      "backend": "logics",
+      "state": "completed",
+      "count": 1
+    },
+    {
+      "backend": "mineru",
+      "state": "cancelled",
+      "count": 1
+    },
+    {
+      "backend": "mineru",
+      "state": "completed",
+      "count": 3
+    },
+    {
+      "backend": "mineru",
+      "state": "failed",
+      "count": 4
+    },
+    {
+      "backend": "teleocr",
+      "state": "cancelled",
+      "count": 1
+    },
+    {
+      "backend": "teleocr",
+      "state": "completed",
+      "count": 1
+    },
+    {
+      "backend": "teleocr",
+      "state": "failed",
+      "count": 1
+    }
+  ],
+  "containers": [
+    {
+      "Names": "ov-parser-worker-mineru",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 26 seconds",
+      "Ports": "127.0.0.1:9103->9100/tcp"
+    },
+    {
+      "Names": "ov-parser-mineru-engine",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 7 hours",
+      "Ports": "172.17.0.1:9110->9110/tcp"
+    },
+    {
+      "Names": "ov-parser-worker-logics",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 27 seconds",
+      "Ports": "127.0.0.1:9102->9100/tcp"
+    },
+    {
+      "Names": "ov-parser-worker-teleocr",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 27 seconds",
+      "Ports": "127.0.0.1:9101->9100/tcp"
+    }
+  ],
+  "disk": [
+    "Filesystem                   1B-blocks           Used    Available Use% Mounted on",
+    "01ae54a093feadb4-000001 11701621620736 11411518390272 290103230464  98% /home"
+  ],
+  "deployment": {
+    "worker_sha256": "96a277b8ac36aadae9c51021fe0b1823839836f97efe0bd307820a9ad1725597",
+    "previous_sha256": "ed49f73c88b0607ab2a3ba4d2684b0c449447d99bda58c62ef8880d07bb855c5",
+    "restart_requested": [
+      "ov-parser-worker-teleocr",
+      "ov-parser-worker-logics",
+      "ov-parser-worker-mineru"
+    ],
+    "queue_idle_at_guard": true,
+    "backup": "/home/t-wanghai/models/openviking-parsers/worker.I017.backup.py"
+  },
+  "scope": "Queue readiness lifecycle fix deployed to three idle parser workers; no new inference or full ingest/search E2E",
+  "regression": {
+    "tests": 502,
+    "new_tests": 4,
+    "report": "tests-I018-regression.xml",
+    "focused_tests": 10,
+    "focused_report": "tests-I018-worker.xml"
+  },
+  "limitations": [
+    "No fresh model/engine inference readiness or quality proof",
+    "No watchdog/automatic restart for a dead queue loop while HTTP remains live",
+    "Storage uncertain-write recovery, full four FLOW and Wiki remain pending"
+  ],
+  "file_sha256": {
+    "deploy/parser-models/worker.py": "96a277b8ac36aadae9c51021fe0b1823839836f97efe0bd307820a9ad1725597",
+    "tests/enterprise_kb/test_parser_worker_lifecycle.py": "9aac4e334ade1fea93cd19b7bcadaf28a4c1552b20520fdfb5aadc4adca04428",
+    "docs/spec/evidence/tests-I018-regression.xml": "feace9808d96e8cbd2db0459986992857b1375566ac2baf5a25fee6758d4b1d4",
+    "docs/spec/evidence/tests-I018-worker.xml": "6de7282dcd342c64cce1656d111b202bb538bda423d7be95efce3197d98bd470",
+    "docs/spec/README.md": "fdae92fb75f4fca4eb47825585d448ae80c622d692365de72a9bb274e414bc0b",
+    "docs/spec/openviking-enterprise-kb-spec.md": "a5765c39991aee61777ee0df62007da9a1b327a0003ce647810703c2a05e6362",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "b6ba8cead28d73230d4de3e25b70ff6b1e387d5393e6420c4d331b6f041afe00",
+    "docs/spec/openviking-enterprise-kb-review.md": "24e2ed1f9f33ebf9c941fbff67cff1cd016eb3c34c1ee6ee590237fe3d7e896a",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "4e67cfa2226f8a651159206275812cd580d42768951d74f7349ab1bca6f4004c"
+  }
+}

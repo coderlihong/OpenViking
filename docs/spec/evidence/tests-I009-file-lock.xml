@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.106" timestamp="2026-10-04T12:50:59.035333+08:00" hostname="whdeMacBook-Pro.local"><testcase classname="tests.service.test_reindex_file_lock" name="test_reindex_single_file_uri_acquires_tree_lock_without_not_a_directory" time="0.002"><failure message="AttributeError: '_FakeVikingFS' object has no attribute '_async_agfs'">agfs_client = &lt;i009_transaction_fixtures.MemoryAgfs object at 0x11e7c38c0&gt;
+test_dir = '/local/default/transaction-9210f4de1f0d492bb78acb7e009cc574'
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11e7b2780&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x1200586e0&gt;
+
+    async def test_reindex_single_file_uri_acquires_tree_lock_without_not_a_directory(
+        agfs_client, test_dir, monkeypatch, caplog
+    ):
+        uri = "viking://resources/profile.md"
+        path = f"{test_dir}/profile.md"
+        agfs_client.write(path, b"# Profile\nSingle file reindex source.\n")
+    
+        viking_fs = _FakeVikingFS(uri, path)
+        service = SimpleNamespace(
+            viking_fs=viking_fs,
+            vikingdb_manager=SimpleNamespace(has_queue_manager=True),
+        )
+        monkeypatch.setattr(reindex_module, "get_service", lambda: service)
+        monkeypatch.setattr(reindex_module, "get_viking_fs", lambda: viking_fs)
+    
+        executor = ReindexExecutor()
+        executor._fetch_existing_record = AsyncMock(return_value=None)
+        executor._upsert_context = AsyncMock()
+        ctx = RequestContext(
+            user=UserIdentifier("acc1", "test_user"),
+            role=Role.ROOT,
+        )
+    
+        try:
+&gt;           result = await executor._run(
+                uri=uri,
+                object_type="resource",
+                mode="vectors_only",
+                ctx=ctx,
+            )
+
+tests/service/test_reindex_file_lock.py:60: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;openviking.service.reindex_executor.ReindexExecutor object at 0x120059010&gt;
+
+    async def _run(
+        self,
+        *,
+        uri: str,
+        object_type: str,
+        mode: str,
+        dry_run: bool = False,
+        recursive: bool = True,
+        ingest_options: IngestOptions | None = None,
+        ctx: RequestContext,
+    ) -&gt; dict[str, Any]:
+        service = get_service()
+        if service.viking_fs is None or service.vikingdb_manager is None:
+            raise RuntimeError("OpenVikingService not initialized")
+        if mode != "prune_orphans" and not service.vikingdb_manager.has_queue_manager:
+            raise OpenVikingError(
+                "Reindex requires embedding queue",
+                code="FAILED_PRECONDITION",
+                details={"uri": uri},
+            )
+    
+        path = service.viking_fs._uri_to_path(uri, ctx=ctx)
+        started_at = time.perf_counter()
+        counters = _ReindexCounters()
+        telemetry_id = get_current_telemetry().telemetry_id
+        wait_tracker = get_request_wait_tracker()
+        if telemetry_id:
+            wait_tracker.register_request(telemetry_id)
+    
+&gt;       acquire_lock = service.viking_fs._async_agfs.pathlock_acquire_tree
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: '_FakeVikingFS' object has no attribute '_async_agfs'
+
+openviking/service/reindex_executor.py:514: AttributeError</failure></testcase></testsuite></testsuites>

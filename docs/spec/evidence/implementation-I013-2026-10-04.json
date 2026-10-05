@@ -1,0 +1,55 @@
+{
+  "run_id": "I013-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 472,
+    "new_protocol_tests": 9,
+    "report": "tests-I013-regression.xml",
+    "initial_report": "tests-I013-regression-initial.xml"
+  },
+  "verified": [
+    "Configured messages protocol through sync/async SDK transport",
+    "Joint image/text and text query/document requests, float/base64 decode",
+    "Input/identity override and batch merging rejected",
+    "Collection and text space protocol migration identity",
+    "Actual factory and async adapter remote joint/query embeddings"
+  ],
+  "remote": {
+    "run_id": "I013-2026-10-04",
+    "status": "PASS",
+    "adapter": "OpenAIDenseEmbedder",
+    "protocol": "messages",
+    "model": "local/wemm-embedding-4b-v1",
+    "asset_sha256": "e63789a4820b8e34145c6aaf1c99993eb0fa4dd57b98248f58b31aff8a8b1e77",
+    "asset_bytes": 95628,
+    "joint_dimensions": 2560,
+    "query_dimensions": 2560,
+    "all_finite": true,
+    "elapsed_seconds": 4.708,
+    "scope": "Actual OpenViking configuration factory and async SDK adapter; no VLM quality or indexing/retrieval E2E"
+  },
+  "test_fixture_repair": "Loopback NO_PROXY excludes macOS proxy Connection: close; original reuse assertion preserved; no production proxy policy changed",
+  "scope_exclusions": [
+    "Remote full-worker/index publication/retrieval E2E or VLM semantic quality",
+    "Occurrence index/cache/context dependencies and multiple-space fusion",
+    "BM25/root visibility/ready/recovery/GC/Wiki and complete four FLOW"
+  ],
+  "file_sha256": {
+    "openviking/models/embedder/openai_embedders.py": "e4ab34db3684a563640a861b897470fea684b9340942020cb8ac91cfe9cf868a",
+    "openviking_cli/utils/config/embedding_config.py": "32621d2d05ad20fe347f358cc3ad3de608c5665cf025f4d71d7f3b9e1b9d437e",
+    "openviking/storage/collection_schemas.py": "d08b724a87cffa840904e83e60b9da61c5ac97b0d6bd42b9d231c7264a5f56ef",
+    "openviking/indexing/plan.py": "44d982b933eee238b7917003b1577438021b8da616fb63d73551a37ece4c4f25",
+    "tests/unit/test_openai_embedding_messages.py": "87ee64570809a08adf276343cefe08bc4bdfdd360a4db0661d3777f0eabd281d",
+    "tests/unit/test_openai_embedder_http_pool.py": "fb3e8045852e105d8f7559c6306c7e250434aa06d40226e509ebe9e8e7f433b5",
+    "docs/spec/evidence/tests-I013-regression.xml": "89e26d922be49c52d87b00661e1f566e1579b36c6c0889834a36a87f80c249e7",
+    "docs/spec/evidence/tests-I013-regression-initial.xml": "9c27746295f65e1df019370df155935f0eeb1cba3337b1a821f09e7730a2a879",
+    "docs/spec/evidence/image-adapter-I013-2026-10-04.json": "db1355fc4a2a663583f010936838655c9a89fbb90c6839bc76c8f073550519b5",
+    "docs/spec/openviking-enterprise-kb-spec.md": "0db60edb3fffe15c9789f6d8043242e8329017f7f9d1a9b2f840f772a7a6bd0d",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "2c34d8570c5a151e23abc6345570f2f4decee64c62f9de968e37aec51adfc512",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "157c1adaa2cc7cfcb98c42ac5759949d0774884d1a83a917f047962e60f0125d",
+    "docs/spec/openviking-enterprise-kb-review.md": "96085aa91165813afd0369a3f924a95c1d89fcdd0975302969d53b838ef87af9",
+    "docs/spec/README.md": "919338548882b8872e16b39e8cd231bcdbf6493be972581bd71a2fab65d1b855"
+  }
+}

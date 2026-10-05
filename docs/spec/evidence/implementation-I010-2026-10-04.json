@@ -1,0 +1,54 @@
+{
+  "run_id": "I010-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 420,
+    "new_sidecar_tests": 12,
+    "report": "tests-I010-semantic-content.xml"
+  },
+  "verified": [
+    "Actual sidecar bytes archived in private content-addressed blobs; SQL stores references only",
+    "Directory generation publishes semantic references with vectors/text batch in one transaction",
+    "Original sidecar URI read APIs and directory abstract/overview use active/query references",
+    "Epoch/sha checked at begin and publication; body mismatch rejected before queue",
+    "Partial/new semantic levels do not leak working file into old views",
+    "Corrupt assets fail without working-source fallback; old manifests without refs require rebuild",
+    "URI reindex and direct index_resource read working sources; direct indexing joins shared batch",
+    "Internal sidecar metadata writes read working documents",
+    "Read-only GC roots include sidecar active/read/pending versions"
+  ],
+  "fixtures": [
+    "Actual SQLite metadata and disk blobs exercised",
+    "AGFS transport replaced by disk adapter; encryption/production storage unverified",
+    "Embedder and vector DB are fixtures",
+    "Public read methods tested with controlled access checks; production ACL not proven"
+  ],
+  "scope_exclusions": [
+    "Directory layout/list/stat and first-ingest root visibility",
+    "Raw AGFS/WebDAV/sync/move modification CAS beyond standard file writes",
+    "Image/BM25 joint publication and full metadata registry",
+    "Job ready/UI, lifecycle clear/delete/move/copy, crash recovery and physical GC",
+    "Remote full-manual indexing/retrieval or deployment this turn",
+    "Wiki collection/schema APIs and complete four-FLOW acceptance"
+  ],
+  "file_sha256": {
+    "openviking/indexing/publication.py": "54821dfa1cbdc87280ddc164f27feab047ea88467bbe0d07cbafaedc3e9b3c0a",
+    "openviking/indexing/semantic.py": "affeacacc109cbacff1aa5a5bf5e5adb6ee36ce526917e814d14c84fa8cd8da1",
+    "openviking/indexing/content.py": "dcb6075614b02387d2ca5e5f508ae7f741cefe1782042245b1ce1e3f39d61d3b",
+    "openviking/indexing/batch.py": "8bcaf15e93dfc6c7bb1693d3605bde451fb8063dba384bdb863fae6eae920cb1",
+    "openviking/utils/embedding_utils.py": "4ba7a33d0b3825311bdccea75cb879aee113b11864c51318891c944ca7a5e4b1",
+    "openviking/service/reindex_executor.py": "be9db0616b92b5cabe7a9b66d36fa84c9f3da3fedc89bc4be7172e3900725b65",
+    "openviking/storage/abstract_overview.py": "6f504f65ca1f7b3c11a49a656019596134b2184df2a257cdbe78509081fae825",
+    "openviking/storage/viking_fs/_semantic.py": "5c491709af0374c7369214664cf00ca69198e4858081b8d88f2f490b8602f2f0",
+    "tests/enterprise_kb/test_semantic_publication.py": "0f77b6709efb59c9ac0b6aec08001050c57fa4f626271a54a37ff87b41bd9052",
+    "tests/enterprise_kb/test_semantic_content_publication.py": "59315a218c52034a56096be25f37da3e248450ba0162f7470a2a35dd4dfd3aad",
+    "docs/spec/evidence/tests-I010-semantic-content.xml": "e9e453b33099552dd974718b683eca12188fe5abd98b00dfa5038efd6db6a9b5",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "aeee8bec86c5f547635db31fc603b886fdf041e1e91ccf215b407cf4624b46b6",
+    "docs/spec/README.md": "46c53a64c30ed24a0cd8c68ac3c5b19101603a5884f8b9d5567f281f14444658",
+    "docs/spec/openviking-enterprise-kb-review.md": "711910c3942440295a3402bb9fd70ddb6d86b1a422cfb4bb99d77d2e2dce1588",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "c01774e54d673769e2779d1bb14b29fedee41a6e88db0fead7e518868a650163",
+    "docs/spec/openviking-enterprise-kb-spec.md": "1bca3540c82e84d97df6b8f1d81fca0bc043c125ec55a5feccc6b54e2ad018b2"
+  }
+}

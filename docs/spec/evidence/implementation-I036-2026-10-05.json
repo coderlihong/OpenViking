@@ -1,0 +1,78 @@
+{
+  "id": "I036",
+  "date": "2026-10-05",
+  "spec_version": "0.11",
+  "recorded_at_utc": "2026-10-05T01:41:00+00:00",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "change": "KB-025 身份解析/保守合并此前在台账中为 OPEN 且无证据，实际实现(openviking/wiki/identity.py)与14项测试已存在并通过；本轮补录证据并把实现状态修正为 PARTIAL。",
+  "task": "KB-025",
+  "implementation": {
+    "module": "openviking/wiki/identity.py",
+    "identity_version": "identity compiler with account/namespace/type/schema tuple anchor",
+    "capabilities": [
+      "explicit_business_key",
+      "explicit_applicability_scope",
+      "account_namespace_type_schema_tuple",
+      "canonical_id_preserved_across_rebuilds",
+      "exact_or_explicit_casefold_space",
+      "literal_identity_quote_provenance",
+      "collision_aware_alias_ownership",
+      "expected_revision_human_edit_protection",
+      "no_default_synonym_merge"
+    ],
+    "pending": [
+      "semantic_identity_verification",
+      "ontology_and_applicability_policy",
+      "trusted_entity_catalog"
+    ],
+    "diagnostic_publishable": false
+  },
+  "scoped_tests": {
+    "command": "pytest tests/enterprise_kb/test_wiki_identity_conservative_merge.py tests/enterprise_kb/test_wiki_candidate_merge.py",
+    "tests": 44,
+    "passed": 44,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "report": "wiki-identity-merge-I036-2026-10-05.xml",
+    "identity_tests": [
+      "test_same_display_name_across_type_and_config_keeps_distinct_canonical_ids",
+      "test_same_name_different_config_scope_never_merges_but_alias_stays_separate",
+      "test_alias_ownership_assigns_unique_names_and_reports_collisions",
+      "test_duplicate_rebuild_reuses_canonical_id_without_new_entity",
+      "test_conflicting_values_are_retained_and_excluded_from_valid_graph",
+      "test_pending_identity_group_is_never_admitted_to_valid_graph",
+      "test_human_confirmed_value_is_protected_and_multi_source_evidence_is_retained",
+      "test_stale_revision_write_is_refused_and_does_not_overwrite_human_value",
+      "test_human_confirmed_value_survives_a_later_model_rerun",
+      "test_human_override_of_undeclared_field_is_rejected",
+      "test_human_override_cannot_rewrite_identity_defining_field",
+      "test_resolve_merge_revision_is_a_strict_cas_gate",
+      "test_identity_tuple_preserves_namespace_type_and_schema_and_separates_configs",
+      "test_resolved_identity_carries_the_anchor_tuple"
+    ]
+  },
+  "additional_scoped": {
+    "task": "KB-007",
+    "command": "pytest tests/enterprise_kb/test_deletion_gc.py tests/enterprise_kb/test_physical_gc_fences.py",
+    "tests": 27,
+    "passed": 27,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "report": "wiki-gc-I036-2026-10-05.xml",
+    "state": "PARTIAL retained; tombstone filtering, dependency marks, second-CAS reclamation and fence tests pass; full GC proof/reachability and production release still pending per ledger limitations"
+  },
+  "acceptance": {
+    "features": "F10 NOT_RUN",
+    "flows": {"FLOW-W1": "NOT_RUN", "FLOW-W2": "NOT_RUN"},
+    "human_gold": "0; user confirmed none currently available",
+    "task_promotions": ["KB-025 OPEN→PARTIAL"],
+    "done_promotions": []
+  },
+  "limitations": [
+    "语义身份验证、本体/适用性政策、可信实体目录仍未实现，诊断发布关闭",
+    "canonical_id 为 candidate-* 形式，语义政策未定前不等于已建立企业身份",
+    "未做真实多源并发人工编辑的端到端验收"
+  ]
+}

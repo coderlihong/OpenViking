@@ -1,0 +1,41 @@
+{
+  "change_id": "CR-012",
+  "date": "2026-10-05",
+  "spec_version": "0.11",
+  "type": "DOCUMENTATION_REVIEW_ONLY",
+  "validation": {
+    "status": "PASS",
+    "scope": "documentation consistency only, not product acceptance",
+    "version": "0.11",
+    "features": 15,
+    "tasks": 33,
+    "cross_acceptance_cases": 19,
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    }
+  },
+  "product_changes_this_round": true,
+  "product_acceptance_changed": false,
+  "product_baseline": "I035: 94 scoped tests PASS (wiki decompose/dispatch + wiki model section + config loader); I034 joint 1575 PASS/1 SKIP retained; real-model probe CONTRACT_PASS",
+  "fixes": [
+    "Fixed-source extractor changed from single whole-document call to decompose (heading-aligned sections + lexical kind shortlist) then dispatch (one bounded call per section)",
+    "Per-call prompt no longer carries raw schema package members; retains schema id/version/digest/declarations",
+    "Added dedicated wiki VLM config section with get_wiki_model() falling back to vlm",
+    "runtime_config model sections/hot-reloadable/optional sets include wiki; inline query_planner checks generalized to OPTIONAL_VLM_SECTIONS",
+    "Extractor version bumped wiki-fixed-source-extractor-v2 to invalidate stale resumes",
+    "KB-024/KB-028 evidence extended with I035"
+  ],
+  "sha256": {
+    "docs/spec/README.md": "cd72e72d1e8f12c61596d04a2d1f0296696229a63298c7057f5a4e9356966ed9",
+    "docs/spec/openviking-enterprise-kb-spec.md": "fae77174cbb287e379875eeb3050894e44973cc3c75a13056ed86f3ce9599ccb",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "34f69f6ed4bdbeda78878942572c11802865938c21a106eebb61edd8ed078c4b",
+    "docs/spec/openviking-enterprise-kb-review.md": "deaa72ed756608192aa8ef256bed0cc81e32dddb55727a1c05d9ac58804117bf",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "59e1631700ad15b65601d8ad120d0800c7ce4e603edcb157239a98436148ca01",
+    "docs/spec/openviking-enterprise-kb-backlog.md": "3bd2e9b9a2979bb0ff1c7899220aaa53840c206e27a081d8bf259ae87841b1f3",
+    "docs/spec/feature-status.json": "da44f03480dc0fcae0122a95dd22b3b431b1303c2af234f5ce0e20e47ae4d431",
+    "docs/spec/tools/check_spec_status.py": "076ac66d054ab82ef2542d9edaec9a53187241ede7dfeb3b53ba41c5e0c5ee72"
+  }
+}

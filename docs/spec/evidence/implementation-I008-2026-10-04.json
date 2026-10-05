@@ -1,0 +1,51 @@
+{
+  "run_id": "I008-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 326,
+    "new_batch_tests": 12,
+    "report": "tests-I008-batch.xml"
+  },
+  "verified": [
+    "Durable SQL multi-source membership, producer seal and all-child receipt barrier",
+    "One transaction publishes all planned text generations/content references while retaining unrelated sources",
+    "Any member failure, draft edit or newer attempt blocks whole batch",
+    "Actual URI reindex two-source success and invalid-table producer failure",
+    "Actual embedding consumers completing before producer seal cannot publish early",
+    "Recursive Semantic DAG and vectors-only ingestion share text batching with URI reindex",
+    "Shared DAG worker explicitly binds executor-specific batch and working-source context",
+    "Counter errors, queue requeue, cancellation abort pending text batches"
+  ],
+  "fixtures": [
+    "AGFS transport replaced by actual-disk test adapter",
+    "Embedder and vector DB use fixtures; no production semantic-quality claim",
+    "Shared worker binding tested through actual executor construction/_run_work with controlled node work"
+  ],
+  "scope_exclusions": [
+    "Directory L0/L1, image and BM25 joint publication",
+    "Directory layout/list/stat and first-ingest source visibility snapshot",
+    "Delete/move/copy manifest maintenance",
+    "Task ready/UI batch integration",
+    "Crash/orphan recovery, cross-host persistence and physical GC",
+    "Remote deployment/full-manual retrieval this turn",
+    "W1/W2 collection/schema API and complete four-FLOW acceptance"
+  ],
+  "file_sha256": {
+    "openviking/indexing/batch.py": "8bcaf15e93dfc6c7bb1693d3605bde451fb8063dba384bdb863fae6eae920cb1",
+    "openviking/indexing/publication.py": "90336544427f98b778d191dd600a8f602588b8bad90818e6a05562889396ce4a",
+    "openviking/indexing/enqueue.py": "5dfb734b1980c036280092ab232da8ce27ec209a64b61c09a6855f527d5feebb",
+    "openviking/storage/queuefs/semantic_dag.py": "633273c22eda87ec0c443c689cf81331f99ea9434b1514e9aae7da0bd14144bc",
+    "openviking/storage/queuefs/semantic_processor.py": "30e86be48b97259cfe5a3b9f28dcfca5d53f0741a3b4b494f4e887a6284e6f89",
+    "openviking/service/reindex_executor.py": "3208a2a95e467d8ff5bc4a1424113779379f1d28cbbf84875518a7afa201f6f6",
+    "openviking/utils/resource_processor.py": "05d78d0f2512339fce6aabe9b544882819b94d0a0f3c6fe1f5dca1f47cef6026",
+    "tests/enterprise_kb/test_batch_publication.py": "c7f2822c89018e9ffb1b51c807baef7dd97a136690beef2f900cbf00cd3ae6f2",
+    "docs/spec/evidence/tests-I008-batch.xml": "35c63fa29e0040abbda27350df7b4590c44ef932ccd085e329e26a3daae5e595",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "01e391048c67b6b4bb426e9930b4f38212f78b70ca32c3805b33e56f94284e08",
+    "docs/spec/README.md": "28dcd18e6124cc1d57cd8b36a143aeb48fb586f7ba676cab1d19b7051639e6fc",
+    "docs/spec/openviking-enterprise-kb-review.md": "72862e6ae133d6fe18d63fb645a174fba09e931b021c8334e5468f92dd846ef0",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "47d0f3d325031fd1b30637cea5ff4fbc450261d7cc3dcc0616eed6e2c4b97261",
+    "docs/spec/openviking-enterprise-kb-spec.md": "b3e2e2f53c6e4c485461d5a839e37965fdfd4ceebc046043f21e2c96179a1f43"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "task_id": "KB-021",
+  "title": "Frontend queue + API/SDK state consistency (F3)",
+  "date": "2026-10-04",
+  "status": "PARTIAL_IMPLEMENTED_HTTP_AND_FRONTEND_UNIT_VERIFIED",
+  "feature": "F3",
+  "acceptance_cases": ["TC-3.2", "TC-3.3", "TC-3.6", "TC-3.7"],
+  "implemented_items": [
+    "GET /api/v1/kb/jobs (new, additive) lists durable jobs for the caller with durable FIFO queue_position/queued_total per namespace, newest-first for the UI.",
+    "job_status projection on POST /ingestion-jobs (202), GET /jobs/{id} and POST /jobs/{id}/cancel adds phase (queued/parsing/written/indexing/ready/draft_ready/retry/failed/cancelled/unknown), task_id, namespace_id, document_id, revision, progress_known/processed_units/total_units (null unless a real pair exists), retryable, resume_granularity, alignment_status, structure_source, fallback_strategy, artifact_uri, trace_id, error, warnings, heartbeat. Existing durable fields and the 202/GET contract are preserved.",
+    "Empty queue never reported as ready: phase is derived only from durable state; 'written' is distinct from 'indexing' and 'ready'; ready is only ever the explicit durable state (job_complete still refuses to fabricate ready).",
+    "Frontend: web-studio/src/routes/tasks/-lib/durable-job.ts (types, normalize, fetch, queue-position/progress/fallback formatting, queue summary); -components/durable-jobs-panel.tsx wired into the tasks route; monitoring durable-queue-card.tsx + labels prop on queue-status-card.tsx wired into the monitoring queue tab.",
+    "Permission + trace: job listing filters to the caller account/principal and re-runs KBJobService.get ACL checks per job; trace_id surfaced for log correlation."
+  ],
+  "test_commands": [
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_kb_jobs_http.py --no-cov -q",
+      "result": "5 passed, 4 warnings",
+      "covers": "queued Nth-in-line + FIFO renumber, unknown progress, written/indexing/ready transitions, failed/retry/cancelled, fallback notice persistent, empty queue != ready, state survives authority store re-open, cross-principal invisibility"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_durable_jobs_http.py tests/enterprise_kb/test_wiki_ingestion_http.py --no-cov -q",
+      "result": "20 passed, 4 warnings",
+      "covers": "no regression to the existing durable-job and wiki-ingestion HTTP contract"
+    },
+    {
+      "command": "cd web-studio && node_modules/.bin/vitest run src/routes/tasks/-lib/durable-job.test.ts src/routes/tasks/route.test.tsx src/routes/monitoring",
+      "result": "9 files passed, 31 tests passed",
+      "covers": "durable job projection helpers and existing tasks/monitoring suites"
+    },
+    {
+      "command": "cd web-studio && node_modules/.bin/tsc --noEmit",
+      "result": "no errors in any touched/new frontend file; repo-wide pre-existing errors remain in unrelated files (gen/ov-client, settings, resources, retrieval, etc.) and in pre-existing unused-var warnings inside tasks/route.tsx"
+    }
+  ],
+  "files_touched": [
+    "openviking/server/routers/kb_jobs.py",
+    "tests/enterprise_kb/test_kb_jobs_http.py",
+    "web-studio/src/routes/tasks/-lib/durable-job.ts",
+    "web-studio/src/routes/tasks/-lib/durable-job.test.ts",
+    "web-studio/src/routes/tasks/-components/durable-jobs-panel.tsx",
+    "web-studio/src/routes/tasks/route.tsx",
+    "web-studio/src/routes/monitoring/-components/durable-queue-card.tsx",
+    "web-studio/src/routes/monitoring/-components/queue-status-card.tsx",
+    "web-studio/src/routes/monitoring/route.tsx"
+  ],
+  "not_run": [
+    "Full UI acceptance in a real browser (TC-3.6 C-layer): no browser/e2e run was executed, so visual rendering, live polling and permission-filtered rendering are NOT verified end-to-end.",
+    "Sync/async SDK wait-timeout reattach against a live worker is NOT_RUN; only the HTTP read path that a reattach would use is covered.",
+    "Real worker-driven written->indexing->ready transitions over a running parse backend are NOT_RUN; transitions were driven through the authority repository commands directly.",
+    "Multi-namespace fairness/priority scheduling under load (TC-3.7 I-layer) is NOT_RUN; only single-namespace FIFO ordering is asserted.",
+    "Cross-restart persistence was verified by re-opening the authority store in-process, not by restarting a real server process."
+  ],
+  "follow_ups": [
+    "openviking/indexing/jobs.py was read-only per footprint. The durable store has no queue-position query and no namespace-scoped count; the router computes positions from job_list. A dedicated bounded query (e.g. job_queue_state(account, namespace)) would avoid listing up to 1000 rows per status read.",
+    "KBJobService has no authorized list command; the router lists via repository.job_list then re-checks each job through KBJobService.get. A first-class service.list() would be cleaner and avoid the per-job ACL round trip.",
+    "job_status reads checkpoint/info keys (processed_units, total_units, alignment_status, structure_source, fallback_strategy, artifact_uri, resume_granularity, trace_id) that no producer currently writes for D1/D2 ingestion; the fields stay null/unknown until the executor populates them."
+  ],
+  "notes": [
+    "No other module was modified; openviking/indexing/jobs.py and openviking/service/* were read only.",
+    "The frontend durable client fails soft to an empty list on transport error so an unreachable surface is not rendered as a ready/empty queue."
+  ]
+}

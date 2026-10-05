@@ -1,0 +1,169 @@
+{
+  "checked_at": "2026-10-04T06:22:12.733978+00:00",
+  "root": "/home/t-wanghai/models/openviking-parsers",
+  "services": {
+    "teleocr": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "teleocr",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "teleocr",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    },
+    "logics": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "logics",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "logics",
+          "modes": [
+            "auto",
+            "layout"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    },
+    "mineru": {
+      "/health": {
+        "status": 200,
+        "body": {
+          "backend": "mineru",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "/v1/capabilities": {
+        "status": 200,
+        "body": {
+          "artifact_version": 1,
+          "backend": "mineru",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr",
+            "text"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    }
+  },
+  "files": {
+    "worker.py": "ed49f73c88b0607ab2a3ba4d2684b0c449447d99bda58c62ef8880d07bb855c5",
+    "model_artifact.py": "600bd3c3a4260c6eabe26629257e80e76a67a59860ba7d3cbacea1023971dd2b",
+    "serve.sh": "9b8e29c0af757721d8604e8954c7a18bcb202390f113e6894fe6845b5d727bd7"
+  },
+  "queue_counts": [
+    {
+      "backend": "logics",
+      "state": "completed",
+      "count": 1
+    },
+    {
+      "backend": "mineru",
+      "state": "cancelled",
+      "count": 1
+    },
+    {
+      "backend": "mineru",
+      "state": "completed",
+      "count": 3
+    },
+    {
+      "backend": "mineru",
+      "state": "failed",
+      "count": 4
+    },
+    {
+      "backend": "teleocr",
+      "state": "cancelled",
+      "count": 1
+    },
+    {
+      "backend": "teleocr",
+      "state": "completed",
+      "count": 1
+    },
+    {
+      "backend": "teleocr",
+      "state": "failed",
+      "count": 1
+    }
+  ],
+  "containers": [
+    {
+      "Names": "ov-parser-worker-mineru",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 6 hours",
+      "Ports": "127.0.0.1:9103->9100/tcp"
+    },
+    {
+      "Names": "ov-parser-mineru-engine",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 7 hours",
+      "Ports": "172.17.0.1:9110->9110/tcp"
+    },
+    {
+      "Names": "ov-parser-worker-logics",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 6 hours",
+      "Ports": "127.0.0.1:9102->9100/tcp"
+    },
+    {
+      "Names": "ov-parser-worker-teleocr",
+      "Image": "vllm/vllm-openai:v0.27.1",
+      "State": "running",
+      "Status": "Up 6 hours",
+      "Ports": "127.0.0.1:9101->9100/tcp"
+    }
+  ],
+  "disk": [
+    "Filesystem                   1B-blocks           Used    Available Use% Mounted on",
+    "01ae54a093feadb4-000001 11701621620736 11411514195968 290107424768  98% /home"
+  ],
+  "file_matches_local": {
+    "worker.py": true,
+    "model_artifact.py": true,
+    "serve.sh": true
+  },
+  "scope": "Read-only readiness/capabilities, queue counts, disk and deployed file hashes; not a new parsing or ingestion E2E",
+  "limitations": [
+    "health.ready_for_jobs checks dependency/weight files, not fresh inference or resident engine availability",
+    "model_verified is a historical artifact success marker, not current model quality",
+    "No queued/running jobs observed at this instant; not a process/job completion audit for other services",
+    "No storage unknown-write backend completion proof available in current VikingFS API"
+  ]
+}

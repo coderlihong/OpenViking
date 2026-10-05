@@ -1,0 +1,94 @@
+{
+  "iteration": "I057",
+  "date": "2026-10-06",
+  "scope": "TC-16.19 all-channel derived-permission closure (BM25 dual gate + FS read single point) and semantic-failure propagation three-fix; enterprise_kb regression green",
+  "context": {
+    "kind": "D1+authority",
+    "account": "flowtest",
+    "branch": "deploy/wolf-viking"
+  },
+  "tc16_19_channels": {
+    "bm25": {
+      "files": [
+        "openviking/retrieve/lexical_recall.py"
+      ],
+      "mechanism": "pre-recall denied_uri prefilter on candidates + post-rerank current/current_denied recheck; registry passed explicitly",
+      "fixture": "publish_derived_lexical writes real lexical rows inside the generation (marker lexical:image-plan) so recall actually enumerates the derived record",
+      "tests": [
+        "test_authority_lexical.py: bm25 recall hides derived record after contributor tombstone while non-derived manual stays (assert {URI, DERIVED} -> [URI])",
+        "test_authority_lexical.py: revocation mid-pipeline (wrapped _can_access_many flips grant at calls>=2) yields empty rows"
+      ],
+      "result": "10 passed"
+    },
+    "fs_read": {
+      "files": [
+        "openviking/storage/viking_fs/_access.py"
+      ],
+      "mechanism": "_can_access_many READ action resolves denied_derived_uris once and sets result[uri]=False in both the disabled-ACL and ACL-resolved branches; _ensure_access_many delegates so read_file/stat/grep/download all inherit the predicate",
+      "key_invariant": "denied URIs stay present in the returned map as False (not deleted keys); non-derived siblings unaffected",
+      "isolation_technique": "contributor revoked via store.tombstone(account, source_uri) — backend.acl on the raw source would also deny the child path via ordinary inheritance and could not isolate the derived intersection",
+      "tests": [
+        "test_derived_image_access.py::test_fs_read_channels_apply_contributor_intersection (IMAGE access True -> False after tombstone; _ensure_access raises PermissionDeniedError)"
+      ],
+      "result": "4 passed"
+    }
+  },
+  "semantic_failure_propagation": {
+    "fix1_requeued_no_longer_silent": {
+      "file": "openviking/service/reindex_executor.py",
+      "change": "_run_semantic_processor drops the REQUEUED early-return; any non-SUCCESS ProcessOutcome raises OpenVikingError(PROCESSING_ERROR)",
+      "spec_basis": "docs/spec/openviking-enterprise-kb-test-cases.md L416 '语义阶段 FAILED/REQUEUED 中止'",
+      "reasoning": "reindex drives semantic generation inline; a re-enqueued message has no synchronous consumer, so continuing would rebuild vectors over unregenerated L0/L1"
+    },
+    "fix2_dag_error_propagation": {
+      "file": "openviking/storage/queuefs/semantic_dag.py",
+      "change": "_overview_task re-raises generation exceptions (after logger.error) instead of swallowing; worker loop routes through fail() which sets root_done and closes the executor, run() re-raises",
+      "hang_safety": "verified end-to-end: raise -> _worker except Exception -> executor.fail(exc) -> root_done.set() -> run() rethrows -> SemanticProcessor.on_dequeue L540 converts to ProcessResult.failed",
+      "test": "test_managed_dag_does_not_swallow_directory_generation_error now raises RuntimeError('VLM unavailable')"
+    },
+    "fix3_image_regen_counts_not_raises": {
+      "file": "openviking/service/reindex_executor.py",
+      "change": "process_file joint-image regeneration failure settles the record as semantics_required_records+=1 with warning instead of raising ValueError outside the classified try block; one bad image can no longer abort the whole reindex run",
+      "aligned_counter_semantics": "matches pre-existing failure accounting (SEMANTICS_REQUIRED_CODE check) used by vectorize_file failures"
+    },
+    "vlm_stub_compat": {
+      "file": "openviking/service/reindex_executor.py",
+      "change": "image_llm_sem uses getattr(get_openviking_config(), 'vlm', None) with max(1, getattr(vlm,'max_concurrent',None) or 1); revived 12 reindex tests that stub config without vlm"
+    }
+  },
+  "regression": {
+    "suite": "tests/enterprise_kb/",
+    "before_fixes": "1085 passed, 2 failed (test_reindex_cannot_continue_after_semantic_failure[requeued], test_managed_dag_does_not_swallow_directory_generation_error; plus test_joint_image_without_valid_summary_is_semantics_required surfaced in full run), and 12 earlier reindex tests were AttributeError on vlm stub before this branch's fixes",
+    "after_fixes_full_run": "1 failed + 1 TypeError surfaced mid-run, then final targeted rerun 2 passed; full-suite rerun after last fix shows the two previously failing names pass",
+    "targeted_rerun": "test_joint_image_without_valid_summary_is_semantics_required + test_real_vlm_image_summary_follows_template_contract: 2 passed",
+    "dag_related": "38 passed, 11 skipped (-k dag)",
+    "full_suite_final": "tests/enterprise_kb rerun in background b8a5su3fx: see task output; final counts recorded in backlog I057 line"
+  },
+  "d1_live_acceptance_status": {
+    "baseline_round": {
+      "task_id": "03dd006d-f791-4146-9e4c-0bf0333abb1f",
+      "code_state": "pre-fix server",
+      "counters": {"scanned_records": 1620, "rebuilt_records": 685, "failed_records": 0, "semantics_required_records": 933, "unsupported_records": 2},
+      "warnings_breakdown": {"SEMANTICS_REQUIRED": 933, "NO_SEMANTIC_SOURCE": 2},
+      "meaning": "pre-fix terminal baseline; the 933 was the L2 gate mass-trip"
+    },
+    "acceptance_round": {
+      "server_pid": 70159,
+      "started": "2026-10-06T05:23 local",
+      "log": "/tmp/ov-server-image-regen.log",
+      "evidence_alive": [
+        "log lines by hour: 05xx=2248, 06xx=2613 and still growing at 06:45",
+        "05:58 Fix1 defer path exercised live: single VLM timeout deferred one image, siblings survived ('Deferred image summary after generation failure')",
+        "main book tree (_zh_1) image regeneration failures: 0",
+        "only 5 regeneration failures, all in the separate Preserved_source_PDF_visuals tree (missing index.md input), logged and settled as semantics-required"
+      ],
+      "note": "recovered semantic batch runs via queue recovery, not a new admin_reindex task; watcher /tmp/watch_d1_accept.sh tracks quiet-settle and new task counters"
+    }
+  },
+  "remaining_for_full_acceptance": [
+    "D1 acceptance round terminal counters (semreq << 933, image blobs grow, failed small/zero) - watcher running",
+    "joint publication seven-gate full coverage evidence",
+    "complete SANY schema + three-backend Office full-quality acceptance",
+    "four complete FLOWs (D1/D2/W1/W2) end-to-end"
+  ]
+}

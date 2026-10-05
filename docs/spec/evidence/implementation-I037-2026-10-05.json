@@ -1,0 +1,65 @@
+{
+  "id": "I037",
+  "date": "2026-10-05",
+  "spec_version": "0.13",
+  "recorded_at_utc": "2026-10-05T01:45:00+00:00",
+  "status": "SCOPED_PASS",
+  "change": "目标第3项（语义分层须在 reindex 中也能重建，否则无法利用 Viking agent 定位特性）此前无独立证据；本轮对 D2 reindex 的语义分层契约做定向验证并补录 I037，把该能力挂到 KB-020/F11。",
+  "task": "KB-020",
+  "features": ["F11", "F9"],
+  "objective_item": 3,
+  "implementation": {
+    "module": "openviking/service/reindex_executor.py",
+    "modes": {
+      "constant": "ENTERPRISE_REINDEX_MODES = frozenset({\"vectors_only\", \"semantic_and_vectors\"})",
+      "vectors_only": "只重建 chunk/BM25/图片向量，绝不重写已发布的目录 L0/L1（writes_semantics=False, write_directory_levels=False, regenerate_image_summaries=False）。",
+      "semantic_and_vectors": "先重新生成图片摘要与目录 L0/L1（自底向上祖先刷新），再建对应向量（writes_semantics=True, write_directory_levels=True, regenerate_image_summaries=True）。"
+    },
+    "effective_mode_config": "ReindexExecutor.effective_mode_config(mode) 显式区分两模式的写入语义；非法模式抛 InvalidArgumentError。",
+    "semantic_layering": "目录层 L0(.abstract.md)/L1(.overview.md) 通过 SemanticProcessor/SemanticMsg 重建；祖先语义自底向上传播，叶子失效传播祖先；递归模式不重复刷新祖先。",
+    "planned_semantic_levels": "dry_run 预览按计划目录数给出 planned_semantic_levels，语义模式计数为 2 * 目录数（L0+L1），vectors_only 为 0。",
+    "joint_image_guard": "两模式均不得把联合图片记录降级为纯文本摘要向量；缺当前有效图片摘要时返回 SEMANTICS_REQUIRED，绝不静默退化。",
+    "no_parser_no_resplit": "原 MD/目录不被改写，parser 调用 0 次，不读 _toc.json 重切章节；与 D1 共享同一 IndexPlan。"
+  },
+  "scoped_tests": {
+    "command": "pytest tests/enterprise_kb/test_reindex_contract.py",
+    "tests": 17,
+    "passed": 17,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "report": "reindex-semantic-layering-I037-2026-10-05.xml",
+    "semantic_layering_tests": [
+      "test_effective_mode_config_distinguishes_two_modes",
+      "test_vectors_only_does_not_touch_published_directory_levels",
+      "test_ancestor_directories_stay_inside_domain",
+      "test_semantic_mode_refreshes_ancestors_bottom_up",
+      "test_recursive_semantic_mode_does_not_double_refresh_ancestors",
+      "test_dry_run_preview_counts_directory_levels_semantic_mode",
+      "test_dry_run_preview_writes_nothing_vectors_only"
+    ],
+    "shared_contract_tests": [
+      "test_reindex_markdown_zero_parser_calls_and_no_toc_resplit",
+      "test_dry_run_does_not_rewrite_original_markdown",
+      "test_joint_image_without_valid_summary_is_semantics_required",
+      "test_joint_image_with_fresh_summary_keeps_joint_input",
+      "test_run_result_surfaces_semantics_required_code",
+      "test_authorized_business_writer_can_reindex_resource_domain",
+      "test_reindex_authorization_rejects_hidden_actor_peer_view",
+      "test_execute_rejects_unauthorized_user_resource_reindex",
+      "test_execute_allows_admin_resource_reindex",
+      "test_legacy_prune_orphans_dry_run_contract_preserved"
+    ]
+  },
+  "assertions": [
+    "result[\"planned_semantic_levels\"] == 2 (semantic_and_vectors, single directory)",
+    "published directory L0/L1 remain readable and unchanged under vectors_only",
+    "semantic_and_vectors refreshes ancestors bottom-up without double refresh",
+    "joint image record without a valid summary -> SEMANTICS_REQUIRED (no text fallback)",
+    "reindex markdown: parser called 0 times, no _toc.json resplit"
+  ],
+  "limitations": [
+    "完整 FLOW（真实后端、真实 VLM 摘要质量、跨空间检索）仍 NOT_RUN。",
+    "本条只证明 reindex 语义分层重建契约与两模式差异，不代表 D2 端到端产品验收。"
+  ]
+}

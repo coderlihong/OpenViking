@@ -1,0 +1,64 @@
+{
+  "task": "KB-016",
+  "date": "2026-10-04",
+  "status": "PARTIAL",
+  "feature": "F6",
+  "complete_acceptance": "NOT_RUN",
+  "implemented": [
+    "openviking/indexing/lexical.py: unified lexical provider with first-version local_fts5 (SQLite FTS5 BM25) backend; native provider explicitly rejected via provider_for() for non-certified deployments",
+    "Version-locked tokenizer (TOKENIZER_VERSION=zh-lexical-v1) applied identically to indexing and querying: CJK unigrams+bigrams, model-number preservation/expansion (SY215-C -> sy215-c, sy215, sy215c), DTC preservation (P0087), latin word tokens with -/_/ joins",
+    "encode_query() builds a conjunctive, per-token-quoted FTS5 MATCH expression; empty token streams are rejected instead of matching everything",
+    "FTS5 external-content index (lexical_rows + lexical_fts) with INSERT/DELETE/UPDATE triggers keeping the inverted index consistent with derived rows; only derived content is stored (content_sha for audit)",
+    "Index organised by account/namespace/document_id/index_generation with a scope index; LexicalIndex.generations() and drop() operate on that scope",
+    "Snapshot/authorization scoping resolved to rowids BEFORE ranking (scoped_rowids) for document_ids, index_generation, authorized_uris and content_kind; empty scope short-circuits to zero candidates rather than over-fetch-then-discard",
+    "Score direction normalized in the adapter layer: FTS5 bm25() lower-is-better is negated so higher is better; raw score retained in score_components.lexical_raw; score_normalized scaled to (0,1] by best-hit ratio; stable ordering by (score desc, rowid asc)",
+    "Portable BM25 fallback (okapi, k1=1.2 b=0.75) used only when SQLite lacks FTS5; FTS5 verified available in this environment",
+    "Index builds from child text (entries_from_chunks over chunk_fields-shaped records) AND image summaries (entries_from_image_records using the image.py 'summary' field), content_kind=text|image_summary",
+    "Generation-based publication participation: lexical_child_id()/lexical_receipt() produce a deterministic 'lexical:<sha256>' receipt child that callers can add to PublicationStore.begin(children=...) and acknowledge() only after the lexical write is durable",
+    "provider_for()/index_path() selection helpers; lexical index is an adapter component, not a second user-facing search API"
+  ],
+  "files_touched": [
+    "openviking/indexing/lexical.py (NEW)",
+    "tests/enterprise_kb/test_lexical_bm25.py (NEW)",
+    "docs/spec/evidence/parallel3-KB-016-2026-10-04.json (NEW)"
+  ],
+  "validation": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_lexical_bm25.py --no-cov -q",
+    "passed": 16,
+    "failed": 0,
+    "new_tests": 16,
+    "duration_seconds": 0.11,
+    "fts5_probe": ".venv/bin/python -c \"import sqlite3; c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(x)'); print('fts5 ok')\" -> fts5 ok",
+    "sanity_untouched": ".venv/bin/python -m pytest tests/enterprise_kb/test_publication.py --no-cov -q -> 10 passed (no regression to an unmodified module)",
+    "real_components": [
+      "Real SQLite FTS5 virtual table with bm25() scoring and external-content triggers",
+      "Real PublicationStore receipt gating (child set + acknowledge) over a real SQLite database"
+    ],
+    "substitutes": [
+      "Test-local tmp_path SQLite file (no coordinator authority socket)",
+      "chunk_fields-shaped dicts via SimpleNamespace plan instead of a full IndexPlan/embedding config"
+    ],
+    "warnings": "4 pre-existing Pydantic deprecation warnings",
+    "test_coverage_map": {
+      "TC-6.1": "dense-disabled Chinese/model/DTC recall via real BM25; lexical score + index version present; module has no dense/sparse/retrieve imports",
+      "TC-6.2": "lexical recall path available for later RRF fusion; only precondition (recall) verified here, fusion is KB-017",
+      "TC-16.8": "tokenizer/index version locked; namespace/document_id/index_generation scoping; authorization filter before ranking; lexical receipt gates generation publication"
+    }
+  },
+  "not_run": [
+    "native provider: no contract-tested deployment exists; provider_for('native') intentionally raises",
+    "Real service integration: no HTTP/CLI/find-search wiring, no queue consumer actually calls LexicalIndex.build, no coordinated-authority deployment of the lexical store",
+    "PublicationStore hook: lexical receipt id is produced and proven usable via acknowledge(), but openviking/indexing/publication.py was NOT modified and no producer currently adds the lexical child to its begin() child set (follow-up)",
+    "Image summary ingestion end-to-end: entries_from_image_records is unit-tested but no real VLM/enqueue_image_plan path feeds it",
+    "RRF fusion, rerank, MMR and candidate budgets: KB-017 (not in scope)",
+    "Service-level lexical service for multi-worker consistency: no shared lexical service process; index_path() is per-namespace file only",
+    "Frozen evaluation set / Recall/NDCG ablation (TC-6.7) and performance/tokenizer baseline thresholds",
+    "Portable BM25 fallback not exercised against a real FTS5-less SQLite build (only via forced internal flag)"
+  ],
+  "acceptance_limits": {
+    "TC-6.1": "PARTIAL, real FTS5 BM25 recall of Chinese/model/DTC verified in-process with dense disabled; no service-level search API or trace emission verified",
+    "TC-6.2": "NOT_RUN for fusion; lexical recall precondition only",
+    "TC-16.8": "PARTIAL, receipt gating proven against real PublicationStore, but no producer hook and no coordinated-authority deployment",
+    "features_and_flows": "No Feature or complete FLOW acceptance promoted; F6 remains PARTIAL"
+  }
+}

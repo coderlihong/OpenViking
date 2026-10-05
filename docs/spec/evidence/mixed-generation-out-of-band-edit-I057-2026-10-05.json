@@ -1,0 +1,32 @@
+{
+  "round": "I057",
+  "date": "2026-10-06",
+  "feature": "F2/F4/F5/F11/F13 (KB-006 joint publication gates)",
+  "criterion": "KB-006 completion line: 故障和外部编辑不出现混合代",
+  "what": "Mixed-generation out-of-band edit coverage: an out-of-band edit landing after member receipts are complete but before the joint publication transaction (seal_batch) must fail the batch so the job ready decision rejects with PUBLICATION_GATE_REQUIRED and the job stays resumable; a replacement arriving after the joint transaction keeps serving the published tree (替换期间公开旧树).",
+  "mechanism_chain_verified": {
+    "1_batch_invalidation": "PublicationStore._invalid_reason (openviking/indexing/publication.py L400-459) checks _assert_not_writing (source_writes fence), desired pointer supersession, drafts epoch/sha via source_ref.draft_epoch binding; _publish_batch_if_complete (L500-520) fails the batch on any reason.",
+    "2_ready_gate": "jobs.py _gate_observation reads committed batch state; failed batch -> PUBLICATION_GATE_REQUIRED in job_complete ready path (L437-457).",
+    "3_recoverability": "job stays 'running' after the rejected ready attempt."
+  },
+  "tests_added": [
+    "tests/enterprise_kb/test_durable_jobs.py::test_ready_gate_rejects_out_of_band_edits_before_joint_publication — parametrized over superseded / draft-mutation / inflight-write; asserts seal_batch returns False, batch state 'failed', PUBLICATION_GATE_REQUIRED raised, job state 'running'",
+    "tests/enterprise_kb/test_durable_jobs.py::test_ready_keeps_published_tree_serving_during_out_of_band_replacement — positive: published batch + later desired-pointer move still completes ready"
+  ],
+  "results": {
+    "new_tests": "2 passed",
+    "file_regression": "tests/enterprise_kb/test_durable_jobs.py 19 passed",
+    "adjacent_regression": "test_batch_publication.py + test_kb_jobs_http.py + test_source_write_fence.py 28 passed",
+    "final_full_enterprise_kb_regression_baseline": "background task baordmpm7 exit 0 (run before this test addition)"
+  },
+  "notes": [
+    "Publish-time invalidation for these three edit vectors was already covered by tests/enterprise_kb/test_batch_publication.py::test_any_member_invalidates_batch_and_keeps_other_old_chapters and registry_gc.py generation_write_begin; this closes the previously untested end-to-end path from out-of-band edit to the durable-jobs ready decision.",
+    "Backlog I052 line updated: 混合代外部编辑场景 moved from 仍待 to closed with I057补验 note."
+  ],
+  "remaining": [
+    "全通道 FLOW 真实后端验收 (FLOW-D1 in progress: task #23/#33)",
+    "完整三一 schema 发布门",
+    "三模型与 Office 完整质量验收 (KB-010 整册×3后端)",
+    "TC-16.19 live evidence beyond unit fixtures"
+  ]
+}

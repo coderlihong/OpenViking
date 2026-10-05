@@ -1,0 +1,8 @@
+{
+  "status": "NOT_RUN",
+  "population": "gold",
+  "split": "test",
+  "sample_count": 0,
+  "ci95": null,
+  "reason": "No eligible samples; no quality/performance claim supported"
+}

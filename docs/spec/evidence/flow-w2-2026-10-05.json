@@ -1,0 +1,56 @@
+{
+  "id": "FLOW-W2-2026-10-05",
+  "flow": "FLOW-W2",
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "deploy/wolf-viking (dirty: secondary-dev changes present)",
+  "scope": "Wiki URI build (W2): select an existing Markdown Viking URI under a registered raw namespace -> prepare plan -> execute extraction -> draft_ready. Runs against the real deployment with the real remote extraction model.",
+  "harness": "tests/enterprise_kb/flows/flow_w2.py",
+  "environment": {
+    "server": "real HTTP server (openviking_cli.server_bootstrap) at http://127.0.0.1:1933, version 0.4.15.dev392, auth_mode=api_key",
+    "client": "openviking_sdk AsyncHTTPClient, account=flowtest user=flowadmin",
+    "namespace": "sany-wiki root=viking://resources/wiki/sany (restricted ACL, manage grant to user:flowadmin); sany-raw root=viking://resources/raw; export sany-raw -> sany-wiki allowed for user:flowadmin",
+    "schema": "business v1 digest 5f954f13e60810b453a7efc57e381c0e38342453fb88e78e0a8d58d76bd4ae35 (capability_state=structural_ready)",
+    "collection": "sany target=viking://resources/wiki/sany raw_prefix=viking://resources/raw",
+    "extraction_model": "svc/deepseek-v4-flash @ http://api.ai.rootcloud.info/v1 (wiki profile)",
+    "chunking": "embedding.chunking enabled, tokenizer Qwen3-VL-Embedding-8B (sha256 def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a), publication_path=/Users/wh/.openviking/state/publication.db, publish_content=true, lexical_enabled=true"
+  },
+  "run": {
+    "source_uri": "viking://resources/raw/manual.md",
+    "plan": {"build_id": "4ae43e16d34545969225d4545e099650", "state": "prepared"},
+    "job": {"job_id": "0280f8fb35714cc3bb81fc6660ae072a", "kind": "W2", "final_state": "draft_ready", "error": null},
+    "draft": {
+      "candidate_count": 1,
+      "candidate_uris": ["viking://resources/wiki/sany/Thing/SY215C 维修手册.md"]
+    },
+    "assertions": {
+      "assert_plan_prepared": true,
+      "assert_draft_ready": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_evidence_verbatim": true,
+      "assert_draft_under_target": true
+    },
+    "passed": true
+  },
+  "criteria_met": [
+    "an existing Markdown Viking URI under the raw namespace prepares an immutable source plan",
+    "the W2 extraction job reaches the terminal draft_ready state with no error",
+    "the draft carries an entity candidate whose evidence source_uri is the original Viking URI",
+    "every evidence quote appears verbatim in the source Markdown body",
+    "every candidate URI is written under the collection target tree (viking://resources/wiki/sany/Thing/...)",
+    "explicit source->target export authorization (sany-raw -> sany-wiki) is enforced before source use"
+  ],
+  "criteria_not_yet_covered": [
+    "recursive directory source (W2 executed non-recursively on one file)",
+    "publication of accepted draft nodes into the Viking filesystem (draft_ready is the terminal stage for this run)",
+    "strict_diagnostic profile (executed with profile=draft)",
+    "W1/W2 common-contract comparison (FLOW-COMMON-1)"
+  ],
+  "verdict": "FLOW-W2 PARTIAL: the single-Markdown URI -> prepare -> execute -> draft_ready path passes on the real deployment with the real remote extraction model. Recursive directory source, accepted-draft publication and the strict profile remain NOT_RUN.",
+  "ledger_impact": {
+    "FLOW-W2": "PARTIAL (was NOT_RUN)",
+    "KB-032": "OPEN (unchanged; four-FLOW product acceptance still incomplete)"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "evidence_id": "parallel3-KB-007-2026-10-04",
+  "task": "KB-007",
+  "title": "删除传播与物理回收（tombstone + GC）",
+  "feature": "F3",
+  "status": "PARTIAL",
+  "feature_acceptance": "NOT_RUN",
+  "date": "2026-10-04",
+  "scope": "Immediate tombstone filtering on read/recall plus reference-counted blob GC, unit-level; authority-mode command boundary repaired",
+  "files_changed": [
+    "openviking/service/deletion.py",
+    "openviking/storage/viking_fs/_ops.py",
+    "openviking/indexing/registry_authority.py",
+    "tests/enterprise_kb/test_deletion_gc.py"
+  ],
+  "implementation": {
+    "tombstone_on_read": [
+      "VikingFS._ensure_not_tombstoned(uri, ctx) refuses reads of a tombstoned source or any ancestor directory with NotFoundError before physical cleanup runs",
+      "read_file / read / glob paths call the guard, so recall and read-back stop returning deleted content immediately",
+      "VikingFS._tombstone_uri writes the tombstone before touching storage so a concurrent read cannot observe the source between fence and delete",
+      "remote glob excludes tombstoned URIs before the remote page is fetched (must_not DSL), not after"
+    ],
+    "deletion_propagation": [
+      "DeletionService._tombstone_scope marks every published source in scope (account, optionally user-scoped) as deleted first",
+      "DeletionService._collect_garbage then plans and reclaims reference-counted blobs"
+    ],
+    "physical_gc": [
+      "PublicationStore.plan_gc marks reclaimable blobs: retired generations and failed/orphan attempts, bounded by grace_seconds",
+      "PublicationStore.reclaim releases blobs whose references and retention window are satisfied; caller-supplied delete callback performs the physical rm",
+      "Blob path /local/{account}/_system/index_blobs/{sha}.bin"
+    ],
+    "authority_boundary": [
+      "AuthorityRepository previously proxied only the COMMANDS tuple, which omitted the tombstone surface",
+      "Added tombstone, clear_tombstone, tombstones, is_tombstoned, sources to COMMANDS so authority-mode workers reach the same repository commands",
+      "reclaim is NOT exposed over the socket: its delete callback cannot cross the frame boundary; GC physical deletion stays authority-local by design"
+    ]
+  },
+  "verification": {
+    "command": "cd /Users/wh/code/OpenViking && .venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/test_deletion_gc.py tests/enterprise_kb/test_authority_wiki_catalog.py tests/enterprise_kb/test_registry_authority.py tests/enterprise_kb/test_image_cache.py",
+    "passed": 46,
+    "failed": 0,
+    "per_file": {
+      "tests/enterprise_kb/test_deletion_gc.py": 11,
+      "tests/enterprise_kb/test_authority_wiki_catalog.py": 15,
+      "tests/enterprise_kb/test_registry_authority.py": 7,
+      "tests/enterprise_kb/test_image_cache.py": 13
+    },
+    "regression_note": "Before the COMMANDS fix, 6 authority_wiki_catalog + 1 registry_authority tests failed with AttributeError: 'AuthorityRepository' object has no attribute 'is_tombstoned' at viking_fs/_ops.py:152"
+  },
+  "hashes": {
+    "openviking/service/deletion.py": "e96378676bcc02a84cee72e95056a6001b7d5f9fc9e910bffabf6e3ce5e9123c",
+    "openviking/storage/viking_fs/_ops.py": "9226e61ce2715874c9387792a88996bb5e326e7c03e14c69b79c040134769c62",
+    "openviking/indexing/registry_authority.py": "ef6107fdeb99b6623343dfd48c1e0690f9266a9f9db7455fe26e363200282867",
+    "tests/enterprise_kb/test_deletion_gc.py": "b3b6273de804e836e0a4e8624628a0b9b8c4dbf6e557a7c795ea30b62a7f30bc"
+  },
+  "test_case_mapping": {
+    "TC-3.4": [
+      "test_tombstoned_source_is_refused_on_read: tombstoned source raises NotFoundError before physical delete",
+      "test_tombstone_scope_marks_published_sources: DeletionService._tombstone_scope marks all in-scope published sources",
+      "test_glob_excludes_tombstoned_uri: remote glob drops tombstoned URIs before paging"
+    ],
+    "TC-3.5": [
+      "test_plan_gc_marks_retired_generation / test_reclaim_releases_unreferenced_blob",
+      "test_retention_window_keeps_recent_blob / test_retention_zero_releases_immediately",
+      "test_active_reference_is_protected / test_pending_and_retry_attempts_are_protected",
+      "test_failed_unregistered_attempt_is_reclaimed"
+    ]
+  },
+  "NOT_RUN": [
+    "Real multi-process authority worker + socket deletion round-trip (only in-process repository and command-proxy assertions)",
+    "Physical blob GC against a real remote AGFS object store (local disk fixture only)",
+    "Wiki-reference protection under concurrent publish during deletion (only sequential unit coverage)",
+    "Full F3 / M2 gate acceptance; feature_acceptance remains NOT_RUN"
+  ]
+}

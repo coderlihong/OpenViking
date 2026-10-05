@@ -1,0 +1,59 @@
+{
+  "report_version": 1,
+  "date": "2026-10-05",
+  "recorded_at_utc": "2026-10-04T23:39:29.019386+00:00",
+  "task": "KB-008",
+  "status": "PARTIAL",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14"
+  },
+  "implementation": [
+    "Operator-only controlled local offline registry+backend operation/data+identity/model config+vector/ACL bundle with complete file hash inventory",
+    "Explicit trusted joint quiescence context required; live authority lifetime ownership, registry transaction and backend operation lock exclude source mutation",
+    "Current publication/Wiki/job immutable source refs must have matching actual bytes; source writes/parse slot/backend pending operations and unmaterialized upload jobs fail closed",
+    "Shared temporary upload originals excluded, no local temporary-upload directory included, no additional permanent raw source retention",
+    "Pre-copy byte/file estimation, bounded inventory/config/manifest, copied-byte verification, file/directory fsync, atomic final directory and cleanup on failure",
+    "Restore checks out-of-band trusted manifest digest, exact inventory and required dependency/validation contract, SQLite integrity and backend identity",
+    "Restored registry is quarantined and RESTORE_PENDING marker blocks PublicationStore/RegistryAuthority startup; ready is always false pending engine/ACL/model/publication validation"
+  ],
+  "verification": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_backup_restore.py tests/enterprise_kb/test_write_recovery.py tests/enterprise_kb/test_source_write_fence.py tests/enterprise_kb/test_registry_authority.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel3-backup-recovery-integration-2026-10-05.xml",
+    "junit_xml": "docs/spec/evidence/parallel3-backup-recovery-integration-2026-10-05.xml",
+    "tests": 45,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "result": "PASS",
+    "backup_restore_tests": 14,
+    "recovery_and_previous_fence_authority_tests": 31
+  },
+  "evidence_scope": [
+    "Actual SQLite registry, persisted namespace and durable D2 job state copied and read from quarantine",
+    "Actual controlled backend operation identity and file bytes restored",
+    "PublicationStore and authority startup refused while RESTORE_PENDING exists",
+    "Missing dependency, bad bytes, extra file, symlink, corrupted or weakened manifest, upload-input dependency, backend pending and unknown source write all rejected",
+    "Immutable Wiki schema blob must be present and match real bytes",
+    "Copy/restore quota failures and component mutation after quiescence preflight leave no published/staged result",
+    "Shared raw upload omitted without deleting the live original",
+    "Independent writer is immediately excluded by registry lifetime ownership during snapshot; explicit operator resume after snapshot allows a new write while restored snapshot preserves prior version"
+  ],
+  "limitations": [
+    "Only controlled local backend supported; generic and remote AGFS lack coordinated snapshot adapter and are refused",
+    "Operator quiescence integration for production identity/vector/ACL/config services remains required",
+    "Vector/ACL and identity contents in tests are simulated JSON fixtures, not a production vendor engine or enterprise identity restore",
+    "Automatic validation/activation intentionally not implemented; restoration remains quarantined ready=false",
+    "Gold authorization and retrieval consistency across restore, complete production disaster recovery acceptance, full FLOWs and multi-coordinator failover not verified",
+    "Office scratch/OOM/full-disk/model token/retry/queue/derived-version quotas outside this module remain unfinished",
+    "Unmaterialized D1/W1 jobs requiring temporary inputs cannot be exported with this bundle"
+  ],
+  "source_sha256": {
+    "openviking/indexing/backup_restore.py": "71383bd906b530de54bef614ce5769174472882e4307d964e74b7b0ccdbc118b",
+    "tests/enterprise_kb/test_backup_restore.py": "33dd4dcc64d3d1d0363e10b91ba24fdd49c171fdcbd768053b00868f8d1efa88",
+    "docs/deployment/backup-restore.md": "9bdd2a5e75c6226b5e9c8dd02aec26558d33fa486dca2a016e6e285dc28c513e",
+    "openviking/indexing/publication.py": "21a348c27f480899fd9c56f1815349f1049fbd109a6fe11166d784c0ef0639a5"
+  },
+  "artifacts_sha256": {
+    "docs/spec/evidence/parallel3-backup-recovery-integration-2026-10-05.xml": "c4b3660ad3a3b3aae9db85a50758f9ec5707036f15f93f69ab740b517beec185"
+  }
+}

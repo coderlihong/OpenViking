@@ -1,0 +1,90 @@
+{
+  "id": "I034",
+  "date": "2026-10-05",
+  "spec_version": "0.10",
+  "recorded_at_utc": "2026-10-04T23:45:36.350904+00:00",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14"
+  },
+  "regression": {
+    "tests": 1576,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 1575,
+    "report": "integration-final-I034-2026-10-05.xml"
+  },
+  "initial_regression": {
+    "tests": 1572,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 1567,
+    "report": "integration-I034-2026-10-05.xml"
+  },
+  "command_report": "integration-final-I034-command.json",
+  "frontend": {
+    "tests": 356,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 356,
+    "report": "frontend-full-repair-I034-2026-10-05.xml",
+    "typescript": "PASS",
+    "production_build": "PASS",
+    "full_browser_flow": "NOT_RUN",
+    "test_command": "npm test -- --maxWorkers=2 --reporter=default --reporter=junit"
+  },
+  "targeted_wiki_runtime": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 5,
+    "report": "wiki-terminal-cas-I034-2026-10-05.xml"
+  },
+  "targeted_lexical": {
+    "tests": 47,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 47,
+    "report": "authority-lexical-final-I034-2026-10-05.xml"
+  },
+  "real_model_probe": "wiki-extraction-real-model-2026-10-05.json",
+  "office_container": "office-completion-2026-10-05.json",
+  "independent_reports": [
+    "parallel3-write-recovery-2026-10-05.json",
+    "parallel3-backup-restore-2026-10-05.json",
+    "parallel3-wiki-extraction-2026-10-05.json"
+  ],
+  "acceptance": {
+    "features": "F1–F15 NOT_RUN",
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    },
+    "full_repository": "NOT_RUN",
+    "human_gold": "0; user confirmed none currently available",
+    "task_promotions": [
+      "KB-008 OPEN→PARTIAL",
+      "KB-024 OPEN→PARTIAL"
+    ],
+    "done_promotions": []
+  },
+  "limitations": [
+    "Text authority BM25 only; image/meta/physical GC and corpus performance pending",
+    "Office Docker CLI six synthetic formats; remote worker transport/fullFLOW/gold pending",
+    "Controlled recovery/offline quarantine only; ordinary AGFS and production vendor identity/vector/ACL restore not validated",
+    "Wiki private candidates only; 118 policy instances uncompiled, semantic entailment/identity/closed edges/published knowledge pending",
+    "Actual parser/storage/identity fixtures remain in HTTP-runtime tests; real model probe is synthetic, not enterprise quality evidence",
+    "Known GC proof/reachability gaps under next implementation; scoped tests do not certify complete lifecycle",
+    "First broad regression contract failures retained; final rerun includes newly added test cases"
+  ],
+  "worktree_manifest": "worktree-I034-sha256.json",
+  "worktree_manifest_sha256": "f6eaa8b124f0eaa85cfe8fa4f72cd84d0f3682aa63edf1174996e7980a3fd1df"
+}

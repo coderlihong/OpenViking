@@ -1,0 +1,85 @@
+{
+  "run_id": "parallel3-KB-018-019-2026-10-04",
+  "date": "2026-10-04",
+  "branch": "deploy/wolf-viking",
+  "feature": "F7",
+  "task_ids": ["KB-018", "KB-019"],
+  "backlog_status_before": "OPEN",
+  "status": "IMPLEMENTED_UNIT_TESTED",
+  "spec_refs": [
+    "docs/spec/openviking-enterprise-kb-spec.md#7.2 (lines 367-375)",
+    "docs/spec/openviking-enterprise-kb-spec.md#2 line 128",
+    "docs/spec/openviking-enterprise-kb-test-cases.md TC-7.1..TC-7.7",
+    "docs/spec/openviking-enterprise-kb-backlog.md#KB-018",
+    "docs/spec/openviking-enterprise-kb-backlog.md#KB-019"
+  ],
+  "test_command": ".venv/bin/python -m pytest tests/enterprise_kb/test_business_meta.py tests/enterprise_kb/test_meta_dictionary.py --no-cov -q",
+  "test_result": {
+    "status": "PASS",
+    "total": 52,
+    "passed": 52,
+    "failed": 0,
+    "per_file": {
+      "tests/enterprise_kb/test_business_meta.py": 25,
+      "tests/enterprise_kb/test_meta_dictionary.py": 27
+    }
+  },
+  "implemented": {
+    "KB-018": [
+      "raw/canonical/source/normalizer_version stored separately per business field (MetaValue), NORMALIZER_VERSION=business-meta-v1",
+      "AuthoritativeMeta bound to (document_id, content_revision, index_generation) with fingerprint + payload round-trip",
+      "build_meta optional meta: absent/empty mapping is valid and yields an empty record",
+      "system-field protection: NFKC/casefold key comparison against SYSTEM_FIELDS plus reserved prefixes (meta_/acl_/_/system_); SystemFieldOverwriteError",
+      "extra key type/length limits (MetaLimits: max_keys/max_key_length/max_value_length/allowed_types) -> MetaLimitError",
+      "merge_meta / MetaStore.record: rebuild with meta omitted never clears existing values; partial rebuild preserves unnamed keys",
+      "attach_meta: chunk/image/semantic records inherit authoritative meta; mismatched document/revision rejected (MetaBindingError)",
+      "canonical_filter / combined_filter: exact-ID Eq filters, same-field OR, cross-field AND; empty candidate set is an unsatisfiable Eq (never a wildcard); include_unknown ORs the missing sentinel"
+    ],
+    "KB-019": [
+      "BusinessDictionary per namespace: exact-normalized, alias, prefix (sorted bisect), trigram substring, bounded edit-distance candidates",
+      "inverted index over dictionary values (prefix postings + trigram postings); no regex over vector rows",
+      "bounded_edit_distance with max-distance cap and length-delta pruning",
+      "per-field FuzzyRule: STRICT_RULE for subject_code/bom/dtc/config_spec/profile_id; MODEL_RULE for modelid/model; GENERIC_RULE default",
+      "NON_FUZZY_FIELDS (account_id/namespace_id/owner_user_id/acl*/applicability/context_type/level) reject fuzzy -> ProtectedFieldFuzzyError",
+      "meta_filters: exact/prefix/contains/fuzzy, same-field OR / cross-field AND; unresolved hard constraint -> unsatisfied + empty resolution + explanation (never silently relaxed)",
+      "meta_hints: boost by default; tighten only when tighten_hints=True AND unique AND confidence>=threshold; low-confidence returns candidates + ambiguity flag + explanation",
+      "include_unknown explicit-only: adds the missing sentinel and records include_unknown_fields",
+      "parse_model_expressions / resolve_model_query: conservative model-token parsing (excludes long subject codes)",
+      "PerformanceReport (cardinality, total values, documents, chunks, candidates, matched, candidate_inflation, scan_volume, accuracy) + QueryResolution.scan_volume"
+    ]
+  },
+  "acceptance_case_coverage": {
+    "TC-7.1": "unit: raw/canonical/source/normalizer separation; optional meta; system overwrite rejected; rebuild does not clear",
+    "TC-7.2": "unit: case/whitespace/alias/prefix/typo -> canonical set; bounded edit distance; ambiguity surfaced",
+    "TC-7.3": "unit: same-field OR / cross-field AND filter shape (And[Or[Eq],Eq])",
+    "TC-7.4": "unit: hard filter with no match not relaxed; hint default boost; include_unknown explicit only",
+    "TC-7.5": "unit: subject_code one-char difference stays a distinct canonical ID; strict fields refuse fuzzing",
+    "TC-7.6": "PARTIAL: unified semantics produced as exact-ID Eq/Or/And (no backend Contains); no real adapter execution",
+    "TC-7.7": "NOT_RUN benchmark; reporting hook (PerformanceReport) implemented and unit-tested"
+  },
+  "files_touched": [
+    "openviking/indexing/business_meta.py",
+    "openviking/retrieve/meta_dictionary.py",
+    "tests/enterprise_kb/test_business_meta.py",
+    "tests/enterprise_kb/test_meta_dictionary.py"
+  ],
+  "file_sha256": {
+    "openviking/indexing/business_meta.py": "c649d37e1826df40f36fff821637e902589e1d844713e37277cc4f10e3797e41",
+    "openviking/retrieve/meta_dictionary.py": "6d855b2f20e4b17f36b38d75d383c69c1303c9aaedec35f2dd70cb995d6a78f4",
+    "tests/enterprise_kb/test_business_meta.py": "c8968f5b1e1100de18f7dab30e38a635b42d502638dcf91e7676bc13566dafdb",
+    "tests/enterprise_kb/test_meta_dictionary.py": "b3fb7832fb60f9664f83bf2abe77bdef1bc8c159203ed3e11881dc11be74f896"
+  },
+  "not_run": [
+    "TC-7.7 real 100k-chunk / 10k-value benchmark (concurrency 5, cold/warm, p95<=100ms) - NOT_RUN",
+    "Real backend integration: cuVS/Qdrant/VikingDB adapter execution of the meta filter set (TC-7.6 backend equivalence) - NOT_RUN",
+    "End-to-end wiring of the dictionary into BM25/dense/image recall paths (hierarchical_retriever, lexical.py) - NOT_RUN; modules are standalone",
+    "Namespace-scoped persistence of the dictionary/MetaStore (in-memory reference implementation only)",
+    "Chinese-language model-expression tokenization and DTC tokenizer rules",
+    "Accuracy measurement against a labelled evaluation set (PerformanceReport.accuracy accepts a caller-supplied value)"
+  ],
+  "notes": [
+    "No file outside the assigned footprint was modified; no repo-wide git commands were run.",
+    "MetaStore and BusinessDictionary are in-memory reference implementations of the documented contract; a persistent backend would mirror the same methods.",
+    "Contains is deliberately not used: the dictionary layer reduces fuzzy input to exact-ID Eq/Or/And so adapter-specific substring semantics are irrelevant."
+  ]
+}

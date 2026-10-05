@@ -1,0 +1,164 @@
+{
+  "implementation": "I050",
+  "spec_version": "v0.15",
+  "date": "2026-10-05",
+  "verdict": "PARTIAL_IMPLEMENTATION_WITH_CONFIRMED_IMAGE_DEFECT",
+  "tests": {
+    "integration": {
+      "path": "evidence/integration-I050-2026-10-05.xml",
+      "tests": 1062,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1061
+    },
+    "document-batch": {
+      "path": "evidence/document-batch-I050-2026-10-05.xml",
+      "tests": 85,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 85
+    },
+    "document-seal": {
+      "path": "evidence/document-seal-I050-2026-10-05.xml",
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 40
+    }
+  },
+  "counts_overlap": true,
+  "test_snapshot_note": "Broad integration collected before the final transaction-fenced seal change; final document-batch 85 PASS and seal 40 PASS cover that last change. Not whole repository acceptance.",
+  "publication_changes": [
+    "persist batch id before producers; enforce registry/account/resources publication scope",
+    "one submitted-member batch for text/image/directory semantic producers",
+    "queued/published recovery observes real receipts without reindex; open interrupted batch isolated before retry",
+    "authority status reads actual expected/received membership and hashes",
+    "atomic job_publication_seal transaction checks owner/fence/lease before seal and head switching; stale worker rejection proven"
+  ],
+  "publication_proof_scope": "actual SQLite/Unix-socket authority transactions and real producer/consumer code paths, with test embedding/vector storage replacements; not live coordinator deployment",
+  "publication_limits": "Only all submitted members proven; not exhaustive body/image/parent/L0L1/BM25/meta/whole-version proof; 7 full gates remain pending, never ready",
+  "office_legacy_report": "evidence/flow-office-legacy-I050-2026-10-05.json",
+  "office_results": {
+    "six_text_index_traceability_contracts": "PASS",
+    "private_candidate_counts": {
+      "DOC": 3,
+      "XLS": 2,
+      "PPT": 4
+    },
+    "visible_XLS_image": "FAIL: source and intermediate PDF contain one visible image; worker artifact has zero images",
+    "binary_font_introspection": "NOT_RUN",
+    "gold": "NOT_RUN",
+    "full_office_acceptance": "NOT_RUN; known image retention case failed"
+  },
+  "image_defect": {
+    "visible_pdf_image_count": 1,
+    "stored_xls_tree": [
+      "_manifest.json",
+      "_toc.json",
+      "section_0001.md",
+      "toc.md"
+    ],
+    "source_probe": "/tmp/ov-flow/office-legacy-I050/xls-image-probe.json",
+    "status": "FAIL",
+    "location": "MinerU worker artifact before OpenViking materialization",
+    "model_asset_count": 0,
+    "model_markdown_image_refs": 0,
+    "model_block_count": 8,
+    "source_media_count": 1,
+    "actual_displayed_pdf_image_count": 1,
+    "normalized_worker_artifact": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-artifact",
+    "not_an_export_or_pdf_conversion_loss": true
+  },
+  "retained_artifacts": [
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.docx",
+      "sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+      "bytes": 37974
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.xlsx",
+      "sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+      "bytes": 8718
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.pptx",
+      "sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+      "bytes": 29709
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050.doc",
+      "sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+      "bytes": 20480
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050-xls.xls",
+      "sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+      "bytes": 9216
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050-ppt.ppt",
+      "sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+      "bytes": 614400
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-xls-intermediate.pdf",
+      "sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+      "bytes": 21680
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-artifact.zip",
+      "sha256": "75d314006e480b0f8187e2b7f69052d6cd46860b0bf2e6dccfc024944713ea17",
+      "bytes": 738
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-image-probe.json",
+      "sha256": "b6b3b7ae77f894504e0d2a8c6c13c98b6a7cf4f1484192969bdb65c3f0fb5ea9",
+      "bytes": 6268
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-image-probe.json",
+      "sha256": "ab22d97984ed931053a5744ec5744719bc4e16e1b78b960aa32988514f19cc4a",
+      "bytes": 1200
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/fixtures.json",
+      "sha256": "b46ab635a9000d8d35db92d91b399f2ec3b49c924677d6bbd981505442c4f0cb",
+      "bytes": 5658
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/harness-path-correction.json",
+      "sha256": "8a81c534b9beca7484a8dc699be798a13e8f81ec0c3c1555fa4ff44ee6ed35e4",
+      "bytes": 2465
+    }
+  ],
+  "deployment": "New batch/authority commands not loaded into current live services; legacy actual flows used I047 process. Controlled coordinator/API load and new-worker live validation pending.",
+  "service_sanity": {
+    "health_http": {
+      "1933": 200,
+      "19103": 200
+    },
+    "active_jobs": 0,
+    "job_state_counts": {
+      "cancelled": 1,
+      "draft_ready": 16,
+      "failed": 3
+    }
+  },
+  "remaining": [
+    "repair MinerU worker visible XLS image loss; raw model vs worker normalization not yet separated",
+    "full joint member coverage and atomic full-tree replacement",
+    "110 pending SANY rules in I049 adapter / 118 in existing registered package; trusted identity/relations/publication",
+    "all channels permissions, human-reviewed independent gold, performance and four complete FLOW acceptance"
+  ],
+  "acceptance": "15 Feature PARTIAL; 32 tasks PARTIAL + KB-032 OPEN; four FLOW PARTIAL; no DONE added",
+  "source_sha256": {
+    "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+    "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+    "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+    "tests/enterprise_kb/test_document_joint_publication.py": "4874cd639ddbb2e3063b92238ea735040bcbaee8f52752bebd5ac94135a5c480",
+    "tests/enterprise_kb/flows/flow_office_legacy.py": "14ff3a328bbadb661da58e9c4f8ffc85ae92a8ad8024f2c0dd6e66bd4dfef6e3"
+  }
+}

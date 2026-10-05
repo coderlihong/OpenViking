@@ -1,0 +1,58 @@
+{
+  "implementation": "I048",
+  "spec_version": "v0.15",
+  "date": "2026-10-05",
+  "scope": "KB-014 image reference discovery and VLM occurrence-text budget; targeted code and actual model protocol regressions",
+  "tests": {
+    "tests": 72,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "passed": 72,
+  "junit": "evidence/image-context-I048-2026-10-05.xml",
+  "changes": [
+    "iterative authorized chapter-tree discovery replaces silent 8-level depth cap",
+    "duplicate source filtering and malformed/outside-tree child URI rejection",
+    "explicit pinned VLM tokenizers independent of embedding; cover primary/backup/credential model overrides; verify current file bytes on each load",
+    "largest configured tokenizer count and final forward-string budget recheck",
+    "per-occurrence measured/estimated mode, budget and actual count; image-context-v3 invalidates old semantic caches"
+  ],
+  "live_model_protocol": "existing real qwen3.8-27b template contract probe passed; nonempty output only, not reviewed image quality",
+  "deployment": "code tested locally; current API process remains I047, no restart or new end-to-end deployment claim",
+  "delegation": {
+    "job_joint_gate": "403 model service interrupted; no verified I048 implementation",
+    "office_live_enable": "403 model service interrupted; legacy full flows not run",
+    "materialized_replay": "403 model service interrupted; no verified executable SANY policy improvement"
+  },
+  "remaining": [
+    "reference discovery outside containing chapter tree/registered cross-domain references",
+    "complete VLM request budget including prompt/image/output reservations",
+    "model tokenizer identity audited against deployed artifacts and quality gold",
+    "joint publication/atomic whole-tree replace/full schema policies/legacy Office complete flows",
+    "full Feature and four FLOW acceptance"
+  ],
+  "acceptance": "15 Feature PARTIAL; 32 tasks PARTIAL+1 OPEN; four FLOW PARTIAL; no DONE added",
+  "source_sha256": {
+    "openviking/indexing/image_context.py": "f486cacf0e1e4d1799661536c52b2bf8f2cb53a1fc4a2d0ffffee391f8a7ab9a",
+    "openviking_cli/utils/config/vlm_config.py": "4ae282be5158038292e0376004287c2624bee4ec304c47d2d45321f524350560",
+    "tests/enterprise_kb/test_image_context.py": "b07ce01b22ef18f073276b72efdfe2a09776b3d6690faa38da73ac7f40ab33d2",
+    "tests/enterprise_kb/test_image_context_budget.py": "ec9d79bd44eee55f258e181a8c905ba00a3c29fe2ac4cd9b3c037aefe0361ae5"
+  },
+  "service_sanity": {
+    "health_http": {
+      "1933": 200,
+      "19103": 200
+    },
+    "active_jobs": 0,
+    "process_restarted": false,
+    "new_code_live_acceptance": "NOT_RUN",
+    "mineru_tunnel_repair": {
+      "observed": "no local listener; remote health 200",
+      "new_pid": 86727,
+      "final_health_http": 200
+    }
+  },
+  "documentation_check": "PASS v0.15 / 15 features / 33 tasks / 19 cross assertions",
+  "diff_check": "PASS"
+}

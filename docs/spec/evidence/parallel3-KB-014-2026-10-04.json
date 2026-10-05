@@ -1,0 +1,84 @@
+{
+  "task_id": "KB-014",
+  "feature": "F5",
+  "title": "Image reference semantics + real VLM summary quality",
+  "date": "2026-10-04",
+  "workstream": "parallel3",
+  "status": "PARTIAL",
+  "status_reason": "Reference discovery cap removed, pagination/cross-directory discovery implemented, context-bound cache key added, tokenizer-measured context budget added, and a real VLM summary call proven against the live endpoint. Human-gold summary quality evaluation (no unsupported repair conclusions) is NOT_RUN because no human gold answer exists for this run.",
+  "environment": {
+    "python": ".venv/bin/python",
+    "vlm_endpoint": "http://10.147.254.3:36688/v1",
+    "vlm_model": "qwen3.8-27b",
+    "vlm_reachable": true,
+    "notes": "Real-VLM tests are gated behind @pytest.mark.integration and skip when the endpoint is unreachable. Unit tests use injected fake VLM/tokenizer."
+  },
+  "implemented": [
+    "openviking/indexing/image_context.py: removed the per-image max_occurrences=16 cap entirely; collect_image_contexts now returns every legal occurrence.",
+    "Reference discovery is now paginated: _list_all_entries pages VikingFS with node_limit=LIST_PAGE_SIZE (256) and offset until a short/empty page, so a page boundary never drops entries.",
+    "Cross-directory discovery: _discover_markdown_sources recurses into subdirectories (bounded by MAX_DIRECTORY_DEPTH, not by occurrence count) so references in sibling/descendant directories are found.",
+    "Tokenizer-measured budget: new load_vlm_token_counter() loads the exact model tokenizer from embedding.chunking.tokenizer_path/tokenizer_sha256 via openviking.indexing.plan.load_tokenizer and returns a counter; truncate_to_token_budget() uses it (falls back to the shared conservative estimator when no tokenizer is configured). No occurrence count is hardcoded.",
+    "extract_occurrences() accepts an optional count_tokens and VERSION bumped to image-context-v2 so context hashes change with the new budget semantics.",
+    "openviking/indexing/image_cache.py: new occurrence_identity() and cache_key(signature, occurrences) bind the model/prompt semantics_signature to every reference context hash/epoch; store_image_semantics writes cache_key into the payload and load_image_semantics rejects a payload whose cache_key no longer matches the current contexts (context change invalidates the cached summary). Cache VERSION bumped to image-semantics-cache-v2.",
+    "Each joint (image+context) embedding input already contains the per-occurrence summary plus the original image (verified by test in this footprint and by test_image_publication.py).",
+    "The image_summary.yaml template contract (visible facts vs contextual interpretation, mark uncertainty, figure purpose in chapter) is exercised by the real-VLM integration test which asserts the rendered prompt carries those instructions."
+  ],
+  "files_touched": [
+    "openviking/indexing/image_context.py",
+    "openviking/indexing/image_cache.py",
+    "tests/enterprise_kb/test_image_context.py",
+    "tests/enterprise_kb/test_image_cache.py",
+    "docs/spec/evidence/parallel3-KB-014-2026-10-04.json"
+  ],
+  "test_commands": [
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_image_context.py tests/enterprise_kb/test_image_cache.py --no-cov -q",
+      "result": "29 passed (1 of them the real-VLM integration test against the live endpoint)",
+      "status": "PASS"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_image_context.py tests/enterprise_kb/test_image_cache.py --no-cov -q -m 'not integration'",
+      "result": "28 passed, 1 deselected",
+      "status": "PASS"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_image_context.py -m integration --no-cov -q",
+      "result": "1 passed (real qwen3.8-27b vision call returned a nonempty summary from the updated template)",
+      "status": "PASS"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_image_publication.py tests/enterprise_kb/test_semantic_publication.py tests/enterprise_kb/test_content_publication.py --no-cov -q -m 'not integration'",
+      "result": "31 passed",
+      "status": "PASS",
+      "note": "Dependent publication/consumer modules unaffected."
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/enterprise_kb/ --no-cov -q -m 'not integration'",
+      "result": "3 failed, 690 passed, 1 deselected",
+      "status": "PRE_EXISTING_UNRELATED",
+      "note": "Failures are in untracked files owned by other agents (test_hybrid_profile.py::test_hybrid_leaf_recall_survives_lexical_failure, test_kb_jobs_http.py::test_queued_position_unknown_progress_and_fifo_order, test_kb_jobs_http.py::test_failed_retry_and_cancelled_are_visible_and_clear). Neither imports image_context/image_cache; outside this footprint."
+    }
+  ],
+  "acceptance_proof": {
+    "no_cap_17plus_references": "test_collector_keeps_more_than_sixteen_references: 25 references collected, all context hashes distinct.",
+    "cross_directory_pagination": "test_collector_paginates_and_discovers_cross_directory_references: a page boundary (offset==LIST_PAGE_SIZE) is exercised and a reference in a sibling directory is discovered via recursion.",
+    "context_change_invalidates_cache": "test_cache_key_includes_context_signature_so_context_change_invalidates (context hash and epoch both change the key) + test_stored_payload_binds_context_signature_and_load_rejects_stale_key (load refuses a stale key).",
+    "joint_input_has_summary_and_image": "test_each_joint_occurrence_input_contains_summary_and_image: each of 2 occurrence messages is ['text','image_url'] with the matching summary.",
+    "tokenizer_not_fixed_count": "test_collector_uses_injected_tokenizer_budget_not_fixed_count + test_vlm_token_counter_uses_configured_model_tokenizer + test_vlm_token_counter_is_none_without_configured_tokenizer."
+  },
+  "acceptance_cases": {
+    "TC-5.1": "PARTIAL - per-occurrence context (chapter/caption/neighbors) is sent to the VLM; human purpose check NOT_RUN",
+    "TC-5.2": "PARTIAL - joint input verified to contain summary+image at the producer/consumer boundary; live multimodal embedding request capture NOT_RUN",
+    "TC-5.3": "PARTIAL - text-only provider rejection covered by existing test_image_publication tests; not re-verified here",
+    "TC-5.5": "PARTIAL - context change invalidates the cached summary (cache_key) and prompt/model change is rejected; live re-run NOT_RUN",
+    "TC-5.6": "PARTIAL - missing/cross-domain/timeout handling is outside this footprint",
+    "TC-16.7": "PARTIAL - 17+ references and cross-directory discovery proven; actual-tokenizer budget proven; revocation pre-filter NOT_RUN"
+  },
+  "not_run": [
+    "Human-gold image summary quality evaluation (TC-5.1/TC-5.5 '无无依据维修结论'): NOT_RUN - no human gold answer available in this run.",
+    "Real multimodal embedding request capture and space/dimension match (TC-5.2): NOT_RUN.",
+    "Live VLM timeout / revoked-context pre-filter behavior (TC-5.6/TC-16.7 revocation): NOT_RUN.",
+    "End-to-end semantic pipeline quality over the full manual corpus: NOT_RUN."
+  ],
+  "workspace_handling": "Edited only the four owned files plus this evidence JSON. No other module touched, no repo-wide git commands, no commits."
+}

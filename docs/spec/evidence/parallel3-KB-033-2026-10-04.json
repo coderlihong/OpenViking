@@ -1,0 +1,77 @@
+{
+  "evidence_id": "parallel3-KB-033-2026-10-04",
+  "task": "KB-033",
+  "feature": "F12",
+  "title": "JEV-style typed state/decision PoC",
+  "status": "PARTIAL",
+  "feature_acceptance": "NOT_RUN",
+  "date": "2026-10-04",
+  "commit": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "working_tree": "uncommitted; new isolated package openviking/jev and its tests are the only changes in this task footprint",
+  "scope": "Isolated, deterministic, offline research PoC. Adopts the design idea 'state + typed question -> structured decision' from the Eigent/TypeSafe JEV material. Does NOT claim a JEV service is integrated, does NOT use local model weights, and is NOT wired into core ingestion/retrieval/Wiki traversal.",
+  "implemented_items": [
+    "openviking/jev/state.py: frozen dataclasses + explicit enums (Applicability, EvidenceKind, ScoreLabel, FaultSemantics, DecisionKind, QuestionKind) for DiagnosticState/Evidence/CandidateFault/DeviceContext/CompletedCheck/AvailableCheck and Decision/RankedCandidate/NextCheck; invalid input rejected via StateValidationError instead of silent coercion.",
+    "openviking/jev/engine.py: pure deterministic engine decide(state, Question) -> Decision; ranking from observed-evidence mass with applicability gating; next-check selection by discrimination coverage then lowest cost; ABSTAIN when no candidates/evidence; NEEDS_MORE_INFO when applicability undetermined under a known config anchor or evidence is indecisive; compare_initial_order flags only material (margin > 0.25) reorderings; with_calibration relabels score->probability only when calibrated=True.",
+    "Single-fault mutually-exclusive vs multi-fault independent-event semantics kept separate: only the mutually-exclusive ranking is normalized to sum 1; independent-event scores retain raw mass and are never force-normalized.",
+    "openviking/jev/calibration.py: Brier score, expected calibration error, equal-width reliability curve, and a labeling gate where only an independent non-synthetic gold set authorizes the probability label; synthetic sets can never be labeled probability.",
+    "openviking/jev/__init__.py: package exports.",
+    "tests/enterprise_kb/test_jev_poc.py: 61 tests covering typed-state rejection, decision content (ranking/next check/evidence/abstain/needs_more_info), single vs multi fault semantics, score-vs-probability labeling, Brier/ECE/reliability on a synthetic labeled set, initial-order disagreement evaluation, and TC-12.4 core-unaffected checks."
+  ],
+  "verification": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_jev_poc.py --no-cov -q",
+    "passed": 61,
+    "failed": 0,
+    "warnings": 4,
+    "warnings_note": "pre-existing pydantic deprecation warnings from openviking/resource/watch_manager.py; not introduced by this task",
+    "compile": "python3 -m py_compile openviking/jev/*.py tests/enterprise_kb/test_jev_poc.py -> OK",
+    "line_length_max": 100,
+    "ruff": "NOT_RUN (ruff binary not installed in this environment); line-length<=100 and unused-import scan done manually"
+  },
+  "tc_coverage_partial": {
+    "TC-12.1": "C/U: typed candidate ranking + next check + evidence URIs returned; ABSTAIN when evidence insufficient; no state auto-fabrication. Covered by test_jev_poc.py.",
+    "TC-12.2": "Q: compare_initial_order evaluates disagreement by engine margin, not mechanical equality with Profile order. Covered; real independent gold set NOT_RUN.",
+    "TC-12.3": "Q: default label is score; probability label gated on calibration report; single vs multi fault semantics differ and neither is force-normalized to 1. Brier/ECE/reliability computed on a synthetic labeled set only.",
+    "TC-12.4": "I: core modules under openviking/ contain no reference to openviking.jev; core wiki modules import without loading the PoC; engine is pure and does not mutate state. Covered by test_jev_poc.py."
+  },
+  "actual_data": {
+    "diagnostic_gold_set": 0,
+    "gold_source": "none",
+    "synthetic_labeled_items_in_tests": 4,
+    "real_model": "none",
+    "network_calls": 0,
+    "wiki_write": "none"
+  },
+  "not_run": [
+    "Real independent diagnostic gold set (independent root-cause confirmed cases) for Brier/ECE/reliability calibration.",
+    "Any real model or JEV service integration; no local weights exist or are used.",
+    "Integration of the PoC into Wiki ingestion/retrieval/diagnostic hot path; it is intentionally not wired in.",
+    "Evaluation of engine ranking against confirmed root cause + check cost on real cases (TC-12.2 requires a real independent set).",
+    "Live probability labeling: no calibrated independent gold set was available, so outputs remain labeled score."
+  ],
+  "core_unchanged_evidence": {
+    "core_modules_referencing_jev": [],
+    "check": "recursive scan of openviking/**/*.py excluding the jev package for 'openviking.jev', 'from .jev', 'import jev' -> no matches",
+    "import_isolation_test": "subprocess imports openviking.wiki.schema/validation/resolver and asserts no openviking.jev module is loaded"
+  },
+  "files_touched": [
+    "openviking/jev/__init__.py",
+    "openviking/jev/state.py",
+    "openviking/jev/engine.py",
+    "openviking/jev/calibration.py",
+    "tests/enterprise_kb/test_jev_poc.py",
+    "docs/spec/evidence/parallel3-KB-033-2026-10-04.json"
+  ],
+  "file_sha256": {
+    "openviking/jev/__init__.py": "b5f9a0750c1d0a350e5f2d667ff916d603ed64a5042ef63df26980faa1b30663",
+    "openviking/jev/state.py": "a968a354c1b76558d1aaddc2f9eb0f9f07bbbdf2d1ef535c3e63641d2bec5445",
+    "openviking/jev/engine.py": "e506044fabcf29e72db1a8996c0bbef3425f7e3e422d9b1afcff77d06bfd632e",
+    "openviking/jev/calibration.py": "6a0bfbdc1646f23f4a88262c56aa16743f93c84c53df219c6fffea4ba4b82c72",
+    "tests/enterprise_kb/test_jev_poc.py": "3e025209a247dbecf5d8650ce92994e5d844179fbfafbfa0eac288b21fb78e28"
+  },
+  "limitations": [
+    "PoC only: no claim that a JEV service is integrated or that local weights exist.",
+    "Scores remain uncalibrated 'score' values; the probability label is only reachable via a calibration report from an independent non-synthetic gold set that does not yet exist.",
+    "Evidence weights and MIN_SUPPORT/REORDER_MARGIN constants are deterministic heuristics for the PoC, not calibrated parameters.",
+    "TC-12.2/TC-12.3 quality acceptance on real data remains NOT_RUN; only synthetic/unit-level behavior is verified."
+  ]
+}

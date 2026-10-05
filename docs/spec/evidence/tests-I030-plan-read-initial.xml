@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="7" time="0.802" timestamp="2026-10-04T18:38:42.253625+08:00" hostname="whdeMacBook-Pro.local"><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_async_sdk_reads_identical_persisted_plan" time="0.039" /><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_sync_sdk_reads_identical_persisted_plan" time="0.036" /><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_plan_read_rechecks_source_acl" time="0.034"><failure message="openviking_sdk.errors.PermissionDeniedError: source permission revoked">api = (&lt;fastapi.applications.FastAPI object at 0x11e1eb750&gt;, namespace(fs=&lt;openviking.storage.viking_fs.VikingFS object at 0...emas.TextEmbeddingHandler object at 0x11e30e210&gt;), &lt;openviking.wiki.build_plan.WikiBuildPlanner object at 0x11e1eb250&gt;)
+
+    async def test_plan_read_rechecks_source_acl(api):
+        app, e, p = api
+        plan = await p.prepare_sources(e.ctx, 'manual-wiki', [ONE], input_kind='uri', idempotency_key='revoke')
+        old = e.fs._ensure_access
+    
+        async def denied(uri, ctx, **kwargs):
+            if uri == ONE:
+                raise PermissionDeniedError('source permission revoked')
+            return await old(uri, ctx, **kwargs)
+    
+        e.fs._ensure_access = denied
+        c = client(app)
+        try:
+            with pytest.raises(PermissionDeniedError, match='revoked'):
+&gt;               await c.kb.get_wiki_build(plan.build_id)
+
+tests/enterprise_kb/test_wiki_plan_read_http.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+sdk/python/openviking_sdk/kb.py:50: in get_wiki_build
+    return self._client._handle_response(response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:637: in _handle_response
+    return self._handle_response_data(response).get("result")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:628: in _handle_response_data
+    self._raise_exception(data.get("error", {}))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;openviking_sdk.client.AsyncHTTPClient object at 0x11e30ead0&gt;
+error = {'code': 'PERMISSION_DENIED', 'details': {}, 'message': 'source permission revoked'}
+
+    def _raise_exception(self, error: Dict[str, Any]) -&gt; None:
+        code = error.get("code", "UNKNOWN")
+        message = error.get("message", "Unknown error")
+        details = error.get("details")
+        exc_class = ERROR_CODE_TO_EXCEPTION.get(code, OpenVikingError)
+    
+        if exc_class == OpenVikingError:
+            raise exc_class(message, code=code, details=details)
+        if exc_class in (
+            InvalidArgumentError,
+            FailedPreconditionError,
+            ResourceExhaustedError,
+            AbortedError,
+            UnimplementedError,
+        ):
+            raise exc_class(message, details=details)
+        if exc_class == InvalidURIError:
+            uri = details.get("uri", "") if details else ""
+            reason = details.get("reason", "") if details else ""
+            raise exc_class(uri, reason)
+        if exc_class == NotFoundError:
+            resource = details.get("resource", "") if details else ""
+            resource_type = details.get("type", "resource") if details else "resource"
+            reason = details.get("reason") if details else None
+            raise exc_class(resource, resource_type, reason=reason)
+        if exc_class == AlreadyExistsError:
+            resource = details.get("resource", "") if details else ""
+            resource_type = details.get("type", "resource") if details else "resource"
+            raise exc_class(resource, resource_type)
+        if exc_class == UnavailableError:
+            service = details.get("service", "service") if details else "service"
+            reason = details.get("reason", "") if details else message
+            raise exc_class(service, reason)
+&gt;       raise exc_class(message)
+E       openviking_sdk.errors.PermissionDeniedError: source permission revoked
+
+sdk/python/openviking_sdk/client.py:672: PermissionDeniedError</failure></testcase><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_plan_read_is_account_scoped" time="0.033"><failure message="openviking_sdk.errors.NotFoundError: Wiki build plan not found: 1b9b4164028e458a93525508322a2496">api = (&lt;fastapi.applications.FastAPI object at 0x11e30fb10&gt;, namespace(fs=&lt;openviking.storage.viking_fs.VikingFS object at 0...emas.TextEmbeddingHandler object at 0x11e386fd0&gt;), &lt;openviking.wiki.build_plan.WikiBuildPlanner object at 0x11e3875c0&gt;)
+
+    async def test_plan_read_is_account_scoped(api):
+        app, e, p = api
+        plan = await p.prepare_sources(e.ctx, 'manual-wiki', [ONE], input_kind='uri', idempotency_key='account')
+        app.dependency_overrides[get_request_context] = lambda: replace(e.ctx, user=UserIdentifier('other', 'user'))
+        c = client(app)
+        try:
+            with pytest.raises(NotFoundError):
+&gt;               await c.kb.get_wiki_build(plan.build_id)
+
+tests/enterprise_kb/test_wiki_plan_read_http.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+sdk/python/openviking_sdk/kb.py:50: in get_wiki_build
+    return self._client._handle_response(response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:637: in _handle_response
+    return self._handle_response_data(response).get("result")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:628: in _handle_response_data
+    self._raise_exception(data.get("error", {}))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;openviking_sdk.client.AsyncHTTPClient object at 0x11e448050&gt;
+error = {'code': 'NOT_FOUND', 'details': {'resource': '1b9b4164028e458a93525508322a2496', 'type': 'Wiki build plan'}, 'message': 'Wiki build plan not found: 1b9b4164028e458a93525508322a2496'}
+
+    def _raise_exception(self, error: Dict[str, Any]) -&gt; None:
+        code = error.get("code", "UNKNOWN")
+        message = error.get("message", "Unknown error")
+        details = error.get("details")
+        exc_class = ERROR_CODE_TO_EXCEPTION.get(code, OpenVikingError)
+    
+        if exc_class == OpenVikingError:
+            raise exc_class(message, code=code, details=details)
+        if exc_class in (
+            InvalidArgumentError,
+            FailedPreconditionError,
+            ResourceExhaustedError,
+            AbortedError,
+            UnimplementedError,
+        ):
+            raise exc_class(message, details=details)
+        if exc_class == InvalidURIError:
+            uri = details.get("uri", "") if details else ""
+            reason = details.get("reason", "") if details else ""
+            raise exc_class(uri, reason)
+        if exc_class == NotFoundError:
+            resource = details.get("resource", "") if details else ""
+            resource_type = details.get("type", "resource") if details else "resource"
+            reason = details.get("reason") if details else None
+&gt;           raise exc_class(resource, resource_type, reason=reason)
+E           openviking_sdk.errors.NotFoundError: Wiki build plan not found: 1b9b4164028e458a93525508322a2496
+
+sdk/python/openviking_sdk/client.py:663: NotFoundError</failure></testcase><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_missing_and_invalid_plan_ids_are_explicit" time="0.039" /><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_oversized_upload_is_rejected_before_materialization_and_cleaned" time="0.029"><failure message="openviking_sdk.errors.InvalidArgumentError: Wiki upload document size limit exceeded">upload_api = (&lt;fastapi.applications.FastAPI object at 0x11e30d6d0&gt;, namespace(fs=&lt;openviking.storage.viking_fs.VikingFS object at 0...th('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-326/test_oversized_upload_is_rejec0'))
+
+    async def test_oversized_upload_is_rejected_before_materialization_and_cleaned(upload_api):
+        app, e, p, entries, tmp_path = upload_api
+        p.limits = CaptureLimits(document_bytes=32)
+        upload(upload_api, tmp_path, 'oversized', '#' + 'x' * 100)
+        from openviking.server.routers.wiki import get_temp_upload_store
+        original_store = app.dependency_overrides[get_temp_upload_store]()
+        resolve = original_store.resolve_for_consume
+        cleanup = AsyncMock()
+    
+        async def tracked(*args):
+            resolved = await resolve(*args)
+            resolved.cleanup = cleanup
+            return resolved
+    
+        original_store.resolve_for_consume = tracked
+        c = client(app)
+        try:
+            from openviking_cli.exceptions import InvalidArgumentError
+            with pytest.raises(InvalidArgumentError, match='size limit'):
+&gt;               await c.kb.ingest_wiki(temp_file_id='oversized', collection_id='manual-wiki', idempotency_key='limit')
+
+tests/enterprise_kb/test_wiki_plan_read_http.py:101: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+sdk/python/openviking_sdk/kb.py:45: in ingest_wiki
+    return self._client._handle_response(response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:637: in _handle_response
+    return self._handle_response_data(response).get("result")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sdk/python/openviking_sdk/client.py:628: in _handle_response_data
+    self._raise_exception(data.get("error", {}))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;openviking_sdk.client.AsyncHTTPClient object at 0x11e52d810&gt;
+error = {'code': 'INVALID_ARGUMENT', 'details': {}, 'message': 'Wiki upload document size limit exceeded'}
+
+    def _raise_exception(self, error: Dict[str, Any]) -&gt; None:
+        code = error.get("code", "UNKNOWN")
+        message = error.get("message", "Unknown error")
+        details = error.get("details")
+        exc_class = ERROR_CODE_TO_EXCEPTION.get(code, OpenVikingError)
+    
+        if exc_class == OpenVikingError:
+            raise exc_class(message, code=code, details=details)
+        if exc_class in (
+            InvalidArgumentError,
+            FailedPreconditionError,
+            ResourceExhaustedError,
+            AbortedError,
+            UnimplementedError,
+        ):
+&gt;           raise exc_class(message, details=details)
+E           openviking_sdk.errors.InvalidArgumentError: Wiki upload document size limit exceeded
+
+sdk/python/openviking_sdk/client.py:654: InvalidArgumentError</failure></testcase><testcase classname="tests.enterprise_kb.test_wiki_plan_read_http" name="test_bounded_reader_accepts_limit_and_never_reads_unbounded" time="0.000" /></testsuite></testsuites>

@@ -1,0 +1,102 @@
+{
+  "scope": "finite two-page synthetic contracts; not gold/performance/full-FLOW",
+  "runs": [
+    {
+      "backend": "teleocr",
+      "requested_mode": "auto",
+      "source_commit": "1e71f4fe792d12bbb86d2671c5ed6f3a1499b27d",
+      "container_image_id": "sha256:e0cfcfcb9b86e2c2d0d52a93689773f20f380cb8e050a24ce550c44f6f55c5eb",
+      "deployed_health": {
+        "backend": "teleocr",
+        "dependencies_ready": true,
+        "worker_state": "running",
+        "ready_for_jobs": true,
+        "model_verified": true
+      },
+      "job_id": "41dc99184f7e42cb96f4f9417bd94aa1",
+      "status": "CONTRACT_PASS",
+      "coverage": {
+        "input_pages": 2,
+        "processed_pages": 2,
+        "complete": true
+      },
+      "version": "1e71f4fe792d12bbb86d2671c5ed6f3a1499b27d",
+      "model_revision": "74509a76263aece9003418db2a146693cfa3da93",
+      "effective_backend": "teleocr",
+      "effective_mode": "auto",
+      "asset_count": 2,
+      "block_count": 8,
+      "artifact_sha256": "95cbe5eb2d99b4c48f2ed1588c61fb24bb2b87847f1bc284832c00e07da4ee5d",
+      "elapsed_seconds": 34.195,
+      "final_validator_recheck": "PASS",
+      "page_identity_verified": false,
+      "input_sha256": "abc03e4fba8d8ebf4d194ab6e0218bae68aaf9cce16105915c6aac4d2a587b8e",
+      "first_validator_sha256": "8d17204521cf815dc2d7fba9ada4d49d7487184275bf12740aee59a16e163c98"
+    },
+    {
+      "backend": "logics",
+      "requested_mode": "auto",
+      "source_commit": "d75d42dbd92c518a4def19ac5895792828138d35",
+      "container_image_id": "sha256:e0cfcfcb9b86e2c2d0d52a93689773f20f380cb8e050a24ce550c44f6f55c5eb",
+      "deployed_health": {
+        "backend": "logics",
+        "dependencies_ready": true,
+        "worker_state": "running",
+        "ready_for_jobs": true,
+        "model_verified": true
+      },
+      "job_id": "c912e396d23b433daf883717e208c461",
+      "status": "CONTRACT_PASS",
+      "coverage": {
+        "input_pages": 2,
+        "processed_pages": 2,
+        "complete": true
+      },
+      "version": "d75d42dbd92c518a4def19ac5895792828138d35",
+      "model_revision": "94a378ea8b5f20df05bea092f91e2d9cea71c569",
+      "effective_backend": "logics",
+      "effective_mode": "auto",
+      "asset_count": 2,
+      "block_count": 8,
+      "artifact_sha256": "cd0369e6ce869dbca0861799f8ca6dde33f722663314e025ef1e2ace71fe0e6f",
+      "elapsed_seconds": 66.276,
+      "final_validator_recheck": "PASS",
+      "page_identity_verified": false,
+      "input_sha256": "b4c09dd4a91e6c878b86bf7cd83804dbf970c5d9cc606d4ca641e2e06c02817c",
+      "first_validator_sha256": "8d17204521cf815dc2d7fba9ada4d49d7487184275bf12740aee59a16e163c98"
+    },
+    {
+      "backend": "mineru",
+      "requested_mode": "auto",
+      "source_commit": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+      "container_image_id": "sha256:e0cfcfcb9b86e2c2d0d52a93689773f20f380cb8e050a24ce550c44f6f55c5eb",
+      "deployed_health": {
+        "backend": "mineru",
+        "dependencies_ready": true,
+        "worker_state": "running",
+        "ready_for_jobs": true,
+        "model_verified": true
+      },
+      "job_id": "11c5da0910504c30a4c0019ecfaff920",
+      "status": "CONTRACT_PASS",
+      "coverage": {
+        "input_pages": 2,
+        "processed_pages": 2,
+        "complete": true
+      },
+      "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+      "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+      "effective_backend": "mineru",
+      "effective_mode": "auto",
+      "asset_count": 2,
+      "block_count": 8,
+      "artifact_sha256": "3c4704dc79a9184d6da0fe4613ab1e416077f0e516ffde11081c346723c80255",
+      "elapsed_seconds": 2.096,
+      "final_validator_recheck": "PASS",
+      "page_identity_verified": false,
+      "input_sha256": "ccf0929f6266c3d24729017b4c44e206718522cc435107696d0bd472fa914cdd",
+      "first_validator_sha256": "8d17204521cf815dc2d7fba9ada4d49d7487184275bf12740aee59a16e163c98"
+    }
+  ],
+  "final_validator_sha256": "a8ffb382ba2ebd0d2aeeb105f5c3d54fc7faeee83316e9cd0f434bed8164b9d3"
+}

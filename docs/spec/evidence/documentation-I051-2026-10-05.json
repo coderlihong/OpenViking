@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "scope": "documentation consistency only, not product acceptance",
+  "version": "0.15",
+  "features": 15,
+  "tasks": 33,
+  "cross_acceptance_cases": 19,
+  "flows": {
+    "FLOW-D1": "PARTIAL",
+    "FLOW-D2": "PARTIAL",
+    "FLOW-W1": "PARTIAL",
+    "FLOW-W2": "PARTIAL"
+  }
+}

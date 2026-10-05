@@ -1,0 +1,99 @@
+{
+  "review_date": "2026-10-03",
+  "timezone": "Asia/Shanghai",
+  "spec_version": "0.6",
+  "change_id": "CR-006",
+  "kind": "document_consistency_checks_not_product_acceptance",
+  "head": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "historical_evidence": "review-2026-10-03.json",
+  "historical_evidence_note": "Preserved v0.5 record; its document hashes refer to that earlier snapshot. Real PDF observations from another AI were not rerun in this revision.",
+  "scope": "Spec/test/review/README edits only; no product implementation or deployment.",
+  "product_acceptance_tests_run": 0,
+  "real_manual_reverified": false,
+  "remote_models": {
+    "deployment_performed": false,
+    "inference_performed": false
+  },
+  "decisions": [
+    "Failed bookmark alignment automatically falls back to Markdown headings then rule blocks; persistent job.info and normal ready after validation.",
+    "Public provenance is a readable Viking URI; no exact position or revision parameters required.",
+    "Release queue slots on written, errors, cancellation and retry backoff.",
+    "Document generations and captured namespace snapshots preserve unaffected documents and prevent mixed-generation queries.",
+    "GC preserves all live index/query/task/Wiki dependencies and rechecks publication races."
+  ],
+  "document_validation": {
+    "status": "PASS",
+    "files": {
+      "README.md": {
+        "lines": 13,
+        "bytes": 1403,
+        "sha256": "2d7be7ef3fbd588c45106994840ffa65b3f7a9e58dfe890ecfbf8423f2ef5ad5"
+      },
+      "openviking-enterprise-kb-spec.md": {
+        "lines": 443,
+        "bytes": 54222,
+        "sha256": "1d130f6c5cad5280cf7d72f3d7db73c3d51cf97bee8d9459d850b43e8c15d2b6"
+      },
+      "openviking-enterprise-kb-test-cases.md": {
+        "lines": 316,
+        "bytes": 33289,
+        "sha256": "23c97325b00812fb2863613addb9742988028a66b857d5ad7097b8c54db4d7ef"
+      },
+      "openviking-enterprise-kb-review.md": {
+        "lines": 89,
+        "bytes": 11683,
+        "sha256": "c192f3df7e706c11cadc10f97ba9395efd28db2e0608a6f3dabd1bb8227fd516"
+      }
+    },
+    "functional_case_count": 114,
+    "e2e_case_count": 7,
+    "added_functional_cases": [
+      "TC-2.14",
+      "TC-2.15",
+      "TC-2.16",
+      "TC-3.8",
+      "TC-3.9",
+      "TC-4.7",
+      "TC-11.7",
+      "TC-11.8",
+      "TC-11.9",
+      "TC-13.9",
+      "TC-13.10",
+      "TC-13.11"
+    ],
+    "added_e2e_cases": [
+      "E2E-7"
+    ],
+    "families": {
+      "TC-1": 8,
+      "TC-2": 16,
+      "TC-3": 9,
+      "TC-4": 7,
+      "TC-5": 6,
+      "TC-6": 7,
+      "TC-7": 7,
+      "TC-8": 5,
+      "TC-9": 4,
+      "TC-10": 11,
+      "TC-11": 9,
+      "TC-12": 4,
+      "TC-13": 11,
+      "TC-14": 6,
+      "TC-15": 4
+    },
+    "json_examples_parsed": 3,
+    "local_links_checked": 11,
+    "checks": [
+      "balanced fenced blocks",
+      "JSON examples parse",
+      "local Markdown links exist",
+      "consistent table columns",
+      "no trailing whitespace",
+      "test IDs unique and expected counts",
+      "F1-F15 and R01-R13 present",
+      "obsolete manual alignment and precise source contracts absent",
+      "new regression cases present"
+    ],
+    "errors": []
+  }
+}

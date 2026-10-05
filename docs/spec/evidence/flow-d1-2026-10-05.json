@@ -1,0 +1,65 @@
+{
+  "id": "FLOW-D1-2026-10-05",
+  "flow": "FLOW-D1",
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "deploy/wolf-viking (dirty: secondary-dev changes present)",
+  "scope": "PDF upload + async SDK path only; NOT the full FLOW-D1 acceptance",
+  "harness": "tests/enterprise_kb/flows/flow_d1.py",
+  "environment": {
+    "server": "real HTTP server (openviking_cli.server_bootstrap) at http://127.0.0.1:1933, version 0.4.15.dev392, auth_mode=api_key",
+    "client": "openviking_sdk AsyncHTTPClient, account=flowtest user=flowadmin",
+    "parse_backend": "mineru",
+    "structure_policy": "bookmarks_preferred",
+    "embedding": "qwen3-vl-embed @ http://10.147.254.3:8020/v1, dim 4096, input=multimodal, wire_format=messages",
+    "vlm": "qwen3.8-27b @ http://10.147.254.3:36688/v1",
+    "rerank": "qwen3-vl-reranker-2b @ http://10.147.254.3:8029/v1/rerank",
+    "fixture": "/tmp/ovparse/slice_flowd1.pdf (SANY manual chapter-1 slice, bookmarked)"
+  },
+  "run": {
+    "add_resource": {
+      "status": "success",
+      "root_uri": "viking://resources/raw/slice_flowd1",
+      "structure_source": "pdf_bookmarks",
+      "alignment_status": "matched",
+      "elapsed_s": 191.2
+    },
+    "tree_names": ["00_slice_flowd1.md", "1_前言", "_manifest.json", "_toc.json", "toc.md"],
+    "reindex": {"status": "completed", "rebuilt_records": 17, "failed_records": 0, "elapsed_s": 257.1},
+    "search_top_uris": [
+      "viking://resources/raw/.overview.md",
+      "viking://resources/.overview.md",
+      "viking://resources/raw/slice_ch1/.overview.md",
+      "viking://resources/raw/slice_flowd1/.overview.md",
+      "viking://resources/raw/slice_flowd1/1_前言/1.3_电气部件和液压部件的处理/images/90091d3db558ffdbd661c388361fabc0a99a0e4bb29cd047a20def45110b4ba6.jpg"
+    ],
+    "assertions": {
+      "assert_root_appends_name": true,
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "assert_reindex_clean": true,
+      "assert_uri_traceable": true
+    },
+    "passed": true
+  },
+  "criteria_met": [
+    "output root appends the source file name under the requested parent prefix",
+    "PDF bookmark tree combined with model body text; _manifest.json records structure_source=pdf_bookmarks and alignment_status=matched",
+    "chapter directory written before reindex; sibling image path under the chapter directory",
+    "reindex(mode=semantic_and_vectors) completed with 0 failed_records",
+    "search hits are all traceable viking:// URIs (overview files and a sibling image), never bare text"
+  ],
+  "criteria_not_yet_covered": [
+    "MD and Office upload paths",
+    "sync SDK parity with async SDK",
+    "bookmark alignment-failure automatic rule fallback (structure_source/alignment_status=fallback)",
+    "head/middle/tail retrieval spread assertion",
+    "L3 chunk-level hit fields (chunk_id/parent_chunk_id) in this flow run"
+  ],
+  "verdict": "FLOW-D1 PARTIAL: the PDF + async-SDK end-to-end path passes on the real server and real models. FLOW-D1 as a whole (MD/Office, sync SDK, fallback, head/mid/tail) remains NOT_RUN.",
+  "ledger_impact": {
+    "FLOW-D1": "PARTIAL (was NOT_RUN)",
+    "KB-032": "OPEN (unchanged; four-FLOW product acceptance still incomplete)"
+  }
+}

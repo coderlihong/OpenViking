@@ -1,0 +1,58 @@
+{
+  "args": {
+    "pdf": "/tmp/ov-flow/office-image-I051/legacy-w1-I051-visible-image.xls",
+    "url": "http://127.0.0.1:1933",
+    "collection": "sany",
+    "job_id": null,
+    "build_id": null,
+    "ingest_key": "I051-visible-image-xls-ingest",
+    "exec_key": "I051-visible-image-xls-exec",
+    "timeout": 1800,
+    "deadline_seconds": 1800,
+    "poll_attempts": null,
+    "poll_interval": 3,
+    "target_prefix": "viking://resources/wiki/sany",
+    "out": null
+  },
+  "temp_file_id": "upload_6365669000264e13858d5d05de725171.xls",
+  "plan": {
+    "build_id": "fa2ec6f1fc3f47b58dfd225f9cf77e93",
+    "state": "prepared"
+  },
+  "assert_plan_prepared": true,
+  "captured_uris": [
+    "viking://resources/raw/legacy-w1-I051-visible-image/00_legacy-w1-I051-visible-image.md",
+    "viking://resources/raw/legacy-w1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md",
+    "viking://resources/raw/legacy-w1-I051-visible-image/Preserved_source_PDF_visuals/index.md",
+    "viking://resources/raw/legacy-w1-I051-visible-image/toc.md"
+  ],
+  "captured_count": 4,
+  "assert_captured_nested_md": true,
+  "assert_captured_multiple": true,
+  "job_id": "08a1d93ecc0b499db57281efde48f299",
+  "job_kind": "W1",
+  "assert_job_kind_w1": true,
+  "job_final": {
+    "state": "draft_ready",
+    "kind": "W1",
+    "error": null,
+    "stage": "wiki_validate"
+  },
+  "assert_draft_ready": true,
+  "draft_count": 4,
+  "candidate_count": 3,
+  "candidate_uris": [
+    "viking://resources/wiki/sany/Thing/SY215C.md",
+    "viking://resources/wiki/sany/Thing/Source_PDF_image_page_1_placement_1.md",
+    "viking://resources/wiki/sany/Thing/Preserved source PDF visuals.md"
+  ],
+  "assert_all_drafts_read": true,
+  "assert_candidate_counts_match": true,
+  "assert_receipt_sources_match": true,
+  "assert_has_candidate": true,
+  "assert_source_traceable": true,
+  "assert_quotes_verbatim": true,
+  "assert_draft_under_target": true,
+  "assert_private_no_diagnostic_publish": true,
+  "passed": true
+}

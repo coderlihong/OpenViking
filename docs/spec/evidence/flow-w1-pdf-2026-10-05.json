@@ -1,0 +1,56 @@
+{
+  "implementation": "I046",
+  "scope": "real W1 PDF upload through private draft extraction, not diagnostic publication or full FLOW-W1",
+  "job_id": "1e73c293bb924638a3f9c4d027ee9fc0",
+  "build_id": "3a91722989de4f59988e9fcd19403c02",
+  "state": "draft_ready",
+  "kind": "W1",
+  "captured_count": 8,
+  "draft_count": 44,
+  "candidate_count": 42,
+  "model_calls": 44,
+  "assertions": {
+    "draft_ready": true,
+    "w1_kind": true,
+    "nonempty_captured_md": true,
+    "all_private": true,
+    "no_diagnostic_publication": true,
+    "receipt_candidate_counts": true,
+    "receipt_sources_match": true,
+    "has_candidates": true,
+    "all_candidates_have_evidence": true,
+    "all_evidence_traceable_and_verbatim": true,
+    "target_uris": true
+  },
+  "publication_pending": [
+    "semantic_evidence_validation",
+    "schema_identity_resolution",
+    "trusted_entity_catalog",
+    "closed_relationships",
+    "derived_access_intersection",
+    "atomic_joint_publication"
+  ],
+  "passed": true,
+  "date": "2026-10-05",
+  "spec_version": "0.15",
+  "elapsed_seconds": 479.364,
+  "observation_issue": "Original harness observed 100 polls at 3 seconds (about 300 seconds); actual job completed after 479 seconds. Running was not a deadlock.",
+  "environment": {
+    "server": "http://127.0.0.1:1933",
+    "parser": "real MinerU tunnel port 19103",
+    "wiki_model": "svc/deepseek-v4-flash",
+    "schema": "business v1, simplified Thing schema; not full SANY diagnostic policy acceptance",
+    "profile": "draft"
+  },
+  "git_revision": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "fixture": {
+    "path": "/tmp/ov-flow/w1pdf/slice_w1.pdf",
+    "sha256": "d82ae09f62715cf266146102151e42231c34bf26c68bebf257cb0ba4c6f4eef9"
+  },
+  "remaining": [
+    "Office W1 live flow",
+    "full manual / independent gold quality",
+    "strict diagnostic policies and closed relationships",
+    "complete joint publication and COMMON-1"
+  ]
+}

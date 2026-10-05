@@ -1,0 +1,39 @@
+{
+  "scope": "real D2 indexing checkpoint and refusal of unsupported ready only",
+  "job_id": "c3f3c27ffdfa40afaef602dbd0bd6028",
+  "state": "backoff",
+  "stage": "index",
+  "index_result": {
+    "duration_ms": 728,
+    "failed_records": 0,
+    "mode": "vectors_only",
+    "object_type": "resource",
+    "rebuilt_records": 1,
+    "scanned_records": 1,
+    "semantics_required_records": 0,
+    "status": "completed",
+    "unsupported_records": 0,
+    "uri": "viking://resources/raw/d1-office-word-I047/section_0001.md",
+    "warnings": []
+  },
+  "publication_gate": {
+    "code": "PUBLICATION_GATE_PENDING",
+    "missing_joint_receipts": [
+      "body_tree",
+      "images",
+      "parent_child",
+      "semantic_levels",
+      "bm25",
+      "metadata",
+      "version_switch"
+    ],
+    "verified": false
+  },
+  "assertions": {
+    "index_completed_without_failures": true,
+    "joint_gate_explicit": true,
+    "not_ready": true
+  },
+  "passed": true,
+  "cleanup_state": "cancelled"
+}

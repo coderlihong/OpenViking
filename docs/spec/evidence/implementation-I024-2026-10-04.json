@@ -1,0 +1,56 @@
+{
+  "run_id": "I024-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "scope": "I023 suite + 6 Wiki HTTP/SDK cases",
+    "tests": 573,
+    "status": "PASS",
+    "report": "tests-I024-feature-regression.xml"
+  },
+  "extended_regression": {
+    "passed": 604,
+    "failed": 5,
+    "report": "tests-I024-regression.xml",
+    "baseline_passed": 31,
+    "baseline_failed": 5,
+    "baseline_report": "tests-I024-sdk-baseline.xml",
+    "baseline_method": "Temporary SDK package with HEAD client.py, preloaded before CLI compatibility shim; workspace untouched"
+  },
+  "frontend": {
+    "status": "PASS",
+    "scope": "Generated Wiki configuration fragment, shared existing client, independent strict tsc check; no complete app build"
+  },
+  "verified": [
+    "Four configuration HTTP operations and sync/async SDK",
+    "Original context account identity and strict request fields",
+    "Conflict/permission SDK error mapping",
+    "Four flow contracts and source/target/collection boundaries clarified"
+  ],
+  "scope_exclusions": [
+    "Real auth provider and namespace/member grants",
+    "WikiBuildPlan/W1/W2 build APIs and task UI",
+    "Complete four FLOW, production HA/domain rules/publication/retrieval quality",
+    "Five baseline SDK compatibility failures remain"
+  ],
+  "file_sha256": {
+    "openviking/server/routers/wiki.py": "d091cc08807dc25e14103b9474ae6f9f7cd1745f9f8e733cf655c3e5d79454cf",
+    "openviking/server/app.py": "132273a8331b05b14ad48fb242f9c16f8e7e4655c384cf048741f90f59a87b84",
+    "openviking/server/routers/__init__.py": "43453b158fe5f0bdc2a3b77bdcf04927767f7cfc0462dd5307bc2203a4b382ed",
+    "openviking/wiki/catalog.py": "155b81881ec929b19eb2f693ed49f845091531988a75abca411a42169693d1ed",
+    "sdk/python/openviking_sdk/kb.py": "c7634bc84bc2840156f8173b4b5df6af164771796741e4d55bdc33c367cec7ae",
+    "sdk/python/openviking_sdk/client.py": "61bb82cff762e81a2d5b36c81baa0dd66ac92a1e09cf3569e5e4219b18c78b28",
+    "tests/enterprise_kb/test_wiki_http_sdk.py": "7582505e17622614adf2bb3efb08e79b4cc8b5e119d776d22e46ee190921b3f5",
+    "web-studio/script/gen-server-client/gen-wiki-client.mjs": "12d3f8917693e54397e35d62c636195e4bc68a039132acfd447b2ed9d2416021",
+    "web-studio/src/gen/wiki-client/types.gen.ts": "9886cd5f9d50b3cc99522523fb0776d7958d8e658898cf1d1dea38d0c6d7562b",
+    "web-studio/src/gen/wiki-client/sdk.gen.ts": "e026cc98df2d777f97e2c4f4495f40fb3f1d8dc65f01edbc607b2aca96577807",
+    "web-studio/src/gen/wiki-client/index.ts": "1027d649fc0151d5afa25539b30aec1055d301e68f965bcc1110ffe80cc9b1c5",
+    "docs/spec/evidence/tests-I024-feature-regression.xml": "5315a3cb243625d9c542ab073c81efa98fe77105c817e8f76a58f1ffabccaa33",
+    "docs/spec/evidence/tests-I024-regression.xml": "bf2bcf9b5a4d82aa34ab92de5ff514ad8c1cfaaf405aec6c1c02c9922f971e5d",
+    "docs/spec/evidence/tests-I024-sdk-baseline.xml": "9e9ea074853c4f5e02167ffb1481c033ddfb1973807311a674a3c98bc5cc261b",
+    "docs/spec/README.md": "3cbd8bc2272905021c603be31e12ac70c7566443846533fe4f1f9f134ee932e8",
+    "docs/spec/openviking-enterprise-kb-spec.md": "272fe0e5fe06e19c07565b3899bda2edab57d46ba6c2224ad7fd55fffa207029",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "e4895b26d918f9a638266a66be81fa1dbc68330b02886956d6d06638e266c3e5",
+    "docs/spec/openviking-enterprise-kb-review.md": "2bd0d68b8068b480619ae7edb855fda2819dadd5d754d2d22a53c6e071d92b0f",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "5cc91b8c7c54a5593b7263e5847d0a3dfe01187e774355a15feebe270fddd2a4"
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "implementation": "I047",
+  "spec_version": "v0.15",
+  "date": "2026-10-05",
+  "git_head": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "worktree": "dirty; hashes identify tested source, no commit created",
+  "verdict": "SCOPED_CONTRACT_PASS_AFTER_REPAIR",
+  "tests": {
+    "integration": {
+      "path": "docs/spec/evidence/integration-I047-2026-10-05.xml",
+      "tests": 1009,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1008,
+      "sha256": "fd1b5c60cc7fd4a4990c38c8815d5885172912d9b38db597fa616be6d7314c16"
+    },
+    "final-affected": {
+      "path": "docs/spec/evidence/final-affected-I047-2026-10-05.xml",
+      "tests": 141,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 141,
+      "sha256": "110fca7fb48c39e74825c373830e3a1d89ffd6a808cf1cf8470ff3311c405db7"
+    },
+    "office-final": {
+      "path": "docs/spec/evidence/office-final-I047-2026-10-05.xml",
+      "tests": 59,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 59,
+      "sha256": "84f7cb436995e1906971e956dd0befb27ff4afb1ed70a98b7b1e33a40c473adc"
+    },
+    "w1-replay-final": {
+      "path": "docs/spec/evidence/w1-replay-final-I047-2026-10-05.xml",
+      "tests": 60,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 60,
+      "sha256": "b26bfaff8e04eb1028de614eca25fc2dd7461da89eccd510358fb2fc8624b9e7"
+    },
+    "acl-final": {
+      "path": "docs/spec/evidence/acl-final-I047-2026-10-05.xml",
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 28,
+      "sha256": "e60eb1c2e42d9cbc5a43e4ab4b727380b82f00d4fbb4bb4e585dcfe76b689370"
+    },
+    "wiki-v3-final": {
+      "path": "docs/spec/evidence/wiki-v3-final-I047-2026-10-05.xml",
+      "tests": 63,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 63,
+      "sha256": "14662ee995b0c05ea692cef413fc0711c430227e9da805f185805dc904fac2e6"
+    }
+  },
+  "test_counts_overlap": true,
+  "live_evidence": {
+    "flow-d1-office-fontchecked": {
+      "path": "docs/spec/evidence/flow-d1-office-fontchecked-I047-2026-10-05.json",
+      "sha256": "4c8bad0d070735330d0244b66215b10ac7eb2f0017c8036b0f26f92119f2056e"
+    },
+    "flow-w1-office-fontchecked": {
+      "path": "docs/spec/evidence/flow-w1-office-fontchecked-I047-2026-10-05.json",
+      "sha256": "871bf7242f51ad1dfe83180456b4585b7f06542fb291e47704881f05a0232544"
+    },
+    "w1-office-replay": {
+      "path": "docs/spec/evidence/w1-office-replay-I047-2026-10-05.json",
+      "sha256": "c55f152e5b46c3682956e632b6f54f76483cdb96330a1211639b23c3f5c92cea"
+    },
+    "durable-d2-index-gate": {
+      "path": "docs/spec/evidence/durable-d2-index-gate-I047-2026-10-05.json",
+      "sha256": "739e4d3ac68f7a260f6022ac38e1db4ccb8fb00ef0318e96466f9c3298c8e6a2"
+    },
+    "wiki-strict-gate": {
+      "path": "docs/spec/evidence/wiki-strict-gate-I047-2026-10-05.json",
+      "sha256": "7e1653208ded5c3525877ec5b01b9a8f7989f21bad0ae564e482b921b48152af"
+    },
+    "office-transport": {
+      "path": "docs/spec/evidence/office-transport-I047-2026-10-05.json",
+      "sha256": "a9aa262a2385e10b28149d3eefb82324cbfa5f5575da27f6e689dc712530f615"
+    },
+    "office-flow-fixtures": {
+      "path": "docs/spec/evidence/office-flow-fixtures-I047-2026-10-05.json",
+      "sha256": "ab6e1d825b662210d927335ad402079ffe9fef936544fa639a7b45e9f548cfaf"
+    },
+    "office-fontchecked-fixtures": {
+      "path": "docs/spec/evidence/office-fontchecked-fixtures-I047-2026-10-05.json",
+      "sha256": "da8a002ab235c100cf068213e2f0b66c98ef2f2a02862425a9e41c1af5938bc3"
+    }
+  },
+  "live_results": {
+    "D1_word": "synthetic font-checked DOCX: Office to PDF, rule_blocks fallback, 7 rebuilt / 0 failed, source-scoped URI retrieval passed",
+    "W1_office": "synthetic DOCX/XLSX/PPTX finally draft_ready with 2/2/5 candidates; all source quotes checked verbatim; private only",
+    "D2": "actual completed index counts persisted; 7 missing joint receipts prevent ready; sample cancelled after proof",
+    "strict_schema": "118 pending rules rejected before execution; zero job created",
+    "office_conversion": "six-format remote Docker conversion contract; does not establish layout gold"
+  },
+  "models": {
+    "wiki": "svc/deepseek-v4-flash",
+    "extractor_version": "wiki-fixed-source-extractor-v3",
+    "office": "LibreOffice 7.4.7.2 40(Build:2)",
+    "parser": "mineru",
+    "office_font_validation": true
+  },
+  "fixes": [
+    "environment-configured frozen Office SSH/Docker transport and font declaration checks",
+    "binary upload fingerprint and immutable idempotent replay",
+    "persist real index result and refuse ready without joint receipts",
+    "current-generation ACL filtering and affected head change detection",
+    "verbatim quote prompt and submission/execution/receipt extractor policy version binding"
+  ],
+  "failure_history": [
+    "initial Excel table-only sample generated zero candidates",
+    "Excel execution refused changed namespace export policy; new execution key after stable policy passed",
+    "PowerPoint v2 source quote incorrectly changed heading marker; rejected; v3 passed"
+  ],
+  "remaining": [
+    "staged atomic whole-tree PDF/Office replacement (replace currently refuses existing tree)",
+    "full joint publication receipts and ready lifecycle",
+    "atomic policy revision / publication CAS and complete all-channel permissions",
+    "complete 118 SANY schema policies and diagnostic publication",
+    "human-reviewed maintenance gold unavailable; synthetic cases do not replace it",
+    "legacy Office HTTP/SDK full flows, layout quality, whole manual, performance and fault scale acceptance",
+    "old unversioned pending executions require a new execution key; no completed generic migration"
+  ],
+  "acceptance": {
+    "features": "15 PARTIAL; full acceptance NOT_RUN",
+    "tasks": "32 PARTIAL + KB-032 OPEN; 0 DONE",
+    "flows": "D1/D2/W1/W2 PARTIAL",
+    "full_repository_tests": "NOT_RUN",
+    "diagnostic_publication": "NOT_RUN"
+  },
+  "source_sha256": {
+    "deploy/office-converter/Dockerfile": "f50422260fec7a29677cc311c18f334484f16d0585532be9d8931a74d98864e3",
+    "deploy/office-converter/README.md": "2f683139e35fedf0404e99be2b67570bd0433e92971ba3d7cf8004871b9cd885",
+    "deploy/office-converter/convert.py": "9f10d267ea196bc6cd76ca5dcd1bf116df18394000a9f428942063853c5bfa32",
+    "deploy/office-converter/lock.json": "f73111147fb1ab06e628784c9b41e022da5df2ac38dad9dfeab1576dae1af32d",
+    "deploy/office-converter/probe.py": "82b0b2b4f7a52dbdf2bea363d637cfcd286fee5088d99350c76e9dfea0311f11",
+    "deploy/office-converter/ssh-soffice": "b843aeeae184595c1b8ed220d282043c1561d2de8ad87951d54dc646827694df",
+    "deploy/office-converter/transport-probe-2026-10-05.json": "a9aa262a2385e10b28149d3eefb82324cbfa5f5575da27f6e689dc712530f615",
+    "deploy/office-converter/transport_worker.py": "1e6dfa62378b72f89e6818d584cdf3dd604ec6b4527f2795e90f26589a20727e",
+    "openviking/indexing/jobs.py": "ba9c58ee043429d60813218ff98416f925fd5b78601b04362b797c51c0580544",
+    "openviking/parse/office_converter.py": "811d52564ab3a6dfde2755d9610cea33cb7b8c5e3058c66bd81464b45e190aaa",
+    "openviking/server/routers/wiki.py": "00d1d3508704df97ce1bf8fa05aa5ef1588ab4255abef56023d17beaccadc721",
+    "openviking/service/kb_job_runtime.py": "f809ecde51cb1157f59c0d4f9e504853c29315b60d5da4c855c3da1396526c71",
+    "openviking/service/wiki_job_service.py": "f95634f46c394cc98162ee43e171648585e3174c1d30ad30a814f7dd66338743",
+    "openviking/storage/acl.py": "c7ec571e84c90458ca28dda392da6a12848457dfd154189231013be725f9c7e4",
+    "openviking/wiki/build_plan.py": "83b84e43a000b12a8e29a370046f95a33cb85116139dead529e6b269da596228",
+    "openviking/wiki/extraction.py": "b267ab389766f7b87ae12a8bca09e485d7aacc19368a8a348cf47df6a940a259",
+    "openviking/wiki/policies.py": "ecf032a4ca2cdb6d86e274f4024ccb73fd624d5de4c4f158de01de700e7dd85e",
+    "tests/enterprise_kb/flows/flow_d1.py": "665d7a240d4919ee5fd07ed8b057b38b60ea01dca5c9c7f7be76a244d2b341e8",
+    "tests/enterprise_kb/flows/flow_wiki_strict_gate.py": "d3230130300f8587009d809eeddcf9aa2a7df481a4e2ef8e6c7a027d8bfecd6b",
+    "tests/enterprise_kb/test_acl_current_generations.py": "a5c5a8014cb67a8f54335ba197eb115af3035cd06b5549034eead991dd333af5",
+    "tests/enterprise_kb/test_document_job_index_gate.py": "04085cf775ed7dd5fe6956ade3950831f658c8ac1b73d714d5b26488e04c5636",
+    "tests/enterprise_kb/test_wiki_execution_versions.py": "c1ed52cfeec17d299ca0cc4f60e3a426611d674aae627784d77ce24b4a0fd283",
+    "tests/enterprise_kb/test_wiki_materialized_replay.py": "45257cf7e469ef31e8f47a46cf23856420010b4c5dd166be26441e215b01774f",
+    "tests/parse/test_office_transport_config.py": "726dfdcff90c932778500c4933a4e3e9e20012d35c98ead043602c316c1d03bb"
+  },
+  "service_sanity_report": "docs/spec/evidence/service-sanity-I047-2026-10-05.json",
+  "documentation_consistency": "PASS v0.15: 15 features / 33 tasks / 19 cross acceptance assertions; all flows PARTIAL",
+  "diff_whitespace_check": "PASS"
+}

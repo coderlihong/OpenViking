@@ -1,0 +1,52 @@
+{
+  "id": "I030",
+  "date": "2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "scope": "Immutable Wiki preparation-plan GET/SDK, bounded upload reads and existing-key replay mutation protection; no execution or deployment",
+  "regression": {
+    "tests": 692,
+    "new_tests": 10,
+    "failures": 0,
+    "report": "tests-I030-regression.xml",
+    "scope": "I029 suite + plan-read HTTP tests, not full repository"
+  },
+  "frontend": "Actual server OpenAPI regenerated seven Wiki paths; independent strict TypeScript check PASS; no UI/full frontend build",
+  "verified": [
+    "Account-scoped plan retrieval checks current source read and target write permissions",
+    "Bounded limit+1 upload read rejects before materialization and invokes cleanup",
+    "Already-bound idempotency keys reject changed content/name/source without changing working bytes or epoch",
+    "SDK sync and async share transport/error mapping"
+  ],
+  "limitations": [
+    "Prepared plans are not queued/ready jobs or export authorization receipts",
+    "Initial concurrent materialization atomicity remains unimplemented",
+    "TempUploadStore disk-download quotas not changed",
+    "Wiki extraction/domain policies/relation publication/shared indexing not wired",
+    "Full FLOW-D1/D2/W1/W2 and production availability remain NOT_RUN",
+    "I024 five SDK compatibility baseline failures remain"
+  ],
+  "initial_reports": [
+    "tests-I030-plan-read-initial.xml: 4 PASS/3 FAIL due to wrong SDK exception imports",
+    "tests-I030-regression-initial.xml: 691 PASS/1 FAIL due to outdated exact OpenAPI path set"
+  ],
+  "sha256": {
+    "openviking/wiki/build_plan.py": "a75d780868c968b2b96a0a361a5b9ec6d7d1fa055f338b095f97fc9b10e31394",
+    "openviking/server/routers/wiki.py": "c5e75e18e7cffa479b4454296ea8e59a889f57e3c5fd18a574fd90c6c1cb6440",
+    "sdk/python/openviking_sdk/kb.py": "8561b863deca040e9e2a3bf0be245c871440a5447976b5d819f714eaaa68c1f5",
+    "tests/enterprise_kb/test_wiki_plan_read_http.py": "b2da3badcaf9a0da335a098d46d6f181b40f6ea8f41c8ad7d8c91c7e6a9ae768",
+    "tests/enterprise_kb/test_wiki_http_sdk.py": "f368023346129e6711b3a2ff599fe5ea44d1873cf92efb19b77a99e8b89e354f",
+    "web-studio/script/gen-server-client/gen-wiki-client.mjs": "12d3f8917693e54397e35d62c636195e4bc68a039132acfd447b2ed9d2416021",
+    "web-studio/src/gen/wiki-client/types.gen.ts": "df2d52e9e62088cc7149c3d19d0522e266a1687d053cc779f0b0e89515fce904",
+    "web-studio/src/gen/wiki-client/sdk.gen.ts": "9df7b1441e88a20403273c9d8b94e4fe185c9e3a57d178f8874d61aa668f004a",
+    "web-studio/src/gen/wiki-client/index.ts": "8b17881062172b1703eb418adffe28f1196928a7e6a50bf2bfa8f9420fb40aa9",
+    "docs/spec/README.md": "b83253b4439a52330ae803d6a13e2f59aeb93216c41cf62497b73e82cebe8ffa",
+    "docs/spec/openviking-enterprise-kb-spec.md": "b6c2aca7081c84f65d19c13fafe9dcef7e63034e08d00ce3ee24dbf2da3acee7",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "1a7d350fe74d09fa918fbc49cdcdf389a312b4ae11c3cc849b7dddf536d6b57a",
+    "docs/spec/openviking-enterprise-kb-review.md": "eaba7e5b6a253c014a4199e81423ccf2ee4c1736491e25541895d2c3f823bd53",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "c87fa9804fb924759b67caef2b0abf56dced70d5eb97359c9ca847b4871ce173",
+    "docs/spec/evidence/tests-I030-regression.xml": "b3effc0cf442575fda7807dcf3a29d540bbc946e46c7d66ff22c9afba97a13d6",
+    "docs/spec/evidence/tests-I030-regression-initial.xml": "ac6fa3f32cb199de02a261da4e8976f49695d6078093790d984b127c52b27aa2",
+    "docs/spec/evidence/tests-I030-plan-read.xml": "4c4970a6bd8ca16125590c89de82cbc8c0813f6665864447335ffadb82671c32",
+    "docs/spec/evidence/tests-I030-plan-read-initial.xml": "dcee1fd34932d5aa557ac26be9c6ca60d7a47827426b1b1aecda055225f58a97"
+  }
+}

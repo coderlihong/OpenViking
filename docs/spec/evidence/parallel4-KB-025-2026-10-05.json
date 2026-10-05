@@ -1,0 +1,58 @@
+{
+  "id": "parallel4-KB-025",
+  "date": "2026-10-05",
+  "task": "KB-025",
+  "feature": "F10",
+  "title": "实体身份、保守合并和人工编辑 (entity identity, conservative merge, human edit)",
+  "status": "IMPLEMENTED_PRIVATE_ONLY",
+  "product_acceptance": "NOT_RUN",
+  "files_changed": [
+    "openviking/wiki/identity.py",
+    "openviking/wiki/merge.py",
+    "tests/enterprise_kb/test_wiki_candidate_merge.py",
+    "tests/enterprise_kb/test_wiki_identity_conservative_merge.py"
+  ],
+  "what_was_implemented": {
+    "canonical_identity_tuple": "Added identity_tuple() and attached an explicit (account, namespace, entity_type, schema_id, schema_version, schema_digest) anchor to every resolve_candidate_identity() result. Display names/titles/aliases and provisional model ids never participate, so the same fixed schema/source rebuild resolves to the same canonical id (TC-10.7, TC-16.12).",
+    "canonical_id_preserved_across_rebuilds": "Canonical id remains a hash of the business key + applicability scope + schema/namespace tuple only, so duplicate model rebuilds collapse into one group instead of creating duplicate entities.",
+    "collision_aware_alias_ownership": "Added alias_ownership(); a display name owned by more than one canonical id is reported in alias_collisions and left unowned in alias_ownership rather than silently merged. Alias ownership is still not verified (alias_ownership_verified=false).",
+    "no_default_synonym_merge": "Same name across different entity type / config applicability / namespace yields distinct canonical ids; near-name similarity never merges. Group identity for pending cases keeps canonical_id=null.",
+    "multi_source_evidence_retained": "All field observations, body variants, evidence proofs and contributors are retained per group; contradictory business values keep every value with provenance and never select a winner.",
+    "human_confirmed_values_protected": "merge(..., human_confirmed={...}) records a separate authoritative overlay per group (human_confirmed / human_confirmed_fields) without deleting the model observations. Undeclared fields are rejected; identity-defining fields cannot be rewritten by a hand edit.",
+    "expected_revision_cas": "merge(..., previous_receipt=..., expected_revision=...) and resolve_merge_revision() implement an expected_revision CAS gate: a writer holding a stale revision is refused with ConflictError (concurrent edit preserved), never overwriting the newer human-confirmed revision. report field human_revision_cas is now truthful ('revision_bound' / 'not_supplied').",
+    "unresolved_conflicts_excluded_from_valid_graph": "Each group carries in_valid_graph; payload exposes valid_graph and excluded_from_valid_graph. Conflict, pending_identity and other non-admitted states are retained as evidence but never admitted; receipt reports valid_graph_count/excluded_count/alias_collision_count. diagnostic_publishable stays false."
+  },
+  "tests": {
+    "command": ".venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/test_wiki_candidate_merge.py tests/enterprise_kb/test_wiki_identity_conservative_merge.py",
+    "owned_files": [
+      "tests/enterprise_kb/test_wiki_candidate_merge.py (30 passed, 1 assertion updated to the new truthful human_revision_cas value plus valid_graph/alias_ownership assertions)",
+      "tests/enterprise_kb/test_wiki_identity_conservative_merge.py (14 new tests)"
+    ],
+    "counts": {"passed": 44, "failed": 0, "skipped": 0},
+    "junit": "docs/spec/evidence/parallel4-KB-025-2026-10-05.xml",
+    "regression_command": ".venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/",
+    "regression_counts": {"passed": 915, "failed": 0, "skipped": 1},
+    "tc_coverage": {
+      "TC-10.7": "same display name across type/config/namespace -> distinct canonical ids; alias collision reported, never merged",
+      "TC-10.8": "two-source conflict preserved; expected_revision detects concurrent edit; human-confirmed value never overwritten by model rerun",
+      "TC-16.12": "same name different type/level not merged; sources/conflicts complete; expected_revision rejects stale write; duplicate rebuild produces no duplicate entity; unresolved conflict excluded from valid graph"
+    }
+  },
+  "file_sha256": {
+    "openviking/wiki/identity.py": "5358b28fcb5e088d29a6824c2b317f1050124a5704676d20570995c80689ad82",
+    "openviking/wiki/merge.py": "227c35b4993607b9fad32528e7d1298a164d81f62be1662ab28f8e7b89f96cf6",
+    "tests/enterprise_kb/test_wiki_candidate_merge.py": "7826b63bb2026c34a20fc19ace913ff5103c064c0939dc5d3387b7516ee4496a",
+    "tests/enterprise_kb/test_wiki_identity_conservative_merge.py": "f4dc3a64a13c4bac6725fd20acb9e9373bceeb5b691437a3419afd0458392596"
+  },
+  "remaining_gaps": [
+    "Semantic/ontology identity verification and trusted entity catalog remain pending (KB-026): canonical_id is a provisional business identity, not a trusted entity id.",
+    "Alias ownership is collision-aware but not verified against a durable alias registry; alias_ownership_verified stays false.",
+    "Human-edit CAS is a revision gate over the private merge receipt only; it is not yet wired to the Wiki HTTP/job entry points or to md-level expected_revision on published pages (KB-027/KB-028 cross-module work).",
+    "The valid graph here is the private merge projection (valid_graph/excluded_from_valid_graph); there is no published diagnostic graph, relation-closure gate, or derived-index rebuild in this task.",
+    "Merge remains a private draft_merge profile: diagnostic_publishable is false and no entity/edge/index is published."
+  ],
+  "cross_module_interface_needed": [
+    "openviking/wiki/merge.py merge() now accepts keyword-only previous_receipt and human_confirmed; Wiki HTTP/job entry points (openviking/server/routers/wiki.py, openviking/service/wiki_job_service.py) must thread the current private merge receipt plus the client expected_revision to activate human-edit CAS end to end. Not editable under KB-025 ownership.",
+    "A durable alias/identity registry (KB-026 trusted entity catalog) is required to promote alias_ownership_verified and canonical_id from provisional to trusted; identity.py exposes alias_ownership()/identity_tuple() for that consumer."
+  ]
+}

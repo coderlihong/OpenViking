@@ -1,0 +1,94 @@
+{
+  "task_id": "KB-001",
+  "date": "2026-10-04",
+  "status": "PARTIAL",
+  "scope": "Current Wiki prepare API and Python async/sync SDK/legacy HTTP compatibility; no execution jobs implemented",
+  "baseline": {
+    "reference": "docs/spec/evidence/tests-I024-sdk-baseline.xml",
+    "reproduction_command": ".venv/bin/python -m pytest tests/client/test_http_client_config.py -q --tb=short",
+    "result": "5 failed, 18 passed",
+    "failures": [
+      "test_async_http_client_loads_missing_fields_from_ovcli_config",
+      "test_async_http_client_find_does_not_send_peer_id",
+      "test_async_http_client_search_does_not_send_peer_id",
+      "test_async_http_client_find_sends_context_type",
+      "test_async_http_client_search_sends_context_type"
+    ],
+    "classification": "4 legacy bridge implementation regressions repaired; 1 stale credential forwarding assertion corrected"
+  },
+  "changes": [
+    {
+      "source": "openviking_cli/client/_http_compat.py",
+      "behavior": "Legacy find/search keyword arguments are passed through SDK checked options, preserving context_type enum serialization and telemetry=False defaults. Sync bridge delegates the same contract. Explicit options remain intact; duplicate and unknown option fields are rejected."
+    },
+    {
+      "source": "openviking/server/routers/wiki.py",
+      "behavior": "BuildRequest and IngestionRequest advertise and enforce idempotency_key ASCII catalog identifiers of length 1 through 128, matching existing planner/catalog constraints instead of advertising 256. Existing prepared HTTP 200 semantics and required keys are retained."
+    },
+    {
+      "source": "sdk/python/openviking_sdk/kb.py",
+      "behavior": "Document current immutable prepare behavior and key bounds; type update_policy as Literal[fail, replace] in both client modes. Server remains validation authority."
+    },
+    {
+      "source": "tests/client/test_http_client_config.py",
+      "behavior": "Replace stale expectation that configured gateway credentials are inherited when an explicit URL names a different server. Existing SDK URL binding and challenge-only credential forwarding are retained without product changes."
+    }
+  ],
+  "security_contract_evidence": {
+    "source": "sdk/python/tests/test_ovcli_config_compat.py",
+    "existing_tests": [
+      "test_async_http_client_explicit_arguments_override_ovcli_config",
+      "test_async_http_client_does_not_override_explicit_gateway_header",
+      "test_async_http_client_retries_gateway_token_only_after_marked_challenge"
+    ],
+    "new_source": "sdk/python/tests/test_legacy_search_contract.py",
+    "new_coverage": "Actual MockTransport requests verify same-URL challenge forwarding, different-URL refusal, and caller-provided gateway headers on either URL."
+  },
+  "verification": [
+    {
+      "command": ".venv/bin/python -m pytest sdk/python/tests --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel-KB-001-sdk-2026-10-04.xml",
+      "result": "136 passed, 2 existing AsyncMock RuntimeWarnings",
+      "report": "docs/spec/evidence/parallel-KB-001-sdk-2026-10-04.xml"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/client/test_http_client_config.py tests/enterprise_kb/test_wiki_http_sdk.py tests/enterprise_kb/test_wiki_build_http.py tests/enterprise_kb/test_wiki_ingestion_http.py tests/enterprise_kb/test_wiki_plan_read_http.py tests/enterprise_kb/test_wiki_namespaces_http.py --no-cov -q --tb=short --junitxml=docs/spec/evidence/parallel-KB-001-http-2026-10-04.xml",
+      "result": "82 passed, 4 existing Pydantic deprecation warnings",
+      "report": "docs/spec/evidence/parallel-KB-001-http-2026-10-04.xml"
+    },
+    {
+      "command": "git diff --check -- openviking_cli/client/_http_compat.py tests/client/test_http_client_config.py",
+      "result": "PASS"
+    },
+    {
+      "command": ".venv/bin/python -m py_compile openviking_cli/client/_http_compat.py openviking/server/routers/wiki.py sdk/python/openviking_sdk/kb.py sdk/python/tests/test_legacy_search_contract.py",
+      "result": "PASS"
+    }
+  ],
+  "new_contract_tests": {
+    "build_source": "tests/enterprise_kb/test_wiki_build_http.py",
+    "ingestion_source": "tests/enterprise_kb/test_wiki_ingestion_http.py",
+    "coverage": [
+      "Accepted 128-character ASCII key and HTTP 200 prepared response at each prepare entry",
+      "Rejected empty, 129-character, 256-character, whitespace, non-ASCII, slash, newline, and non-string keys before plan persistence",
+      "Invalid upload key leaves upload bytes and raw materialized destination untouched",
+      "OpenAPI defaults recursive=True, update_policy=fail, policy enum and required key are unchanged",
+      "Actual create_app validation handler returns HTTP 400 INVALID_ARGUMENT and both async/sync SDK preserve InvalidArgumentError"
+    ],
+    "validation_fixture_note": "Isolated FastAPI fixtures return their standard validation HTTP 422; actual create_app tests separately verify production HTTP 400 INVALID_ARGUMENT."
+  },
+  "completed_conditions": [
+    "Legacy SDK baseline now passes all 23 samples with safe gateway behavior",
+    "Current prepare key constraints match planner behavior and OpenAPI",
+    "Current async and sync SDK registration/read/prepare methods pass real ASGI route regressions",
+    "Namespace SDK register/get/export regressions pass"
+  ],
+  "remaining_conditions": [
+    "Parent agent owns final frontend generation and shared contract/status documentation; not verified by this report",
+    "Rust CLI KB entry field parity and migration policy are not established by Python legacy bridge tests",
+    "Future execute/job endpoints, durable waiting/querying, and immutable job response contract remain unimplemented",
+    "TC-1.6 effective queue/adapter options and TC-1.7 durable wait/timeout requirements remain NOT_RUN",
+    "TC-13.1 and TC-16.18 future persistent-job/profile/digest cases remain NOT_RUN; current prepared-plan replay is only local coverage",
+    "Full Feature/FLOW acceptance remains NOT_RUN"
+  ],
+  "workspace_handling": "Preserved existing uncommitted client.py/options.py and unrelated changes; no commits, resets, publication.py changes, or shared spec/status edits."
+}

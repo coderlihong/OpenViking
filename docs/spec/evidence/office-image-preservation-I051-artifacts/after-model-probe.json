@@ -1,0 +1,97 @@
+{
+  "metadata": {
+    "artifact_version": 1,
+    "backend": "mineru",
+    "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+    "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+    "mode": "auto",
+    "options": {
+      "quality_tier": "standard"
+    },
+    "options_digest": "7d4e35fe22e7d80101eade62b01e0e8308510f6d8557e5e16f5ee234567f2672",
+    "coverage": {
+      "input_pages": 5,
+      "processed_pages": 5,
+      "complete": true,
+      "page_ids": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "warnings": [
+      {
+        "code": "SOURCE_PDF_IMAGES_RESTORED",
+        "count": 1,
+        "reason": "visible source PDF placements had no exact-pixel model asset; model extraction quality remains unaccepted"
+      }
+    ],
+    "resume_granularity": "document",
+    "source_image_preservation": {
+      "version": 1,
+      "source_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+      "scope": "visible embedded/inline PDF image placements; vector-only figures are not identified",
+      "model_quality_accepted": false,
+      "visible_placements": 1,
+      "restored_placements": 1,
+      "placements": [
+        {
+          "path": "__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png",
+          "asset_sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+          "source_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+          "source_page_index": 0,
+          "source_page_number": 1,
+          "source_draw_index": 0,
+          "source_xref": 4,
+          "source_bbox_pt": [
+            224.78700256347656,
+            121.86175537109375,
+            314.67401123046875,
+            181.75775146484375
+          ],
+          "visible_bbox_pt": [
+            224.78700256347656,
+            121.86175537109375,
+            314.67401123046875,
+            181.75775146484375
+          ],
+          "page_bounds_pt": [
+            0.0,
+            0.0,
+            595.303955078125,
+            841.8897705078125
+          ],
+          "render_bbox_pt": [
+            224.78700256347656,
+            121.86175537109375,
+            314.67401123046875,
+            181.75775146484375
+          ],
+          "page_rotation": 0,
+          "source_coordinates": "unrotated page points",
+          "render_coordinates": "rotated page points",
+          "restored": true,
+          "model_extracted": false,
+          "exact_model_pixel_match": false,
+          "chapter_assignment": "unassigned",
+          "interpretation": "not inferred",
+          "extraction_method": "source_pdf_visible_region_render"
+        }
+      ]
+    },
+    "effective_backend": "mineru",
+    "effective_mode": "auto",
+    "page_identity_verified": true,
+    "asset_count": 1,
+    "block_count": 12,
+    "submitted_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594"
+  },
+  "asset_files": [
+    "parsed.json",
+    "__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png"
+  ],
+  "markdown": "EXCEL\\_TAIL\n\nHIDDEN\\_SHEET\\_VALUE\n\n机型:SY215C。\n\n部件:履带张紧装置。\n\n故障现象:行走跑偏。\n\n，再检查右侧履带张紧度。\n\n张紧度。\n\nThe pressure reading is 12.5 MPa.\n\n# Preserved source PDF visuals\n\n## Source PDF image — page 1, placement 1\n\nSource PDF SHA-256: `3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594`. Page 1; bounds [224.78700256347656, 121.86175537109375, 314.67401123046875, 181.75775146484375] points (unrotated). This visual is preserved from the source PDF; its meaning and chapter membership are unverified.\n\n![Source PDF image, page 1](__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png)\n",
+  "artifact_sha256": "42d36f48b662d3a47dc555418724d474cb3f32e750b46be3a529f4f6dbbf57f1"
+}

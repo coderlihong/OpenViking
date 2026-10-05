@@ -1,0 +1,38 @@
+{
+  "checked_at": "2026-10-05T08:28:30.295279+00:00",
+  "service_health_http": 200,
+  "mineru_tunnel_health_http": 200,
+  "active_job_count": 0,
+  "job_state_counts": {
+    "cancelled": 1,
+    "draft_ready": 13,
+    "failed": 3
+  },
+  "final_office_jobs": [
+    {
+      "family": "word-fontchecked",
+      "job_id": "8e44e8fae07b4594b6a820672be45590",
+      "state": "draft_ready",
+      "stage": "wiki_validate",
+      "extractor_version": null,
+      "policy_version": null
+    },
+    {
+      "family": "sheets-fontchecked",
+      "job_id": "cc3aaaf35dc44078a6de9c61e7b538b0",
+      "state": "draft_ready",
+      "stage": "wiki_validate",
+      "extractor_version": null,
+      "policy_version": null
+    },
+    {
+      "family": "slides-fontchecked",
+      "job_id": "b5db1b01de9144eba289e91a61f75b33",
+      "state": "draft_ready",
+      "stage": "wiki_validate",
+      "extractor_version": "wiki-fixed-source-extractor-v3",
+      "policy_version": "wiki-policy-coverage-v1"
+    }
+  ],
+  "scope": "read-only local service/database sanity; not full product acceptance"
+}

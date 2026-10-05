@@ -1,0 +1,242 @@
+{
+  "sample_class": "synthetic_not_gold",
+  "original_model_quality_failure_retained": true,
+  "legacy_binary_font_validation": "NOT_RUN",
+  "enabled_backend": "mineru",
+  "other_backend_preservation": "NOT_RUN",
+  "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+  "expected_account_id": "flowtest",
+  "expected_visible_image_count": 1,
+  "runs": {
+    "d1": {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-image-I051/legacy-d1-I051-visible-image.xls",
+        "url": "http://127.0.0.1:1933",
+        "account": null,
+        "user": null,
+        "backend": "mineru",
+        "timeout": 1800,
+        "query": "source PDF image SY215C hydraulic pump pressure"
+      },
+      "add_resource": {
+        "status": "success",
+        "root_uri": "viking://resources/raw/legacy-d1-I051-visible-image",
+        "structure_source": "markdown_headings",
+        "alignment_status": "failed",
+        "elapsed_s": 105.6
+      },
+      "assert_root_appends_name": true,
+      "tree_names": [
+        "00_legacy-d1-I051-visible-image.md",
+        "Preserved_source_PDF_visuals",
+        "_manifest.json",
+        "_toc.json",
+        "toc.md"
+      ],
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "reindex": {
+        "status": "completed",
+        "rebuilt_records": 11,
+        "failed_records": 0,
+        "elapsed_s": 59.7
+      },
+      "assert_reindex_clean": true,
+      "search_uris": [
+        "viking://resources/raw/legacy-d1-I051-visible-image/00_legacy-d1-I051-visible-image.md",
+        "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/index.md",
+        "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md",
+        "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+        "viking://resources/raw/legacy-d1-I051-visible-image/toc.md"
+      ],
+      "assert_uri_traceable": true,
+      "passed": true
+    },
+    "w1": {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-image-I051/legacy-w1-I051-visible-image.xls",
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "job_id": null,
+        "build_id": null,
+        "ingest_key": "I051-visible-image-xls-ingest",
+        "exec_key": "I051-visible-image-xls-exec",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_6365669000264e13858d5d05de725171.xls",
+      "plan": {
+        "build_id": "fa2ec6f1fc3f47b58dfd225f9cf77e93",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/legacy-w1-I051-visible-image/00_legacy-w1-I051-visible-image.md",
+        "viking://resources/raw/legacy-w1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md",
+        "viking://resources/raw/legacy-w1-I051-visible-image/Preserved_source_PDF_visuals/index.md",
+        "viking://resources/raw/legacy-w1-I051-visible-image/toc.md"
+      ],
+      "captured_count": 4,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "08a1d93ecc0b499db57281efde48f299",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 4,
+      "candidate_count": 3,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/SY215C.md",
+        "viking://resources/wiki/sany/Thing/Source_PDF_image_page_1_placement_1.md",
+        "viking://resources/wiki/sany/Thing/Preserved source PDF visuals.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true
+    }
+  },
+  "d1_materialized_images": [
+    {
+      "uri": "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+      "bytes": 468,
+      "sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+      "signature_hex": "89504e470d0a1a0a0000000d"
+    }
+  ],
+  "d1_manifest": {
+    "version": 1,
+    "structure_source": "markdown_headings",
+    "alignment_status": "failed",
+    "info": [
+      {
+        "code": "BOOKMARK_ALIGNMENT_FAILED",
+        "message": "书签对齐未成功，已按Markdown标题或规则切分继续入库",
+        "reason": "missing_heading_matches",
+        "fallback_strategy": "markdown_headings",
+        "unmatched_count": 4
+      }
+    ],
+    "chapters": [
+      {
+        "chapter_id": "preface_242b07f0f300",
+        "title": "前置内容",
+        "level": 1,
+        "parent_id": null,
+        "path": "00_legacy-d1-I051-visible-image.md",
+        "page_start": null,
+        "match_status": "matched"
+      },
+      {
+        "chapter_id": "heading_d371458259bd",
+        "title": "Preserved source PDF visuals",
+        "level": 1,
+        "parent_id": null,
+        "path": "Preserved_source_PDF_visuals/index.md",
+        "page_start": null,
+        "match_status": "matched"
+      },
+      {
+        "chapter_id": "heading_37075f12fd15",
+        "title": "Source PDF image — page 1, placement 1",
+        "level": 2,
+        "parent_id": "heading_d371458259bd",
+        "path": "Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md",
+        "page_start": null,
+        "match_status": "matched"
+      }
+    ]
+  },
+  "w1_materialized_images": [
+    "viking://resources/raw/legacy-w1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png"
+  ],
+  "assert_d1_visible_image_materialized": true,
+  "assert_w1_visible_image_materialized": true,
+  "joint_image_publication": [
+    {
+      "uri": "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+      "generation": "a958498c7c9145e28f6a1a39ef119526",
+      "snapshot": "cd137a68c1bc48f5b346e9180da4c23b",
+      "build_state": "published",
+      "expected": [
+        "image:74b50580358f54161d9315b8880c90cf11f89122a28723e77f7313a2fbc46768",
+        "metadata:dea218271774138c516f5b0f586931d9e19d6e63930375f1ebec3520b02cff00"
+      ],
+      "receipts": [
+        "image:74b50580358f54161d9315b8880c90cf11f89122a28723e77f7313a2fbc46768",
+        "metadata:dea218271774138c516f5b0f586931d9e19d6e63930375f1ebec3520b02cff00"
+      ],
+      "content": {
+        "sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+        "size": 468,
+        "draft_epoch": 0,
+        "image_plan_version": "image-occurrences-v3",
+        "image_semantics": {
+          "sha256": "2e5dc71dc9bf3c9d4a282396b6298b41b26aedde20ece6d3d8ecb756353bb03d",
+          "size": 4140
+        },
+        "image_context_epochs": {
+          "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md": 0
+        }
+      }
+    }
+  ],
+  "assert_joint_image_published": true,
+  "image_search_matches": [
+    {
+      "context_type": "resource",
+      "uri": "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+      "level": 2,
+      "score": 0.9788080453872681,
+      "abstract": "**Semantic Indexing Summary**\n\n1. **Visible content (main subjects/objects):** The image consists of a single, uniform field of solid red color filling the entire frame. There are no discernible objects, figures, shapes, textures, gradients, borders, or internal divisions. The red appears flat and even across the whole area (a near‑pure red, approximately RGB 255,0,0).\n\n2. **What is depicted / happening:** Nothing is depicted in a representational sense. The image is a flat color block with no action, scene, or subject matter. It reads as a monochrome red rectangle.\n\n3. **Visible text:** None. No characters, labels, watermarks, or annotations are present anywhere in the image.\n\n4. **Key visual elements and relationships:** The only element is the red fill itself, presented in a landscape (wider‑than‑tall) rectangular aspect ratio. Because there is a single homogeneous element, there are no spatial relationships, contrasts, or compositional features to describe.\n\n5. **Figure's purpose in the chapter (per provided context):** The accompanying source text identifies this as a preserved visual extracted from a source PDF — \"page 1, placement 1,\" with stated unrotated bounds in points and a SHA‑256 hash of the source file. The caption is simply \"Source PDF image, page 1.\" The context explicitly notes that the visual's meaning and chapter membership are *unverified*. Within the document it therefore functions as an embedded image slot on page 1; its intended semantic role (e.g., a color swatch, a redacted/blank region, a placeholder, a logo rendered as a solid block, or a rendering/extraction artifact) cannot be determined from the pixels alone.\n\n6. **Facts vs. interpretation (uncertainty marked):**\n   - *Visible fact:* The image is a solid, uniform red rectangle with no text or other content.\n   - *Visible fact:* It is in landscape orientation.\n   - *Contextual fact (from source text, not from the image):* It is labeled as page 1, placement 1 of a source PDF, with given bounds and a file hash; its meaning is stated as unverified.\n   - *Interpretation (uncertain):* The red field may be a placeholder, a redaction mask, a color sample, or an extraction/rendering artifact. This is **not** confirmable from the image itself and should be treated as speculative.\n\n**Concise index tag:** Solid red rectangle; no text or objects; preserved PDF page‑1 image of unverified meaning.",
+      "tags": [],
+      "matches": [
+        {
+          "chunk_id": "image:74b50580358f54161d9315b8880c90cf11f89122a28723e77f7313a2fbc46768",
+          "parent_chunk_id": "",
+          "text": "**Semantic Indexing Summary**\n\n1. **Visible content (main subjects/objects):** The image consists of a single, uniform field of solid red color filling the entire frame. There are no discernible objects, figures, shapes, textures, gradients, borders, or internal divisions. The red appears flat and even across the whole area (a near‑pure red, approximately RGB 255,0,0).\n\n2. **What is depicted / happening:** Nothing is depicted in a representational sense. The image is a flat color block with no action, scene, or subject matter. It reads as a monochrome red rectangle.\n\n3. **Visible text:** None. No characters, labels, watermarks, or annotations are present anywhere in the image.\n\n4. **Key visual elements and relationships:** The only element is the red fill itself, presented in a landscape (wider‑than‑tall) rectangular aspect ratio. Because there is a single homogeneous element, there are no spatial relationships, contrasts, or compositional features to describe.\n\n5. **Figure's purpose in the chapter (per provided context):** The accompanying source text identifies this as a preserved visual extracted from a source PDF — \"page 1, placement 1,\" with stated unrotated bounds in points and a SHA‑256 hash of the source file. The caption is simply \"Source PDF image, page 1.\" The context explicitly notes that the visual's meaning and chapter membership are *unverified*. Within the document it therefore functions as an embedded image slot on page 1; its intended semantic role (e.g., a color swatch, a redacted/blank region, a placeholder, a logo rendered as a solid block, or a rendering/extraction artifact) cannot be determined from the pixels alone.\n\n6. **Facts vs. interpretation (uncertainty marked):**\n   - *Visible fact:* The image is a solid, uniform red rectangle with no text or other content.\n   - *Visible fact:* It is in landscape orientation.\n   - *Contextual fact (from source text, not from the image):* It is labeled as page 1, placement 1 of a source PDF, with given bounds and a file hash; its meaning is stated as unverified.\n   - *Interpretation (uncertain):* The red field may be a placeholder, a redaction mask, a color sample, or an extraction/rendering artifact. This is **not** confirmable from the image itself and should be treated as speculative.\n\n**Concise index tag:** Solid red rectangle; no text or objects; preserved PDF page‑1 image of unverified meaning.",
+          "parent_text": "Source URI: viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md\nChapter: Source PDF image — page 1, placement 1\nCaption: Source PDF image, page 1\nNeighboring source text:\n## Source PDF image — page 1, placement 1\n\nSource PDF SHA-256: `5816856d3a983cb297947ea7a4fab9fe7f4030d142a2cd75d8d64cbdf0cd5b29`. Page 1; bounds [224.78700256347656, 121.86175537109375, 314.67401123046875, 181.75775146484375] points (unrotated). This visual is preserved from the source PDF; its meaning and chapter membership are unverified.\n\n![Source PDF image, page 1](images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png)\n",
+          "content_revision": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+          "image_context_uri": "",
+          "image_context_hash": "",
+          "score": 0.9788080453872681
+        }
+      ]
+    }
+  ],
+  "assert_image_uri_searchable": true,
+  "passed": true,
+  "final_runtime_check": {
+    "observed_at_epoch": 1791211314.465476,
+    "health_http_status": 200,
+    "api_pid": 99130,
+    "running_durable_jobs": 0,
+    "held_parse_slots": 0
+  },
+  "w1_quality_boundary": "Three private candidates use simplified business/v1 Thing schema and synthetic content; not adjudicated repair gold or accepted diagnostic-quality publication.",
+  "bookmark_quality_boundary": "Live converted XLS PDF bookmark-to-heading alignment failed and fell back to Markdown headings; source-preserved visual remains explicitly unassigned to original chapter.",
+  "summary_joint_embedding_evidence": {
+    "image_uri": "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/images/9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd.png",
+    "nonempty_vlm_summary": true,
+    "source_context_present": true,
+    "published_joint_receipts_account": "flowtest",
+    "published_joint_receipts_complete": true,
+    "context_uri": "viking://resources/raw/legacy-d1-I051-visible-image/Preserved_source_PDF_visuals/Source_PDF_image_page_1_placement_1.md"
+  },
+  "completed": true
+}

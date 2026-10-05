@@ -1,0 +1,48 @@
+{
+  "run_id": "I014-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 478,
+    "new_occurrence_tests": 6,
+    "report": "tests-I014-regression.xml"
+  },
+  "verified": [
+    "Distinct occurrence vectors and contexts with common image generation/receipt barrier",
+    "Same source URI aggregation retains individual matches/context URI",
+    "Asset SHA mismatch rejects VLM semantics before enqueue",
+    "Occurrence worker failure preserves old generation",
+    "URI fresh semantic result hands occurrences to shared image plan",
+    "Vectors-only cannot collapse published occurrence records without cache",
+    "Actual incremental DAG image branch regenerates occurrences"
+  ],
+  "fixtures": [
+    "SQLite/disk/producer/worker/result converter exercised",
+    "VLM/embedder/vector DB/AGFS transport fixtures",
+    "Phase handoff tests do not prove full HTTP/SDK/semantic E2E"
+  ],
+  "scope_exclusions": [
+    "Durable occurrence cache and full vectors_only support",
+    "Context modification dependencies/automatic event propagation",
+    "Cross-ACL source intersection and revocation prefilter",
+    "16-reference pagination/cross-directory discovery and real quality",
+    "Multiple spaces/BM25/root visibility/ready/lifecycle/Wiki/four FLOW"
+  ],
+  "file_sha256": {
+    "openviking/indexing/image.py": "1b9b41405ea0869a61c7c89f384632e2bfa52c32c75a57a6cc7fc5fd4ea69ce3",
+    "openviking/utils/embedding_utils.py": "f0b2aeb5cec44423f75006a825557da76835703d0ff0550317bb46f3c06c4030",
+    "openviking/service/reindex_executor.py": "e7e6c7b1f33089796f60e7a325c4dec7afbee3230b141a567964b904ab8e0fcf",
+    "openviking/storage/collection_schemas.py": "4be82de131d658d12d6f0013e7544f8e02b28bd8ada0c6ac0049e6661a85d4df",
+    "openviking/storage/queuefs/semantic_dag.py": "d760f7c510ecc3f0b0ab717bb873b43d35acf71c0af87895d21fc57d1e3ef3ce",
+    "openviking/storage/queuefs/semantic_processor.py": "190a83669066825ffd93d16e3c9735d660a838a0b1d5be17d6edfe5f86907bd7",
+    "openviking/retrieve/hierarchical_retriever.py": "7bb7aa9150e64773070d4720fe87d6bbd97de4391ad3c68d87956494907159f3",
+    "tests/enterprise_kb/test_image_publication.py": "854623faf45ea23adcb44728e679d6f766b78292836937be6e5ff489af5594f7",
+    "docs/spec/evidence/tests-I014-regression.xml": "1b5f41d3bfdedb19960d3418c50bdcb47a930f79629ae27f8a7968ea488cde74",
+    "docs/spec/openviking-enterprise-kb-spec.md": "fb690950758b2cf87331c9cd0400d3eca809ac44096486ff256304b14f6fb47a",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "aea099c21aee23a30bda806675670ea15181a21623ccdcd84e58cf354998c4da",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "eed31d115f56516b117a759b51703c612203cb4f0de1321f8a5c840c43bf6c57",
+    "docs/spec/openviking-enterprise-kb-review.md": "647807d01d2ad481545393e7a33f7eb0b5c08237d7a16776817f66a084b9fcd3",
+    "docs/spec/README.md": "adc9d17eafda8f9302236fe50d9401fda250b6d4ab4b8ccec2372e709016db8e"
+  }
+}

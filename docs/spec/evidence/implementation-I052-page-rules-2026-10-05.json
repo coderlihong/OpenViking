@@ -1,0 +1,31 @@
+{
+  "round": "I052",
+  "date": "2026-10-05",
+  "task": "KB-023 三一完整 schema 政策执行 — 110 条 prose 规则编译为受约束执行器",
+  "status": "DONE_FOR_CODE_LAYER",
+  "what_changed": [
+    "新增 openviking/wiki/page_rules.py (sany-page-rules-v1): 每条审计规则唯一归属 enforcement home——page(44条逐页检查)/batch(5条变更集检查: DTC身份/Device型号目录/Procedure scope三元组去重)/structural(3,既有gate)/undeclared_field(3,禁用字段)/reference_shape(10,既有resolve)/path_layout(3,路径政策)/pipeline(42,命名管线机制)；绝不静默丢弃",
+    "compile_page_rules 双向 inventory 锁: 8 kind 与 DECLARATION_HASHES 对齐; 每 kind declared rules == CLASSIFICATION; shared 规则集 == SHARED_CLASSIFICATION; 篡改(加/删规则)即 re-audit 拒绝",
+    "check_page(schema,uri,metadata,markdown,references) 逐页执行 page 分类检查并回执; check_batch(planned_pages) 变更集级唯一性; describe()/coverage_addendum() 输出逐规则 home 报告",
+    "policies.py: _sany_page_rules 仅对完整审计包(I026+path政策链)启用执行器; policy_coverage 将 110 条从 uncompiled_rules 移除并挂 rules_executor={version:'sany-page-rules-v1',compiled:110}; 外来包保持 SCHEMA_POLICY_PENDING 且不领任何执行器声明",
+    "strict_diagnostic 门演进: 规则层清零后抛 WIKI_PUBLICATION_GATE_PENDING(六项发布门), 不再抛 SCHEMA_POLICY_PENDING",
+    "修复 check_batch Device 唯一键缺陷: 原 key 含叶子文件名(index.md vs index-2.md 判不出同目录重复), 改取父目录三元组"
+  ],
+  "verification": {
+    "unit_and_replay": "tests/enterprise_kb/test_wiki_page_rules.py: 20 passed",
+    "probe_method": "双向验证: 8 个审计 fewshot 页 must-pass(Component 6/ConfigSpec 8/Device 4/DTC 4/Fault 5/Procedure 7/Profile 4/Symptom 6 共 44 页回执) + 7 个负例探针 must-reject(DTC孤儿无gap/Component profile带applicable_models/Symptom正文测量值/Procedure指Symptom/DTC变更集重复/Device同目录重复页/Procedure scope重复)",
+    "regression": "test_wiki_page_rules + test_wiki_path_policy + test_wiki_structural_gates + test_wiki_schema + test_wiki_extraction = 135 passed",
+    "updated_expectation": "test_wiki_path_policy strict 断言从 SCHEMA_POLICY_PENDING 更新为 WIKI_PUBLICATION_GATE_PENDING(旧断言描述的是规则未编译时期的事实)"
+  },
+  "truthful_boundaries": [
+    "六项 publication gate(semantic_evidence_validation/schema_identity_resolution/trusted_entity_catalog/closed_relationships/derived_access_intersection/atomic_joint_publication)仍 pending, 属 KB-006 完整发布门范围",
+    "DTC fewshot 的 kb:// 来源在测试中跳过 inspect_entity 的 viking URI 校验(与既有 path 政策测试一致); DTC 来源映射到真实入坑 URI 仍是业务链路工作",
+    "page_rules 仅认 I026+path 适配链的包; 其他包不获执行器也不清 uncompiled"
+  ],
+  "artifacts": [
+    "openviking/wiki/page_rules.py",
+    "openviking/wiki/policies.py",
+    "tests/enterprise_kb/test_wiki_page_rules.py",
+    "tests/enterprise_kb/test_wiki_path_policy.py (strict 断言更新)"
+  ]
+}

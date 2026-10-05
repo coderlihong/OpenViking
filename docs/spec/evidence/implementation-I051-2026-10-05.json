@@ -1,0 +1,253 @@
+{
+  "implementation": "I051",
+  "spec_version": "v0.15",
+  "date": "2026-10-05",
+  "verdict": "PARTIAL_IMPLEMENTATION_WITH_LIVE_DEFECT_RETEST_PASS",
+  "summary": "I051（2026-10-05）实际持久D2提交成员共同发布及published/backoff SIGKILL恢复通过：单MD 3/3回执，目录3 URI/9回执含L0/L1，恢复未重复建代；完整7门禁仍pending、不标ready。修复已注册空间显式/自动祖先摘要边界。MinerU原始产物丢图已确认并补真实PDF页码/位置保全，客户端冻结上传副本并校验来源指纹；同XLS D1/W1复测各保留1 PNG，D1真实重建11条/0失败、图文向量回执齐全且图片URI可检索，W1四MD/三私有候选到draft_ready。模型图片语义与章节归属质量未验收。最终受影响164 PASS，初测1项兼容失败保留；服务/解析health200、active durable jobs=0。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
+  "tests": {
+    "integration": {
+      "path": "evidence/integration-I051-2026-10-05.xml",
+      "passed": 164,
+      "failures": 0,
+      "tests": 164,
+      "errors": 0,
+      "skipped": 0
+    },
+    "initial_regression": {
+      "path": "evidence/integration-initial-I051-2026-10-05.xml",
+      "passed": 158,
+      "failures": 1,
+      "cause": "PyMuPDF image_profile bytes compatibility; fixed using pinned Pillow header dimensions"
+    }
+  },
+  "counts_overlap": true,
+  "live_evidence": [
+    "evidence/live-durable-joint-I051-2026-10-05.json",
+    "evidence/live-durable-semantic-I051-2026-10-05.json"
+  ],
+  "image_live_retest": "PASS: synthetic XLS preservation/materialization/summary/joint/URI contract; not full Office quality",
+  "full_feature_acceptance": "NOT_RUN",
+  "full_flows": "PARTIAL",
+  "gold": "NOT_RUN: user has no reviewed gold/expert",
+  "scope_limits": [
+    "published/backoff crash recovery only; inflight write crash not proved",
+    "submitted members barrier only; seven exhaustive publication gates pending",
+    "namespace ancestor boundary is not all-channel derived ACL acceptance",
+    "MinerU source-image preservation is not model quality, semantic interpretation or chapter alignment acceptance; TeleOCR/Logics preservation not yet enabled",
+    "This live Office PDF bookmark alignment failed and used the declared Markdown heading fallback; it is not chapter gold PASS",
+    "Source-image preservation does not identify vector-only figures; legacy CFB full font introspection remains NOT_RUN"
+  ],
+  "source_snapshot": [
+    {
+      "path": "openviking/parse/model_backend.py",
+      "sha256": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076",
+      "bytes": 7331
+    },
+    {
+      "path": "openviking/service/reindex_executor.py",
+      "sha256": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+      "bytes": 99246
+    },
+    {
+      "path": "openviking/storage/queuefs/semantic_processor.py",
+      "sha256": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74",
+      "bytes": 70206
+    },
+    {
+      "path": "openviking/parse/model_artifact.py",
+      "sha256": "9828bf1411eae83235f4e139a82c78916b7dca34cc212fb2a4f73d944a1d6388",
+      "bytes": 22697
+    },
+    {
+      "path": "deploy/parser-models/model_artifact.py",
+      "sha256": "9828bf1411eae83235f4e139a82c78916b7dca34cc212fb2a4f73d944a1d6388",
+      "bytes": 22697
+    },
+    {
+      "path": "deploy/parser-models/pdf_image_preservation.py",
+      "sha256": "3d832dade661156f19a90e363ab733a548d20c7f4b4f363d9d8f9013a5381fde",
+      "bytes": 8894
+    },
+    {
+      "path": "deploy/parser-models/worker.py",
+      "sha256": "e75ff5df0dceb49d494348958c53e4a760e259ab6c27373a73e7a8b880e1fe28",
+      "bytes": 23968
+    },
+    {
+      "path": "deploy/parser-models/image-preservation-requirements.txt",
+      "sha256": "afef94cb54188a888fb6b5b25f2997dc269414d0f5523f00b734ed9b0e3020ad",
+      "bytes": 15
+    },
+    {
+      "path": "tests/enterprise_kb/test_pdf_image_preservation.py",
+      "sha256": "fc0fafc9b186a984308d13c60af5bc2ad7456225c95960f2b2431d425a13f47e",
+      "bytes": 9885
+    },
+    {
+      "path": "tests/enterprise_kb/test_model_artifact.py",
+      "sha256": "d410c2cbb155b6006516b8a1ffa215d91540744f45c89e5e36585a684e7218bd",
+      "bytes": 13425
+    },
+    {
+      "path": "tests/enterprise_kb/test_reindex_contract.py",
+      "sha256": "321d024789a83ac9937582bf78bf724ba93f0afe8671e187b662ea8e6086909a",
+      "bytes": 26622
+    },
+    {
+      "path": "tests/enterprise_kb/flows/flow_durable_joint.py",
+      "sha256": "212c25c0bd733558c184deae8fef2e04f5ee9cea810711ba7324af0afc9af6de",
+      "bytes": 6509
+    },
+    {
+      "path": "docs/spec/tools/check_spec_status.py",
+      "sha256": "b41a51d712281cadaabf7b8f50e1a16c35989f7b82465b11b1db0cde90cf3f59",
+      "bytes": 5539
+    },
+    {
+      "path": "tests/enterprise_kb/flows/flow_office_image_preservation.py",
+      "sha256": "fc186e2138a5266efc2a3fc0c9299c65309db4233a5f68e6427a68b0d8a9f7e2",
+      "bytes": 6604
+    }
+  ],
+  "source_snapshot_scope": "Affected source and reusable harness only; not whole worktree or full repository test proof",
+  "feature_states": {
+    "PARTIAL": 15
+  },
+  "task_states": {
+    "PARTIAL": 32,
+    "OPEN": 1,
+    "DONE": 0
+  },
+  "flow_states": {
+    "FLOW-D1": "PARTIAL",
+    "FLOW-D2": "PARTIAL",
+    "FLOW-W1": "PARTIAL",
+    "FLOW-W2": "PARTIAL"
+  },
+  "deployment": {
+    "api_pid": 99130,
+    "authority": "in-process PublicationStore; single authoritative API deployment",
+    "protocol_loaded": "I050 atomic seal/status plus final I051 submitted-source binding, provenance no-bypass validator and namespace ancestor boundary",
+    "api_health": 200,
+    "mineru_preservation": "DEPLOYED; health200; source hashes match staged helper/worker/validator; Pillow12.1.1 installed from official SHA verified wheel",
+    "active_document_live_probes": "completed then cancelled; published batches retained",
+    "active_durable_jobs": 0,
+    "final_health": {
+      "api": 200,
+      "mineru": 200
+    }
+  },
+  "frozen_pdf_probe": {
+    "before_assets": 0,
+    "after_assets": 1,
+    "visible_placements": 1,
+    "restored_placements": 1,
+    "source_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+    "submitted_source_digest_match": true,
+    "model_quality_accepted": false,
+    "chapter_assignment": "unassigned"
+  },
+  "office_image_report": "evidence/office-image-preservation-I051-2026-10-05.json",
+  "office_results": {
+    "D1": {
+      "rebuilt_records": 11,
+      "failed_records": 0,
+      "physical_images": 1,
+      "joint_image_receipts": "PASS",
+      "image_uri_search": "PASS"
+    },
+    "W1": {
+      "job_id": "08a1d93ecc0b499db57281efde48f299",
+      "state": "draft_ready",
+      "captured_md": 4,
+      "private_candidates": 3,
+      "physical_images": 1
+    },
+    "sample_class": "synthetic_not_gold",
+    "original_model_image_omission": "retained FAIL before source preservation",
+    "legacy_binary_font_introspection": "NOT_RUN",
+    "full_office_acceptance": "NOT_RUN"
+  },
+  "evidence_files": [
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/after-artifact/__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png",
+      "sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+      "bytes": 468
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/after-artifact/parsed.json",
+      "sha256": "0ff131745fbae7b82424ab599f793ae5957828266939f2e5ff075a5cf6111b23",
+      "bytes": 6995
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/after-artifact.zip",
+      "sha256": "42d36f48b662d3a47dc555418724d474cb3f32e750b46be3a529f4f6dbbf57f1",
+      "bytes": 1963
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/after-model-probe.json",
+      "sha256": "f2944304995be4ba47cef4dfaa933bf5d32faf66be730b0ed6d9dd556804d65a",
+      "bytes": 3858
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/api-d1.json",
+      "sha256": "2dec7d06cef645d8eaf631526a5f165fe1749fda8cb6d3e130649e007aef3ea1",
+      "bytes": 1536
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/api-final-restart.json",
+      "sha256": "5ff54ea5aa25fd85bdf16bef5223736aaaa4252e9a47c208bab22a4028577396",
+      "bytes": 1177
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/api-w1.json",
+      "sha256": "41206387a50bae8663369d2a0b85d412737ce9bc54bf39c4233791587ee32467",
+      "bytes": 2005
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/mineru-raw-before.zip",
+      "sha256": "59f29e323285ab0f3e979302f36a9c2a7ac07de25ddfe49ed01b97648394286b",
+      "bytes": 3440
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/pillow-wheel-lock.json",
+      "sha256": "7374a64ff95eb9842c9488e176e3e12be08e1cb27bc95f77fa7b4a8d2468d8d4",
+      "bytes": 513
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/probe-report.json",
+      "sha256": "216b4de4ba26d616ff7c4931c184a81fa13438d8bcdcdd1cb8bcf8f53314cb6b",
+      "bytes": 10775
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/raw-probe.json",
+      "sha256": "7ec93193d00297501afae1ff676509abe62708a50551e55e9629e7d03ca72eaf",
+      "bytes": 569
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-artifacts/source-input.pdf",
+      "sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+      "bytes": 21680
+    },
+    {
+      "path": "evidence/office-image-preservation-I051-2026-10-05.json",
+      "sha256": "cd261e85562b64da0793b74dee0f73329cfcba539a3234c64d879c63360e0d45",
+      "bytes": 15229
+    },
+    {
+      "path": "evidence/live-durable-joint-I051-2026-10-05.json",
+      "sha256": "82e330f2a5b56328b4dbf293e9c84dacc2362d510078aa62b0c51f6385698d4b",
+      "bytes": 8467
+    },
+    {
+      "path": "evidence/live-durable-semantic-I051-2026-10-05.json",
+      "sha256": "b5d62930c1c09c8ed6566eb25326859749a978b5018b49de3b385a978fdcb3f1",
+      "bytes": 5560
+    },
+    {
+      "path": "evidence/integration-I051-2026-10-05.xml",
+      "sha256": "ba28bc372a6ebf369c78fcfba17531f94d693bfe4b82e97ec1aec5826995ae3e",
+      "bytes": 25295
+    }
+  ]
+}

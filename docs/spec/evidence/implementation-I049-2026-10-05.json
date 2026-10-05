@@ -1,0 +1,51 @@
+{
+  "implementation": "I049",
+  "spec_version": "v0.15",
+  "date": "2026-10-05",
+  "scope": "KB-023 executable SANY path layouts and actual candidate/merge validation",
+  "tests": {
+    "tests": 191,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "passed": 191,
+  "test_report": "evidence/wiki-path-I049-2026-10-05.xml",
+  "adapter_report": "evidence/wiki-schema-I049-2026-10-05.json",
+  "adapter_zip": "evidence/sany-schema-adapter-I049.zip",
+  "adapter_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+  "pending_rules_before": 118,
+  "pending_rules_after": 110,
+  "policy_version": "wiki-policy-coverage-v2",
+  "changes": [
+    "eight finite audited path handlers; do not run package regex/prose",
+    "explicit collection root required; local series/model/host/code/class alignment",
+    "server-generated candidate and recomputed merge provenance path receipts bind schema/declaration/content hashes",
+    "new immutable adapter; old registered bundles remain unchanged"
+  ],
+  "evidence_limits": [
+    "seven actual upstream fewshots structurally pass; DTC layout passes but full structure rejects unmapped kb:// source",
+    "extractor validation synthetic fixture demonstrates real call path and bad path rejection",
+    "not a full actual SANY model extraction, live API deployment, identity uniqueness or relationship closure"
+  ],
+  "deployment": "current process remains I047; old schema has 118 pending instances, new adapter has 110; no deployed strict success claim",
+  "remaining": [
+    "110 prose rule instances and full semantic execution",
+    "DTC authoritative source mapping",
+    "trusted catalog, identity uniqueness, relationship closure, permission intersection and joint publication",
+    "independent quality gold and full four FLOW acceptance"
+  ],
+  "acceptance": "all 15 features and four flows PARTIAL; 32 tasks PARTIAL + KB-032 OPEN; no DONE added",
+  "source_sha256": {
+    "openviking/wiki/schema.py": "a745c66bea6e58f9f8b7bd40bb7123347760c87ade981066afcdf9f1653a2b54",
+    "openviking/wiki/path_policy.py": "d40f8d3a7fc37d76941f0ec42845fdc5f01e3abda027ccbdc989de618665c1fc",
+    "openviking/wiki/validation.py": "1e73f5422f1c7c521afcd3924ad3873db563b27a72e73c62db8146735fe987e7",
+    "openviking/wiki/policies.py": "51a7b920365f974b9e328f074127cabd36f4bb7b835e6a3e59433211d6bb6010",
+    "openviking/wiki/extraction.py": "944d1472593033cc8c86c495300aa4b5147d85f34eb16cfa0b4c3c54d559876c",
+    "openviking/wiki/merge.py": "d8524264b360cb8fd89d3caac740950f10134552666b72697b67d0453297ff83",
+    "tests/enterprise_kb/test_wiki_path_policy.py": "3fd87e2e4f727ee35731105f0dbc371762808ae26fd4e3e9447b788df0280050",
+    "docs/spec/tools/build_sany_path_adapter.py": "a562409dddf8221f4e21d9cb75409cb8d0ff1447f6223773d2a02a20d2c1d03a"
+  },
+  "documentation_consistency": "PASS v0.15 / 15 features / 33 tasks / 19 cross acceptance assertions",
+  "diff_check": "PASS"
+}

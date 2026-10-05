@@ -1,0 +1,38 @@
+{
+  "change_id": "CR-013",
+  "date": "2026-10-05",
+  "spec_version": "0.12",
+  "type": "DOCUMENTATION_REVIEW_ONLY",
+  "validation": {
+    "status": "PASS",
+    "scope": "documentation consistency only, not product acceptance",
+    "version": "0.12",
+    "features": 15,
+    "tasks": 33,
+    "cross_acceptance_cases": 19,
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    }
+  },
+  "product_changes_this_round": false,
+  "product_acceptance_changed": false,
+  "product_baseline": "I036: KB-025 identity/conservative merge 44 scoped tests PASS (14 identity tests); I035 94 PASS; I034 joint 1575 PASS/1 SKIP retained",
+  "fixes": [
+    "KB-025 corrected from OPEN with no evidence to PARTIAL: openviking/wiki/identity.py implements account/namespace/type/schema identity tuple, canonical-id reuse across rebuilds, collision-aware alias ownership, expected_revision human-edit protection, no default synonym merge",
+    "Recorded 14 identity tests and I036 evidence",
+    "Semantic identity verification / ontology policy / trusted entity catalog remain pending"
+  ],
+  "sha256": {
+    "docs/spec/README.md": "d6459bd1754989287580d2b7ff6233dfe5cc49e8071fd8a64e38099e17ebd52b",
+    "docs/spec/openviking-enterprise-kb-spec.md": "113eb1860382ae9e300a99a99cc44839935ecbec9f3a71d61415beb6844a9d2e",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "ab44f6b2886ee75684ea4317081b427a16d73725173e107f014a9d3719c2bb58",
+    "docs/spec/openviking-enterprise-kb-review.md": "deaa72ed756608192aa8ef256bed0cc81e32dddb55727a1c05d9ac58804117bf",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "59e1631700ad15b65601d8ad120d0800c7ce4e603edcb157239a98436148ca01",
+    "docs/spec/openviking-enterprise-kb-backlog.md": "3bd2e9b9a2979bb0ff1c7899220aaa53840c206e27a081d8bf259ae87841b1f3",
+    "docs/spec/feature-status.json": "458ef9dee7fd517510d60e1ac0fde278e84d08967bfd34ec47286b3af27f8f67",
+    "docs/spec/tools/check_spec_status.py": "076ac66d054ab82ef2542d9edaec9a53187241ede7dfeb3b53ba41c5e0c5ee72"
+  }
+}

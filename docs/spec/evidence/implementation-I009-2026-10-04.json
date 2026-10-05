@@ -1,0 +1,67 @@
+{
+  "run_id": "I009-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 404,
+    "new_semantic_tests": 10,
+    "report": "tests-I009-semantic.xml"
+  },
+  "verified": [
+    "Shared resource directory semantic producer for ingestion and URI reindex",
+    "L0/L1 generation member receipts with distinct physical versioned IDs",
+    "Directory vectors and text generations publish in one shared batch transaction",
+    "Partial semantic update rebuilds other existing sidecar level",
+    "Marker reindex uses directory generation rather than invisible legacy upsert",
+    "Managed semantic DAG propagates directory generation errors",
+    "Reindex aborts on FAILED/REQUEUED semantic result",
+    "Final file-lock regression independently asserts exact lock selection and release"
+  ],
+  "fixtures": [
+    "SQLite implementation exercised directly",
+    "AGFS transport uses a disk fixture; model/vector DB use fixtures",
+    "File-lock test validates caller contract with controlled async lock transport, not AGFS server locks"
+  ],
+  "initial_regression_issues": [
+    {
+      "report": "tests-I009-initial-fixture-error.xml",
+      "issue": "Existing file-lock test fixture unavailable in service test directory",
+      "resolved": true
+    },
+    {
+      "report": "tests-I009-file-lock.xml",
+      "issue": "After loading old fixture, FakeVikingFS lacked current async pathlock transport",
+      "resolved": true,
+      "repair": "Self-contained temporary file, exact/tree/release call assertions; final full regression PASS"
+    }
+  ],
+  "scope_exclusions": [
+    "Directory sidecar content snapshot and modification CAS",
+    "Directory layout/list/stat and first-ingest root visibility",
+    "Image/BM25 joint publication and full metadata registry",
+    "Task ready/UI, lifecycle clear/delete/move/copy and physical GC",
+    "Remote full-manual indexing/retrieval or production deployment this turn",
+    "Wiki collection/schema APIs and complete four-FLOW acceptance"
+  ],
+  "file_sha256": {
+    "openviking/indexing/semantic.py": "cf27ec3864ff4cb2396e4c67ffdbdb53f16052a091f8d6f0d0763fba7454c348",
+    "openviking/indexing/publication.py": "bc2abcca61f6ff1c1ee9ebab603d5d4dd3ebe1a844c5927792a6c13cfddbd153",
+    "openviking/indexing/batch.py": "8bcaf15e93dfc6c7bb1693d3605bde451fb8063dba384bdb863fae6eae920cb1",
+    "openviking/storage/vector_ids.py": "8f07847d7ac8941e5212e927bef71983af155578eed4e691ba6a60e8abfa16b3",
+    "openviking/storage/collection_schemas.py": "ea1adb8834ea0beec525540244f3eb895bc746a930e35e844bf5e5bae781ef52",
+    "openviking/storage/queuefs/semantic_dag.py": "c4c8a723f37fbd53ef715092643a4c1db09711a34729708f5ac1b3f7eb21c469",
+    "openviking/utils/embedding_utils.py": "d9b0ea2abbcdc3d7f692e38b753028a6bcf5677593ca3549ef8274f351318ae1",
+    "openviking/service/reindex_executor.py": "5b5a010d88e235859f5d0d9c9ade2a1d98f98356eede2ba6f16dffb18c62cc1d",
+    "tests/enterprise_kb/test_semantic_publication.py": "edcc61614d12346c765da90da25c5ea5f333871a8262f52f4c95c1405a9844af",
+    "tests/service/test_reindex_file_lock.py": "fbe1f9a9798f4787268c98abd190814867829b421aec54b9c7d4473d5f6e54c4",
+    "docs/spec/evidence/tests-I009-semantic.xml": "5ccaf2185e62ae26c9099e405bc318f06613e02fc854dadabd17d596c7acb07a",
+    "docs/spec/evidence/tests-I009-initial-fixture-error.xml": "3debe108d0882bda4b2fd825e79828c908dbf53807f6ab524cb3a54f31e007d6",
+    "docs/spec/evidence/tests-I009-file-lock.xml": "81e5b3b411606a18ca178c75ca53a74039557d8644e8fe4d5359595bc524d44c",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "de707e273266e5f26f95c87057b2f369649b6723a29c1037e2ed4675b1d09c0f",
+    "docs/spec/README.md": "3bcc3ab00ea13aeaf4de6af9068423afcd3e9e8919b6ffb1c045f699ce3b7c93",
+    "docs/spec/openviking-enterprise-kb-review.md": "726fdd6dc28b30187d41ec8281be27d6ff4665438b1fd1bb57b2a537e99a1ab2",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "a97f3e2e4f6ef9fdcb175901449a2e68c1008ff1670ea27aca0de1b377aa24a5",
+    "docs/spec/openviking-enterprise-kb-spec.md": "0cc483c31adf6895d7e7bd47dd4d715c2840baf10348c938ed75aefe0237a8e5"
+  }
+}

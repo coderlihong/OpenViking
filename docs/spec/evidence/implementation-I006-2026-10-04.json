@@ -1,0 +1,46 @@
+{
+  "run_id": "I006-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 131,
+    "publication_tests": 10,
+    "report": "tests-I006-publication.xml"
+  },
+  "verified": [
+    "Actual SQLite state persistence/transaction publication",
+    "Expected unique child receipts plus producer seal",
+    "Failed or superseded generation cannot publish",
+    "Concurrent document heads preserve unrelated manifests",
+    "Query lease protects old snapshot GC planning",
+    "Real embedding consumer acknowledgement and cancellation with fixture embedder/vector DB",
+    "Adapter-compiled pre-ranking generation filter",
+    "Config feature probe preserves rerank singleton behavior"
+  ],
+  "scope_exclusions": [
+    "No production or remote full embedding test this turn",
+    "No physical GC",
+    "No joint source-content/directory/BM25/image snapshot publication",
+    "No completed namespace/Wiki registry",
+    "No full four-FLOW enterprise E2E",
+    "No distributed SQLite/failover/performance qualification"
+  ],
+  "file_sha256": {
+    "openviking/indexing/publication.py": "16bebe359a2860b02992db8f885224139a68490d34a6487a3fd90d69d151a31a",
+    "openviking/indexing/enqueue.py": "a11cd4c054c9a1c0c8268991d9b5856dce17e878d299aaf678ee4a457b2ba439",
+    "openviking/indexing/plan.py": "f993ff8ff5dc934cab4c8ddb15ff1dc8ee0de89144f6b707aa8489f038eb55e8",
+    "openviking/storage/collection_schemas.py": "3330a7e1deb6e52171bef4ce363fcdf13aed6a76793ce501ca11bba42127f3e2",
+    "openviking/storage/vector_ids.py": "21634fbde120e3a1c6c86a816cc05dae7d2bccda604bf36cf138c268fefdc4f8",
+    "openviking/storage/viking_vector_index_backend.py": "dbb2aef45bfc7f6868af05d6b6b5a2806868a87f6d25442c8b0174474b167d6c",
+    "openviking/storage/viking_fs/_semantic.py": "fc2c425000498b3e9580c48ffb352f603db7eb090f2f086b345b51b2c1464103",
+    "openviking_cli/utils/config/embedding_config.py": "5467540098c304315cd6e38d55ce8277c361bad86dcd915248ee2e6cc770480d",
+    "tests/enterprise_kb/test_publication.py": "a7bc40c544cb4e5cc5c92287a8ecccc1fff47e51e105fe314292e3b07b64be5f",
+    "docs/spec/evidence/tests-I006-publication.xml": "021de6db6f9d39cb42b6204bf8ae0b79f3f1e3986b4695fea4830a146f9c51bf",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "c77afb395b91c7354240f84785684d0f29fa65ad7209fde20c3a0cf51c6c8b48",
+    "docs/spec/README.md": "03118bc19b1dc51ec2ee851afb9bebf0c6f25b424760673b9c58439529e6a40f",
+    "docs/spec/openviking-enterprise-kb-review.md": "aaf8abfd64f8cf93121a91311f496ecbb13aeced79d57a78b9ac6e8f8a4ba89b",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "059b698b7c73bbe38b1317cbb20442c42cf2adac9f0dc7e61cba147de3677113",
+    "docs/spec/openviking-enterprise-kb-spec.md": "ec9a1b3e4bb7306275da36c2a82cf72e8c7f964870e05086d6a701d5936ba510"
+  }
+}

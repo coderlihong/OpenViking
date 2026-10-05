@@ -1,0 +1,14 @@
+{
+  "run": "I011",
+  "endpoint": "http://127.0.0.1:8026/v1/embeddings",
+  "protocol": "vLLM chat embeddings messages",
+  "model": "local/wemm-embedding-4b-v1",
+  "asset_sha256": "e63789a4820b8e34145c6aaf1c99993eb0fa4dd57b98248f58b31aff8a8b1e77",
+  "asset_bytes": 95628,
+  "status": "ACCEPTED",
+  "dimensions": [
+    2560
+  ],
+  "finite": true,
+  "elapsed_seconds": 0.064
+}

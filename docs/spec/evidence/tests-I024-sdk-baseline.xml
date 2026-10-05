@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="36" time="4.178" timestamp="2026-10-04T15:23:12.168573+08:00" hostname="whdeMacBook-Pro.local"><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_loads_missing_fields_from_ovcli_config" time="0.004"><failure message="AssertionError: assert None == 'gateway-secret'&#10; +  where None = &lt;openviking_cli.client._http_compat.AsyncHTTPClient object at 0x11fdfa660&gt;._gateway_token">tmp_path = PosixPath('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-281/test_async_http_client_loads_m0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11fd7a9e0&gt;
+
+    def test_async_http_client_loads_missing_fields_from_ovcli_config(tmp_path, monkeypatch):
+        config_path = tmp_path / "ovcli.conf"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "url": "http://config-host:1933",
+                    "api_key": "config-key",
+                    "gateway_token": "gateway-secret",
+                    "account": "config-account",
+                    "user": "config-user",
+                    "actor_peer_id": "config-actor",
+                    "timeout": 12.5,
+                    "profile": True,
+                }
+            )
+        )
+        monkeypatch.setenv(OPENVIKING_CLI_CONFIG_ENV, str(config_path))
+    
+        client = AsyncHTTPClient(url="http://explicit-host:1933")
+    
+        assert client._url == "http://explicit-host:1933"
+        assert client._api_key == "config-key"
+&gt;       assert client._gateway_token == "gateway-secret"
+E       AssertionError: assert None == 'gateway-secret'
+E        +  where None = &lt;openviking_cli.client._http_compat.AsyncHTTPClient object at 0x11fdfa660&gt;._gateway_token
+
+tests/client/test_http_client_config.py:56: AssertionError</failure></testcase><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_explicit_values_override_ovcli_config" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_loads_agent_id_from_ovcli_config" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_rejects_mixed_config_agent_and_actor_peer" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_omits_identity_headers_when_unconfigured" time="0.003" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_sends_configured_identity_headers" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_sends_agent_id_as_actor_peer_header" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_uses_sdk_initialize_with_compat_limits" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_rejects_unknown_ovcli_field" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_reports_invalid_ovcli_value_path" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_accepts_ovcli_upload_section" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_rejects_unknown_ovcli_upload_field" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_loads_extra_headers_from_ovcli_config" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_explicit_extra_headers_override_ovcli_config" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_loads_extra_header_alias_from_ovcli_config" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_prefers_extra_headers_over_alias" time="0.001" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_find_does_not_send_peer_id" time="0.003"><failure message="AssertionError: assert [('/api/v1/se...r/memories'})] == [('/api/v1/se...try': False})]&#10;  &#10;  At index 0 diff: ('/api/v1/search/find', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'limit': 10}) != ('/api/v1/search/find', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'limit': 10, 'telemetry': False})&#10;  Use -v to get more diff">tmp_path = PosixPath('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-281/test_async_http_client_find_do0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11ff27f50&gt;
+
+    @pytest.mark.asyncio
+    async def test_async_http_client_find_does_not_send_peer_id(tmp_path, monkeypatch):
+        config_path = tmp_path / "ovcli.conf"
+        config_path.write_text("{}")
+        monkeypatch.setenv(OPENVIKING_CLI_CONFIG_ENV, str(config_path))
+    
+        http = FakeSearchHTTP()
+        client = AsyncHTTPClient(url="http://explicit-host:1933", api_key="key")
+        client._http = http
+    
+        await client.find(
+            "invoice",
+            target_uri="viking://user/memories",
+        )
+    
+&gt;       assert http.calls == [
+            (
+                "/api/v1/search/find",
+                {
+                    "query": "invoice",
+                    "target_uri": "viking://user/memories",
+                    "limit": 10,
+                    "telemetry": False,
+                },
+            )
+        ]
+E       AssertionError: assert [('/api/v1/se...r/memories'})] == [('/api/v1/se...try': False})]
+E         
+E         At index 0 diff: ('/api/v1/search/find', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'limit': 10}) != ('/api/v1/search/find', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'limit': 10, 'telemetry': False})
+E         Use -v to get more diff
+
+tests/client/test_http_client_config.py:418: AssertionError</failure></testcase><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_agent_id_find_does_not_send_body_agent_id" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_search_does_not_send_peer_id" time="0.002"><failure message="AssertionError: assert [('/api/v1/se...r/memories'})] == [('/api/v1/se...ories', ...})]&#10;  &#10;  At index 0 diff: ('/api/v1/search/search', {'query': 'invoice', 'session_id': 'session-1', 'target_uri': 'viking://user/memories', 'limit': 10}) != ('/api/v1/search/search', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'session_id': 'session-1', 'limit': 10, 'telemetry': False})&#10;  Use -v to get more diff">tmp_path = PosixPath('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-281/test_async_http_client_search_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11fdf1b00&gt;
+
+    @pytest.mark.asyncio
+    async def test_async_http_client_search_does_not_send_peer_id(tmp_path, monkeypatch):
+        config_path = tmp_path / "ovcli.conf"
+        config_path.write_text("{}")
+        monkeypatch.setenv(OPENVIKING_CLI_CONFIG_ENV, str(config_path))
+    
+        http = FakeSearchHTTP()
+        client = AsyncHTTPClient(url="http://explicit-host:1933", api_key="key")
+        client._http = http
+    
+        await client.search(
+            "invoice",
+            target_uri="viking://user/memories",
+            session_id="session-1",
+        )
+    
+&gt;       assert http.calls == [
+            (
+                "/api/v1/search/search",
+                {
+                    "query": "invoice",
+                    "target_uri": "viking://user/memories",
+                    "session_id": "session-1",
+                    "limit": 10,
+                    "telemetry": False,
+                },
+            )
+        ]
+E       AssertionError: assert [('/api/v1/se...r/memories'})] == [('/api/v1/se...ories', ...})]
+E         
+E         At index 0 diff: ('/api/v1/search/search', {'query': 'invoice', 'session_id': 'session-1', 'target_uri': 'viking://user/memories', 'limit': 10}) != ('/api/v1/search/search', {'query': 'invoice', 'target_uri': 'viking://user/memories', 'session_id': 'session-1', 'limit': 10, 'telemetry': False})
+E         Use -v to get more diff
+
+tests/client/test_http_client_config.py:470: AssertionError</failure></testcase><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_agent_id_add_message_does_not_send_body_agent_id" time="0.003" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_agent_id_allows_explicit_message_peer_id" time="0.002" /><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_find_sends_context_type" time="0.002"><failure message="TypeError: AsyncHTTPClient.find() got an unexpected keyword argument 'context_type'">tmp_path = PosixPath('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-281/test_async_http_client_find_se0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11fdf3540&gt;
+
+    @pytest.mark.asyncio
+    async def test_async_http_client_find_sends_context_type(tmp_path, monkeypatch):
+        config_path = tmp_path / "ovcli.conf"
+        config_path.write_text("{}")
+        monkeypatch.setenv(OPENVIKING_CLI_CONFIG_ENV, str(config_path))
+    
+        http = FakeSearchHTTP()
+        client = AsyncHTTPClient(url="http://explicit-host:1933", api_key="key")
+        client._http = http
+    
+&gt;       await client.find(
+            "invoice",
+            context_type=[ContextType.MEMORY, ContextType.RESOURCE],
+        )
+E       TypeError: AsyncHTTPClient.find() got an unexpected keyword argument 'context_type'
+
+tests/client/test_http_client_config.py:553: TypeError</failure></testcase><testcase classname="tests.client.test_http_client_config" name="test_async_http_client_search_sends_context_type" time="0.002"><failure message="TypeError: AsyncHTTPClient.search() got an unexpected keyword argument 'context_type'">tmp_path = PosixPath('/private/var/folders/8h/vw9r4qhd6slb9jvgwr1qt6640000gn/T/pytest-of-wh/pytest-281/test_async_http_client_search_1')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x11fdf38c0&gt;
+
+    @pytest.mark.asyncio
+    async def test_async_http_client_search_sends_context_type(tmp_path, monkeypatch):
+        config_path = tmp_path / "ovcli.conf"
+        config_path.write_text("{}")
+        monkeypatch.setenv(OPENVIKING_CLI_CONFIG_ENV, str(config_path))
+    
+        http = FakeSearchHTTP()
+        client = AsyncHTTPClient(url="http://explicit-host:1933", api_key="key")
+        client._http = http
+    
+&gt;       await client.search(
+            "invoice",
+            context_type="skill",
+        )
+E       TypeError: AsyncHTTPClient.search() got an unexpected keyword argument 'context_type'
+
+tests/client/test_http_client_config.py:582: TypeError</failure></testcase><testcase classname="tests.client.test_http_client_snapshot" name="test_git_commit_posts_to_snapshot_commit" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_commit_omits_none_fields" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_restore_omits_project_dir_when_none" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_restore_includes_project_dir_when_provided" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_show_metadata_uses_handle_response" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_show_blob_returns_envelope_from_headers" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_show_blob_handles_case_insensitive_headers" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_show_blob_missing_headers_degrades_gracefully" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_log_gets_with_params" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_log_empty_paths_is_unfiltered" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_diff_gets_with_refs_and_path" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_git_diff_omits_optional_from_ref" time="0.001" /><testcase classname="tests.client.test_http_client_snapshot" name="test_snapshot_namespace_exposes_diff" time="0.001" /></testsuite></testsuites>

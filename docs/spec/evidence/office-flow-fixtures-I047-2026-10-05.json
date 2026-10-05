@@ -1,0 +1,42 @@
+{
+  "scope": "synthetic contract fixtures, not independent gold",
+  "fixtures": [
+    {
+      "path": "/tmp/ov-flow/office-I047/w1-office-word-I047.docx",
+      "original_fixture_sha256": "64d8babb346b1d2a846f705e33191e849b85db592b1c57bb452603a39f6c2284",
+      "sha256": "1231b09a03b6589de469ffd9a835471b7eb6f8b1a006f64dd3e2c562f9804f69",
+      "declared_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "fixture_change": "Synthetic fixture font declarations set to installed Noto Sans CJK SC; body/table/image contents retained",
+      "gold": false
+    },
+    {
+      "path": "/tmp/ov-flow/office-I047/w1-office-sheets-I047.xlsx",
+      "original_fixture_sha256": "f6d6ff41cb43f48073c4c4a076d49ee75cbcae62a0f9c1b856b6fb0276eb2f07",
+      "sha256": "a600cc54bcbfab1ead8bda174e8fae2cd3659c5669f800cab390624dfdb42510",
+      "declared_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "fixture_change": "Synthetic fixture font declarations set to installed Noto Sans CJK SC; body/table/image contents retained",
+      "gold": false
+    },
+    {
+      "path": "/tmp/ov-flow/office-I047/w1-office-slides-I047.pptx",
+      "original_fixture_sha256": "fe02c978c00937f742424c15bd8ca9f627244480e8cf21eff1d16ac545be39b2",
+      "sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+      "declared_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "fixture_change": "Synthetic fixture font declarations set to installed Noto Sans CJK SC; body/table/image contents retained",
+      "gold": false
+    },
+    {
+      "sample_class": "synthetic",
+      "gold": false,
+      "path": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+      "sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+      "change": "Add explicit synthetic model/component/symptom/check/repair statements on visible Repair sheet; retain original table/image/hidden-sheet fixture"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "run_id": "I027-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "scope": "Knowledge namespace roots and explicit export policy over existing resource ACLs, plus HTTP/SDK configuration surface",
+  "regression": {
+    "status": "PASS",
+    "tests": 669,
+    "new_tests": 22,
+    "report": "tests-I027-regression.xml",
+    "scope": "I026 suite (647) + namespace catalog tests (15) + namespace HTTP/SDK tests (7), not full repository"
+  },
+  "namespace_focus_report": {
+    "report": "tests-I027-namespaces.xml",
+    "tests": 22,
+    "failures": 0,
+    "note": "test_wiki_namespaces.py (15) + test_wiki_namespaces_http.py (7)"
+  },
+  "verified": [
+    "Registered roots reopen from durable SQLite registry and resolve canonical URI/reference binding",
+    "Read/write permission on a source does not implicitly authorize cross-namespace export; explicit export edge required",
+    "Group membership and one-way export edges are respected; export change invalidates an issued ticket, idempotent grant does not",
+    "Source/target ACL revocation is observed even while the export edge remains",
+    "More permissive child ACL does not bypass Wiki root membership",
+    "Authorization ticket cannot be reused by another actor/group context or across accounts with the same URI",
+    "Registration requires enabled ACLs, a restricted root ACL, an existing directory root, and disjoint roots",
+    "Root registration order: ACL-enabled gate, directory gate, overlap conflict, then restricted-ACL gate; a file URI root fails as a precondition rather than an overlap conflict",
+    "HTTP /api/v1/kb/namespaces register/get and /{source_namespace}/exports route to NamespaceCatalog with strict request models",
+    "Async and sync SDK expose register_namespace/get_namespace/set_export over the same HTTP routes and result contract",
+    "Overlap conflict maps to HTTP 409 CONFLICT; file-URI root maps to HTTP 412 FAILED_PRECONDITION; extra/typed-bad fields are rejected 422",
+    "Namespace router registered in server/routers/__init__.py and included in app.py"
+  ],
+  "not_implemented": [
+    "Production business-namespace member grants / ACL projection / independent namespace isolation",
+    "Global namespace prefilters, ACL mutation fencing and task identity refresh",
+    "Cross-domain export transaction commit/CAS and persistent entity validation catalog",
+    "Full FLOW-D1/D2/W1/W2, Wiki build HTTP task entry and shared index publication",
+    "Natural-language/identity/evidence/applicability/path gates; DTC example source mapping",
+    "Physical GC / plan retirement / lease and crash recovery",
+    "Real remote OpenViking/Wiki deployment; this run used disk AGFS and ACL mocks"
+  ],
+  "boundaries": [
+    "ACL context store and embedding backend are fixtures; not production grants or complete namespace search/commit verification",
+    "The router only registers/reads configuration; it does not create namespace membership or ACL grants",
+    "I026 five legacy SDK baseline failures remain unfixed; the 669-test run is not a full-repository acceptance"
+  ],
+  "file_sha256": {
+    "openviking/wiki/namespaces.py": "1427f01cbaa4e21572ecd48115e48389bacfe38e8bd85641e920807f2799cfa7",
+    "openviking/server/routers/namespaces.py": "935a6388a8eece893f0dda4581d758c4613c6f70dafd7cef021dd629a1cf1ab0",
+    "openviking/server/routers/__init__.py": "d3f564bfd30f854598ec32c0d559ff5823da4edf5ae075f7e36e56b921cf135d",
+    "openviking/server/app.py": "cc76a4d121b2d8121f0428c7078f8dd9e848fa1978fc28e812333d84cda329f9",
+    "sdk/python/openviking_sdk/kb.py": "d244564cbb25f894fcbc083a8cb0fbbf25b618018247913a8a882d81cd21abc7",
+    "tests/enterprise_kb/test_wiki_namespaces.py": "5a97b90c0f8bd067558d572791e4ff1389c5ae817bc8ff7beeebdb220b44b300",
+    "tests/enterprise_kb/test_wiki_namespaces_http.py": "82b440e1f3a33d5d107138003557113e6cb1d39dca0bd143807c56fe5a5d492c",
+    "docs/spec/evidence/tests-I027-regression.xml": "565d44f0d8df101fdf40eb76dad8faf6bfe4aae9a1044cbc3ec15bb34efd4c13",
+    "docs/spec/evidence/tests-I027-namespaces.xml": "84d3942a674f105d31b7959691c947418fc964739cdfd1abbe1858ae7a131fe8"
+  }
+}

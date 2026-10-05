@@ -1,0 +1,62 @@
+{
+  "task": "KB-002",
+  "date": "2026-10-04",
+  "status": "PARTIAL",
+  "complete_acceptance": "NOT_RUN",
+  "implemented": [
+    "Authenticated JSON command whitelist over private POSIX Unix socket; PublicationStore-compatible authority repository, no SQL RPC",
+    "One authority process owns local SQLite/WAL and an exclusive lifetime lock; ordinary local transactions and second authority on same DB fail closed",
+    "Authority configuration is roundtrip-persistent, mutually exclusive with local publication_path and excluded from model/plan identity",
+    "No fallback or command replay on connection loss; persistent uncertain write survives independent coordinator process termination/restart",
+    "Operator-local SQLite backup API and independent snapshot reopen"
+  ],
+  "files": [
+    "openviking/indexing/publication.py",
+    "openviking/indexing/registry_authority.py",
+    "openviking_cli/utils/config/embedding_config.py",
+    "openviking/storage/collection_schemas.py",
+    "openviking/indexing/plan.py",
+    "openviking/indexing/image.py",
+    "openviking/indexing/semantic.py",
+    "tests/enterprise_kb/test_registry_authority.py",
+    "docs/deployment/registry-authority.md"
+  ],
+  "validation": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_registry_authority.py tests/enterprise_kb/test_publication.py tests/enterprise_kb/test_batch_publication.py tests/enterprise_kb/test_content_publication.py tests/enterprise_kb/test_image_publication.py tests/enterprise_kb/test_semantic_content_publication.py tests/enterprise_kb/test_source_write_fence.py -q --no-cov --junitxml=docs/spec/evidence/parallel-KB-002-2026-10-04.xml",
+    "passed": 72,
+    "failed": 0,
+    "new_tests": 7,
+    "duration_seconds": 12.31,
+    "real_components": [
+      "POSIX independent spawned coordinator and worker processes",
+      "Unix sockets",
+      "SQLite/WAL",
+      "process owner locks",
+      "coordinator termination/restart",
+      "actual VikingFS methods and text/directory/image producers",
+      "publication receipt consumption"
+    ],
+    "substitutes": [
+      "AGFS disk transport fixture",
+      "embedding fixtures",
+      "vector DB fixtures"
+    ],
+    "warnings": "4 pre-existing Pydantic deprecation warnings",
+    "test_result": "docs/spec/evidence/parallel-KB-002-2026-10-04.xml",
+    "development_failure_corrected": "First run failed because macOS pytest tempdir exceeded Unix socket path length. Tests use short private /tmp paths; production validates 103-byte limit."
+  },
+  "remaining": [
+    "Cross-host authenticated transport; this implementation supports same-host workers only",
+    "WikiCatalog/NamespaceCatalog/WikiBuildPlanner direct db transactions require migration or coordinator execution; worker db() rejects access",
+    "Real AGFS delayed writer and unknown terminal write confirmation/recovery tests",
+    "Registry+AGFS+ACL+model configuration coordinated disaster recovery",
+    "Disconnected published-read cache/lease policy; current policy requires successful renew and fails closed",
+    "Multi-coordinator transaction/CAS, leader election, write fence and failover tests; no HA claim",
+    "Network filesystem detection is a deployment requirement, not automated enforcement"
+  ],
+  "acceptance_limits": {
+    "TC-13.16": "PARTIAL, same-host coordinator and independent process recovery only; no cross-host/real delayed backend validation",
+    "TC-16.2": "PARTIAL, authority unavailability/restart/multiple workers verified on same host; no HA",
+    "features_and_flows": "No Feature or complete FLOW acceptance promoted"
+  }
+}

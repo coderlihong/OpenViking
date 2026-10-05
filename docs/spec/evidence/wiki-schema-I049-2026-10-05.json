@@ -1,0 +1,749 @@
+{
+  "implementation": "I049",
+  "input_digest": "6a6f66c824681a465765afdc993a87388a125a259c2915f757c93d53c50e37c0",
+  "adapter_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+  "adapter_version": "2+openviking.1+structural.1+paths.1",
+  "zip_sha256": "29f1e3e3dfac929aecb9c58ed9174395ab70361adfa4c1899882d3bc705d2ac3",
+  "pending_before": 118,
+  "pending_after": 110,
+  "entity_example_replay": [
+    {
+      "kind": "Component",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "8a40b349de36e84d9f23a3e63c8eb739adc0619aec91268576810295a3f6b130",
+        "entity_uri": "viking://resources/sany-path-test/Component/动臂油缸/动臂油缸.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "6d4bb1ad48f910796051087bdfdafb1e22d210fd6a5b60c4c0a8bce444c7afcc",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "8a40b349de36e84d9f23a3e63c8eb739adc0619aec91268576810295a3f6b130",
+            "entity_uri": "viking://resources/sany-path-test/Component/动臂油缸/动臂油缸.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "6d4bb1ad48f910796051087bdfdafb1e22d210fd6a5b60c4c0a8bce444c7afcc",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "skeleton_index_profile_layout",
+        "bom_fields_manual_line_only",
+        "no_materialized_fault_reverse_index",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "ConfigSpec",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "ad15594558abc76b06b07b170a298b53b6a6b219d7ecdc58805043c9e4898cf0",
+        "entity_uri": "viking://resources/sany-path-test/ConfigSpec/SSY100000402/index.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "0654ed37570a010c90d614822c025c340a92f25063116131ed2e5630ff20c9cd",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "ad15594558abc76b06b07b170a298b53b6a6b219d7ecdc58805043c9e4898cf0",
+            "entity_uri": "viking://resources/sany-path-test/ConfigSpec/SSY100000402/index.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "0654ed37570a010c90d614822c025c340a92f25063116131ed2e5630ff20c9cd",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "host_code_identity",
+        "device_refs_authoritative",
+        "class_name_no_function_domain",
+        "std_table_columns_fixed",
+        "applicable_cond_controlled",
+        "no_symptom_semantics",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "DTC",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "75d10d05544805e8b4b7278305a289dd045b42a34f577038fc36b73866fd17e1",
+        "entity_uri": "viking://resources/sany-path-test/DTC/SY35E_SSY100000823/E828.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "f9a28bb199daa6c81e51a0190469a57ed799ebf670579b9df837374ebf367bdc",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "REJECTED",
+        "reason": "Reference must be a Viking URI"
+      },
+      "pending_rules": [
+        "identity_uniqueness",
+        "uri_no_translated_suffix",
+        "no_orphan",
+        "create_threshold",
+        "no_cross_model_merge",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "Device",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "773b52659fce9a56232fc5e285ffc4be8dcc07c7b7d86f7a1e70c2555667d21d",
+        "entity_uri": "viking://resources/sany-path-test/Device/SY135/SY135C/index.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "b1efbcc026d51dde5c4b80c49ed6f560fa6f4bdf59725e8660bc8f70335897b6",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "773b52659fce9a56232fc5e285ffc4be8dcc07c7b7d86f7a1e70c2555667d21d",
+            "entity_uri": "viking://resources/sany-path-test/Device/SY135/SY135C/index.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "b1efbcc026d51dde5c4b80c49ed6f560fa6f4bdf59725e8660bc8f70335897b6",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "one_model_one_page",
+        "one_index_per_model",
+        "specs_index_alignment",
+        "single_raw_ref_version",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "Fault",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "b398bacfc1f81811bff60df5dcea87b4f2a21646ac9fd7254320ff6c63d465be",
+        "entity_uri": "viking://resources/sany-path-test/Fault/ControlFailure/诊断测试.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "b29cec24a0cf4225371c7c1c0845b222cb502f6fe77ddd5c5696309613f20004",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "b398bacfc1f81811bff60df5dcea87b4f2a21646ac9fd7254320ff6c63d465be",
+            "entity_uri": "viking://resources/sany-path-test/Fault/ControlFailure/诊断测试.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "b29cec24a0cf4225371c7c1c0845b222cb502f6fe77ddd5c5696309613f20004",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "config_differentiation_required",
+        "affected_component_targets_exist",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "Procedure",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "c7408dfa92973e2dd52e96e413b1edf0406a6b1d51c327d59deaa2282bfcc7d8",
+        "entity_uri": "viking://resources/sany-path-test/Procedure/inspection/诊断测试.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "25087c71bc56500ad9fc7ec5fb739ec2009f0c4bb9614d16d25f2d838427c258",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "c7408dfa92973e2dd52e96e413b1edf0406a6b1d51c327d59deaa2282bfcc7d8",
+            "entity_uri": "viking://resources/sany-path-test/Procedure/inspection/诊断测试.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "25087c71bc56500ad9fc7ec5fb739ec2009f0c4bb9614d16d25f2d838427c258",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "fault_anchor_required",
+        "identity_triple",
+        "target_components_no_symptom",
+        "applicability_derived",
+        "criteria_reference_not_copy",
+        "step_addressable",
+        "work_type_verification_loop",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "Profile",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "853d9141f7a674b9f4bb60798e22c29974e50c5448f7c512c51670b706b1b5bf",
+        "entity_uri": "viking://resources/sany-path-test/Symptom/动力与发动机/发动机冒白烟/profiles/国四和新欧五.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "a75e9fedca03ea0b539d5be5b893a715da400c9d343915dc90503eb35fd45ab3",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "853d9141f7a674b9f4bb60798e22c29974e50c5448f7c512c51670b706b1b5bf",
+            "entity_uri": "viking://resources/sany-path-test/Symptom/动力与发动机/发动机冒白烟/profiles/国四和新欧五.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "a75e9fedca03ea0b539d5be5b893a715da400c9d343915dc90503eb35fd45ab3",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "config_evidence_required",
+        "no_device_refs",
+        "exactly_one_device_anchor",
+        "possible_faults_ordered",
+        "no_wire_number",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    },
+    {
+      "kind": "Symptom",
+      "path_receipt": {
+        "rule_id": "schema:path_layout",
+        "executor_version": "sany-paths-v1",
+        "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+        "declaration_sha256": "e893b6fae1c785b7b32767d5bcbb5cfc9a2286937f7e9e5454d4c5de611581e6",
+        "entity_uri": "viking://resources/sany-path-test/Symptom/动力与发动机/发动机冒白烟/index.md",
+        "namespace_root": "viking://resources/sany-path-test",
+        "entity_sha256": "39b185105145b2a1fbd22733a4ac7a9d402c77eb753d4b8713eb97ff2b2aa62a",
+        "status": "PASS"
+      },
+      "structure": {
+        "state": "PASS",
+        "policy_receipts": [
+          {
+            "rule_id": "schema:path_layout",
+            "executor_version": "sany-paths-v1",
+            "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+            "declaration_sha256": "e893b6fae1c785b7b32767d5bcbb5cfc9a2286937f7e9e5454d4c5de611581e6",
+            "entity_uri": "viking://resources/sany-path-test/Symptom/动力与发动机/发动机冒白烟/index.md",
+            "namespace_root": "viking://resources/sany-path-test",
+            "entity_sha256": "39b185105145b2a1fbd22733a4ac7a9d402c77eb753d4b8713eb97ff2b2aa62a",
+            "status": "PASS"
+          }
+        ]
+      },
+      "pending_rules": [
+        "no_legacy_relation_fields",
+        "profile_backing_required",
+        "asserted_fault_scope_required",
+        "no_wire_number",
+        "no_measured_value",
+        "shared:live_narration",
+        "shared:no_repeat_call",
+        "shared:no_skill_system",
+        "shared:gap_discipline",
+        "shared:read_truncation",
+        "shared:inline_citation",
+        "shared:uri_normalization",
+        "shared:ref_value_form",
+        "shared:ref_uri_provenance"
+      ]
+    }
+  ],
+  "coverage": {
+    "version": "wiki-policy-coverage-v2",
+    "schema_id": "sany",
+    "schema_version": "2+openviking.1+structural.1+paths.1",
+    "schema_digest": "c7119de4cb142ca61ad5b9b78cb72c5a6b064a89437dff6f3b657ad9ffa078ef",
+    "entities": [
+      {
+        "kind": "Component",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "8a40b349de36e84d9f23a3e63c8eb739adc0619aec91268576810295a3f6b130"
+        },
+        "uncompiled_rules": [
+          "skeleton_index_profile_layout",
+          "bom_fields_manual_line_only",
+          "no_materialized_fault_reverse_index",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "ConfigSpec",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [
+          {
+            "kind": "nonempty",
+            "fields": [
+              "device_refs"
+            ],
+            "section": null
+          },
+          {
+            "kind": "distinct",
+            "fields": [
+              "device_refs"
+            ],
+            "section": null
+          }
+        ],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "ad15594558abc76b06b07b170a298b53b6a6b219d7ecdc58805043c9e4898cf0"
+        },
+        "uncompiled_rules": [
+          "host_code_identity",
+          "device_refs_authoritative",
+          "class_name_no_function_domain",
+          "std_table_columns_fixed",
+          "applicable_cond_controlled",
+          "no_symptom_semantics",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "DTC",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "75d10d05544805e8b4b7278305a289dd045b42a34f577038fc36b73866fd17e1"
+        },
+        "uncompiled_rules": [
+          "identity_uniqueness",
+          "uri_no_translated_suffix",
+          "no_orphan",
+          "create_threshold",
+          "no_cross_model_merge",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "Device",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [
+          {
+            "kind": "forbid",
+            "fields": [
+              "sources"
+            ],
+            "section": null
+          },
+          {
+            "kind": "nonempty",
+            "fields": [
+              "raw_refs"
+            ],
+            "section": null
+          }
+        ],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "773b52659fce9a56232fc5e285ffc4be8dcc07c7b7d86f7a1e70c2555667d21d"
+        },
+        "uncompiled_rules": [
+          "one_model_one_page",
+          "one_index_per_model",
+          "specs_index_alignment",
+          "single_raw_ref_version",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "Fault",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [
+          {
+            "kind": "nonempty",
+            "fields": [
+              "affected_components"
+            ],
+            "section": null
+          },
+          {
+            "kind": "distinct",
+            "fields": [
+              "affected_components"
+            ],
+            "section": null
+          }
+        ],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "b398bacfc1f81811bff60df5dcea87b4f2a21646ac9fd7254320ff6c63d465be"
+        },
+        "uncompiled_rules": [
+          "config_differentiation_required",
+          "affected_component_targets_exist",
+          "no_wire_number",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "Procedure",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [
+          {
+            "kind": "nonempty",
+            "fields": [
+              "fault_refs"
+            ],
+            "section": null
+          },
+          {
+            "kind": "distinct",
+            "fields": [
+              "fault_refs"
+            ],
+            "section": null
+          },
+          {
+            "kind": "nonempty",
+            "fields": [
+              "target_components"
+            ],
+            "section": null
+          },
+          {
+            "kind": "distinct",
+            "fields": [
+              "target_components"
+            ],
+            "section": null
+          }
+        ],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "c7408dfa92973e2dd52e96e413b1edf0406a6b1d51c327d59deaa2282bfcc7d8"
+        },
+        "uncompiled_rules": [
+          "fault_anchor_required",
+          "identity_triple",
+          "target_components_no_symptom",
+          "applicability_derived",
+          "criteria_reference_not_copy",
+          "step_addressable",
+          "work_type_verification_loop",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "Profile",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [
+          {
+            "kind": "exactly_one",
+            "fields": [
+              "config_spec_uri",
+              "device_uri"
+            ],
+            "section": null
+          },
+          {
+            "kind": "nonempty",
+            "fields": [
+              "possible_faults"
+            ],
+            "section": null
+          },
+          {
+            "kind": "distinct",
+            "fields": [
+              "possible_faults"
+            ],
+            "section": null
+          },
+          {
+            "kind": "parent_profiles",
+            "fields": [
+              "parent_symptom"
+            ],
+            "section": null
+          },
+          {
+            "kind": "body_reference_order",
+            "fields": [
+              "possible_faults"
+            ],
+            "section": "可能失效机理"
+          }
+        ],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "853d9141f7a674b9f4bb60798e22c29974e50c5448f7c512c51670b706b1b5bf"
+        },
+        "uncompiled_rules": [
+          "config_evidence_required",
+          "no_device_refs",
+          "exactly_one_device_anchor",
+          "possible_faults_ordered",
+          "no_wire_number",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      },
+      {
+        "kind": "Symptom",
+        "supported": [
+          "declared_field_types",
+          "required_fields",
+          "declared_enums",
+          "required_body_sections",
+          "body_template_selection",
+          "declared_source_fields",
+          "reference_object_shape"
+        ],
+        "structural_gates": [],
+        "path_policy": {
+          "version": "sany-paths-v1",
+          "declaration_sha256": "e893b6fae1c785b7b32767d5bcbb5cfc9a2286937f7e9e5454d4c5de611581e6"
+        },
+        "uncompiled_rules": [
+          "no_legacy_relation_fields",
+          "profile_backing_required",
+          "asserted_fault_scope_required",
+          "no_wire_number",
+          "no_measured_value",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance"
+        ]
+      }
+    ],
+    "publication_pending": [
+      "semantic_evidence_validation",
+      "schema_identity_resolution",
+      "trusted_entity_catalog",
+      "closed_relationships",
+      "derived_access_intersection",
+      "atomic_joint_publication"
+    ],
+    "diagnostic_publishable": false
+  },
+  "strict_profile": {
+    "state": "REJECTED",
+    "reason": "SCHEMA_POLICY_PENDING: Component:skeleton_index_profile_layout, Component:bom_fields_manual_line_only, Component:no_materialized_fault_reverse_index, Component:shared:live_narration, Component:shared:no_repeat_call, Component:shared:no_skill_system, Component:shared:gap_discipline, Component:shared:read_truncation, Component:shared:inline_citation, Component:shared:uri_normalization, Component:shared:ref_value_form, Component:shared:ref_uri_provenance, ConfigSpec:host_code_identity, ConfigSpec:device_refs_authoritative, ConfigSpec:class_name_no_function_domain, ConfigSpec:std_table_columns_fixed, ConfigSpec:applicable_cond_controlled, ConfigSpec:no_symptom_semantics, ConfigSpec:shared:live_narration, ConfigSpec:shared:no_repeat_call, ConfigSpec:shared:no_skill_system, ConfigSpec:shared:gap_discipline, ConfigSpec:shared:read_truncation, ConfigSpec:shared:inline_citation, ConfigSpec:shared:uri_normalization, ConfigSpec:shared:ref_value_form, ConfigSpec:shared:ref_uri_provenance, DTC:identity_uniqueness, DTC:uri_no_translated_suffix, DTC:no_orphan, DTC:create_threshold, DTC:no_cross_model_merge, DTC:shared:live_narration, DTC:shared:no_repeat_call, DTC:shared:no_skill_system, DTC:shared:gap_discipline, DTC:shared:read_truncation, DTC:shared:inline_citation, DTC:shared:uri_normalization, DTC:shared:ref_value_form, DTC:shared:ref_uri_provenance, Device:one_model_one_page, Device:one_index_per_model, Device:specs_index_alignment, Device:single_raw_ref_version, Device:shared:live_narration, Device:shared:no_repeat_call, Device:shared:no_skill_system, Device:shared:gap_discipline, Device:shared:read_truncation, Device:shared:inline_citation, Device:shared:uri_normalization, Device:shared:ref_value_form, Device:shared:ref_uri_provenance, Fault:config_differentiation_required, Fault:affected_component_targets_exist, Fault:no_wire_number, Fault:shared:live_narration, Fault:shared:no_repeat_call, Fault:shared:no_skill_system, Fault:shared:gap_discipline, Fault:shared:read_truncation, Fault:shared:inline_citation, Fault:shared:uri_normalization, Fault:shared:ref_value_form, Fault:shared:ref_uri_provenance, Procedure:fault_anchor_required, Procedure:identity_triple, Procedure:target_components_no_symptom, Procedure:applicability_derived, Procedure:criteria_reference_not_copy, Procedure:step_addressable, Procedure:work_type_verification_loop, Procedure:shared:live_narration, Procedure:shared:no_repeat_call, Procedure:shared:no_skill_system, Procedure:shared:gap_discipline, Procedure:shared:read_truncation, Procedure:shared:inline_citation, Procedure:shared:uri_normalization, Procedure:shared:ref_value_form, Procedure:shared:ref_uri_provenance, Profile:config_evidence_required, Profile:no_device_refs, Profile:exactly_one_device_anchor, Profile:possible_faults_ordered, Profile:no_wire_number, Profile:shared:live_narration, Profile:shared:no_repeat_call, Profile:shared:no_skill_system, Profile:shared:gap_discipline, Profile:shared:read_truncation, Profile:shared:inline_citation, Profile:shared:uri_normalization, Profile:shared:ref_value_form, Profile:shared:ref_uri_provenance, Symptom:no_legacy_relation_fields, Symptom:profile_backing_required, Symptom:asserted_fault_scope_required, Symptom:no_wire_number, Symptom:no_measured_value, Symptom:shared:live_narration, Symptom:shared:no_repeat_call, Symptom:shared:no_skill_system, Symptom:shared:gap_discipline, Symptom:shared:read_truncation, Symptom:shared:inline_citation, Symptom:shared:uri_normalization, Symptom:shared:ref_value_form, Symptom:shared:ref_uri_provenance"
+  },
+  "scope": "Eight path layouts and local field alignment executed; no regex/prose execution or source mapping invented",
+  "dtc_source_mapping": "NOT_RUN: original kb://chapters source remains explicitly rejected by structural validation",
+  "quality_gold": "NOT_RUN",
+  "diagnostic_publication": "NOT_RUN",
+  "live_api_deployment": "NOT_RUN"
+}

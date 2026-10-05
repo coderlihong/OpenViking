@@ -1,0 +1,81 @@
+{
+  "kind": "D2",
+  "profile": "synthetic_live_protocol_probe",
+  "full_flow_acceptance": false,
+  "started_at": 1791213913.22551,
+  "source_uri": "viking://resources/raw/durable-joint-I052.md",
+  "job_id": "976a63f5d0e2410abfd8d9adeb33beb6",
+  "sources_sha256": {
+    "viking://resources/raw/durable-joint-I052.md": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7"
+  },
+  "source_sha256": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+  "transitions": [
+    [
+      "queued",
+      "validate",
+      null
+    ],
+    [
+      "running",
+      "index",
+      null
+    ],
+    [
+      "ready",
+      "index",
+      "published"
+    ]
+  ],
+  "final_state": "ready",
+  "stage": "index",
+  "attempt": 1,
+  "job_updated_at": 1791213914.532772,
+  "publication_batch_id": "c3d506717a3c4c16a64159de7477075d",
+  "index_result": {
+    "duration_ms": 828,
+    "failed_records": 0,
+    "mode": "vectors_only",
+    "object_type": "resource",
+    "rebuilt_records": 1,
+    "scanned_records": 1,
+    "semantics_required_records": 0,
+    "status": "completed",
+    "unsupported_records": 0,
+    "uri": "viking://resources/raw/durable-joint-I052.md",
+    "warnings": []
+  },
+  "index_publication": {
+    "all_submitted_members_complete": true,
+    "batch_id": "c3d506717a3c4c16a64159de7477075d",
+    "document_ready_verified": false,
+    "expected_count": 3,
+    "member_count": 1,
+    "membership_sha256": "56238d569a4bbaa4784dfebc6d0984a603f0cbc335149b08b858bd7b43c75948",
+    "received_count": 3,
+    "state": "published"
+  },
+  "publication_gate": {
+    "batch_id": "c3d506717a3c4c16a64159de7477075d",
+    "code": "PUBLICATION_VERIFIED",
+    "missing": {},
+    "verified": true
+  },
+  "reason_code": null,
+  "error": null,
+  "read_sha256": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+  "assertions": {
+    "batch_published": true,
+    "actual_members_nonempty": true,
+    "actual_receipts_complete": true,
+    "receipt_counts_match": true,
+    "gate_decision_present": true,
+    "ready_matches_gate": true,
+    "gate_pending_when_unverified": true,
+    "source_bytes_preserved": true
+  },
+  "read_sources_sha256": {
+    "viking://resources/raw/durable-joint-I052.md": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7"
+  },
+  "passed": true,
+  "finished_at": 1791213915.4003
+}

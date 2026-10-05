@@ -1,0 +1,105 @@
+{
+  "review_date": "2026-10-03",
+  "timezone": "Asia/Shanghai",
+  "kind": "design_review_evidence_not_product_acceptance",
+  "head": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "method": "AST extraction executes only the three existing bookmark methods with synthetic page/destination objects; no full parser or PDF model execution",
+  "synthetic_bookmark_probe": {
+    "observed": [
+      {
+        "level": 1,
+        "title": "named",
+        "page_num": 113
+      },
+      {
+        "level": 1,
+        "title": "direct",
+        "page_num": 21
+      }
+    ],
+    "conclusion": "Named destination bytes are incorrectly treated as page indices; the direct object reference control resolves correctly. This does not verify the real manual."
+  },
+  "real_manual": {
+    "stat_bytes": 379089082,
+    "pdf_sha256": "99a3a0d37696c7f76f8364a641e06b6a100d8e57f7030c1715beae0487196534",
+    "read_attempt": "PyMuPDF open",
+    "result": "OK in main workspace (pymupdf 1.26.5); review sandbox reported Operation not permitted (environment limitation, not file property)",
+    "pages": 1072,
+    "bookmarks": 491,
+    "bookmark_levels": {"L1": 11, "L2": 76, "L3": 330, "L4": 74},
+    "first_toc": [[1, "1 前言 ", 21]],
+    "reverified_toc": true,
+    "note": "counts reconfirmed against historical record; manual gold boundaries still require human verification per TC-2.13"
+  },
+  "remote_models": {
+    "deployment_performed": false,
+    "inference_performed": false
+  },
+  "product_acceptance_tests_run": 0,
+  "source_sha256": {
+    "openviking/parse/parsers/pdf.py": "a6c9e5b3c2543d69d48022ed13b0b29033d018bec0e78fe20b1c66ad7fcb4b0f",
+    "openviking/service/reindex_executor.py": "c247bc576943e1ff91fcfcdab56d5e707f3ad3dcc7ef4a2df7cf3c9e2973706b",
+    "openviking/utils/embedding_utils.py": "e35266bc38d2349a40fa17e269e773a41a1997b9a82ee5a325990fc0033a43f3",
+    "openviking/parse/parsers/media/utils.py": "ffa9ed2eb783be441bfce280cc7ff8c66d673ae8ca0787d54481861ff4d16d5b",
+    "openviking/retrieve/hierarchical_retriever.py": "9b93e8700c0de619019dda86d6defc47950e56ff24cf29cea2483c27137d3ac8",
+    "openviking/storage/queuefs/embedding_msg_converter.py": "3cd24feeb3992df86f2a142922cfdfa9645bddd12a67b1b0c9e94712c72b9c94",
+    "openviking/server/routers/content.py": "dafd8c9467f4dac8c48b85a0c868ef982481c9ebb892b6ccb20519110cc0426a",
+    "src/index/detail/scalar/filter/filter_ops.cpp": "96704a7c417b9a230b5a1403875229c22727ccb6797c8f85364dc3fea788e614"
+  },
+  "document_validation": {
+    "status": "PASS",
+    "files": {
+      "README.md": {
+        "lines": 10,
+        "bytes": 972,
+        "sha256": "8414709bd3544b66eb149613f516132c75b7452c852878a2e4624e425273c125"
+      },
+      "openviking-enterprise-kb-review.md": {
+        "lines": 72,
+        "bytes": 9280,
+        "sha256": "b2fc26e09550ab4f697f7eb064f1d60dcef79f599e19c87446c5aa49b391c4f4"
+      },
+      "openviking-enterprise-kb-spec.md": {
+        "lines": 408,
+        "bytes": 47484,
+        "sha256": "be377c3048261877fb65ebb4c47333b28ba1f820701f642d1eb90524684e7f4b"
+      },
+      "openviking-enterprise-kb-test-cases.md": {
+        "lines": 302,
+        "bytes": 29006,
+        "sha256": "147591adbab4bd37cb9f249b0ddf01985aebc627e58ac5ab98499722991565cb"
+      }
+    },
+    "functional_case_count": 102,
+    "e2e_case_count": 6,
+    "families": {
+      "TC-1": 8,
+      "TC-2": 13,
+      "TC-3": 7,
+      "TC-4": 6,
+      "TC-5": 6,
+      "TC-6": 7,
+      "TC-7": 7,
+      "TC-8": 5,
+      "TC-9": 4,
+      "TC-10": 11,
+      "TC-11": 6,
+      "TC-12": 4,
+      "TC-13": 8,
+      "TC-14": 6,
+      "TC-15": 4
+    },
+    "errors": [],
+    "checks": [
+      "balanced fenced blocks",
+      "JSON examples parse",
+      "local Markdown links exist",
+      "consistent table columns",
+      "test IDs unique",
+      "F1-F15/R01-R13 covered",
+      "removed stale claims absent",
+      "no inline credential assignments"
+    ],
+    "final_link_and_table_recheck": "PASS"
+  }
+}

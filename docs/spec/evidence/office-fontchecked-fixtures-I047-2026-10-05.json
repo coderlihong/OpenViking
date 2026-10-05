@@ -1,0 +1,29 @@
+[
+  {
+    "path": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+    "sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+    "declared_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "gold": false,
+    "change": "Normalize all synthetic fixture font declarations, including Word font table and Excel styles, to actual installed Noto Sans CJK SC"
+  },
+  {
+    "path": "/tmp/ov-flow/office-I047/w1-office-sheets-fontchecked-I047.xlsx",
+    "sha256": "50b0055589c5c035b0c858a65a1495f1c180cfc3df6aefee4ee245902278c31c",
+    "declared_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "gold": false,
+    "change": "Normalize all synthetic fixture font declarations, including Word font table and Excel styles, to actual installed Noto Sans CJK SC"
+  },
+  {
+    "path": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+    "sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+    "declared_fonts": [
+      "Noto Sans CJK SC"
+    ],
+    "gold": false,
+    "change": "Normalize all synthetic fixture font declarations, including Word font table and Excel styles, to actual installed Noto Sans CJK SC"
+  }
+]

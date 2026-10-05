@@ -1,0 +1,56 @@
+{
+  "run_id": "I011-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 438,
+    "new_image_tests": 11,
+    "report": "tests-I011-regression.xml"
+  },
+  "remote_joint_probe": {
+    "run": "I011",
+    "endpoint": "http://127.0.0.1:8026/v1/embeddings",
+    "protocol": "vLLM chat embeddings messages",
+    "model": "local/wemm-embedding-4b-v1",
+    "asset_sha256": "e63789a4820b8e34145c6aaf1c99993eb0fa4dd57b98248f58b31aff8a8b1e77",
+    "asset_bytes": 95628,
+    "status": "ACCEPTED",
+    "dimensions": [
+      2560
+    ],
+    "finite": true,
+    "elapsed_seconds": 0.064
+  },
+  "verified": [
+    "AST chapter/reference context and per-occurrence VLM calls",
+    "Strict producer/worker joint input guards",
+    "URI image reindex uses shared joint producer"
+  ],
+  "limitations": [
+    "Fixture storage/VLM/embedder/vector DB in regressions",
+    "Remote probe validates request/output only, no semantic quality or image sensitivity",
+    "16 occurrence hard limit, local chapter scan and estimated VLM budget",
+    "No occurrence-specific persistent index/cache or image generation/content publication",
+    "Wiki collection/schema APIs and complete four FLOW remain pending"
+  ],
+  "file_sha256": {
+    "openviking/indexing/image_context.py": "06a1f1510e9a6d125609eff211701d2a80a7ee8d91cdec2cc4f1ce206d1aca2f",
+    "openviking_cli/utils/config/embedding_config.py": "3a427e370b590899bd629ca4c317b64dfc9726c4b2092fb4d25675a433525bcc",
+    "openviking/parse/parsers/media/utils.py": "816cd628905a0f53e8c62c521931d601846f975814d657c464b003dd9d677668",
+    "openviking/prompts/templates/parsing/image_summary.yaml": "52df96b083d68a2730618373bf3a84613485833328ef31585fae20eefb019909",
+    "openviking/storage/queuefs/semantic_processor.py": "c87487afc89c20fc3bf6393a9237a0b91051ecaf859e4c195697530306a4ebb3",
+    "openviking/storage/queuefs/semantic_dag.py": "8c14a17f75f2efd181be12ae52951a1d9f29c74d7623f408c9d84883537a265f",
+    "openviking/storage/collection_schemas.py": "50965311ae9ee0b417c0ad42aa03f7f6629d40418e3e682dfa3639f2c3e4c607",
+    "openviking/utils/embedding_utils.py": "3756c3736650deb485dbf85ac43ef50f010923cccb2cac4dd572a702ef2517a8",
+    "openviking/service/reindex_executor.py": "43934b8801129eeb4de0a0d32d260e4cad73de4cb5407e536951d7e9202807b2",
+    "tests/enterprise_kb/test_image_context.py": "09754701304792e8a6e0e4dd2210e60d4a1ca6b34ee8202bfd654beeea580de5",
+    "docs/spec/README.md": "bba022d7fe133b18562cf53f788c89d8e4bc89def2cbe2c54bf25b5930d9a410",
+    "docs/spec/openviking-enterprise-kb-spec.md": "25e9c71d2c938caf37c928a3e4c566a87cc26374d6f98b2c928a63c79c39308d",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "73302a13823a64f0155ace411dfc556887c35d1847bff98d77b869c8d10201b3",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "11f18efdbc1e0b52a1476438dab5478952e0b2c9070bb308281fffac8f3a1534",
+    "docs/spec/openviking-enterprise-kb-review.md": "eb5c3a418e296f16f39f2a04d7ebc892ac923e74907f8e3af77909444313a755",
+    "docs/spec/evidence/tests-I011-regression.xml": "2960b47d08e26e5135329eb0da04bed4675ea48de9711f2c51a4e6a89e3aada3",
+    "docs/spec/evidence/image-joint-I011-2026-10-04.json": "3b52b399b15f40f64faf6bbecde46f2730e05c4626d7b1cf88e056d60e1c724c"
+  }
+}

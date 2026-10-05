@@ -1,0 +1,162 @@
+{
+  "id": "I031",
+  "date": "2026-10-04",
+  "spec_version": "0.10",
+  "baseline": "I030",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "scope": "First independent parallel development batch KB-001/KB-002/KB-031; current prepare compatibility, same-host authority repository, offline evaluation ledger",
+  "delegation": {
+    "api_sdk_contract": "KB-001",
+    "registry_authority": "KB-002",
+    "independent_gold": "KB-031",
+    "parent": "Review, preserve credential boundary and config roundtrip, frontend generation, combined regression and truthful shared status"
+  },
+  "environment": {
+    "python": "3.13.14",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "git_head": "e8d634c88fa96ca589009355c54dca98295d04fd",
+    "working_tree": "Existing dirty shared checkout preserved; no reset, commit, push or deployment"
+  },
+  "regression": {
+    "tests": 925,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 27.421,
+    "report": "parallel-integration-final-2026-10-04.xml",
+    "command": [
+      ".venv/bin/python",
+      "-m",
+      "pytest",
+      "--no-cov",
+      "-q",
+      "--junitxml=docs/spec/evidence/parallel-integration-final-2026-10-04.xml",
+      "tests/parse/test_media_understanding_summary.py",
+      "tests/retrieve/test_hierarchical_retriever_rerank.py",
+      "tests/service/test_reindex_file_lock.py",
+      "tests/service/test_reindex_placeholder.py",
+      "tests/storage/test_abstract_overview_freshness.py",
+      "tests/storage/test_collection_schemas.py",
+      "tests/storage/test_semantic_dag_incremental.py",
+      "tests/storage/test_semantic_dag_media_overview.py",
+      "tests/storage/test_semantic_dag_skip_files.py",
+      "tests/storage/test_semantic_dag_stats.py",
+      "tests/storage/test_semantic_processor_code_routing.py",
+      "tests/storage/test_semantic_processor_identity.py",
+      "tests/storage/test_semantic_processor_l0_l1.py",
+      "tests/storage/test_semantic_processor_language.py",
+      "tests/storage/test_semantic_processor_lock_ownership.py",
+      "tests/storage/test_semantic_processor_mv_vector_store.py",
+      "tests/storage/test_semantic_processor_overview_batching.py",
+      "tests/storage/test_semantic_processor_target_preexisting.py",
+      "tests/storage/test_viking_vector_scope_filter.py",
+      "tests/unit/test_openai_embedder.py",
+      "tests/unit/test_openai_embedder_http_pool.py",
+      "tests/unit/test_openai_embedding_messages.py",
+      "tests/unit/test_vectorize_file_strategy.py",
+      "tests/enterprise_kb",
+      "tests/client/test_http_client_config.py",
+      "sdk/python/tests"
+    ],
+    "scope": "I030 original 51 modules, all enterprise_kb, legacy client config, full Python SDK suite; not entire repository",
+    "initial_report": "parallel-integration-2026-10-04.xml: 924 PASS before final extra malformed-input evaluation test; rerun after final changes 925 PASS",
+    "warnings": "10 warnings including existing Pydantic/SWIG deprecations and SDK AsyncMock RuntimeWarning; zero test failures"
+  },
+  "frontend": {
+    "status": "PASS",
+    "routes": {
+      "wiki_paths": 7,
+      "namespace_paths": 3
+    },
+    "openapi_source": "Actual create_app(ServerConfig()).openapi(), 135 total paths",
+    "command": "node script/gen-server-client/gen-wiki-client.mjs /tmp/openviking-parallel-openapi.json",
+    "typecheck": "node_modules/.bin/tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler src/gen/wiki-client/index.ts",
+    "transport": "Existing shared ov-client Axios client reused",
+    "limits": "Independent generated-client check; full frontend build/UI acceptance not run"
+  },
+  "legacy_sdk_baseline": "All 23 legacy client config tests PASS: four implementation regressions repaired, one obsolete cross-server gateway token assertion corrected; host-binding/challenge credential behavior preserved; full SDK 136 PASS",
+  "input": {
+    "evaluation_candidates": "docs/spec/evaluation/sy215c-candidates-I003.jsonl",
+    "synthetic": 50,
+    "gold": 0,
+    "documents": 1,
+    "machines": 1,
+    "split": "unassigned",
+    "model_version": "Original generator/model version unknown, preserved as unverified; no quality claim"
+  },
+  "configuration": {
+    "authority": "Single trusted same-host POSIX authority and multiple workers, private authenticated Unix socket, SQLite/WAL local disk; no automatic fallback or replay",
+    "evaluations": "Frozen input/config/code hashes and independently attested human gold; current gold empty",
+    "models": "Existing fixtures for AGFS, embedding and vector DB; no new production model runs"
+  },
+  "independent_reports": [
+    "parallel-KB-001-2026-10-04.json",
+    "parallel-KB-002-2026-10-04.json",
+    "parallel-KB-031-2026-10-04.json"
+  ],
+  "acceptance": {
+    "tasks": {
+      "KB-001": "PARTIAL",
+      "KB-002": "PARTIAL",
+      "KB-031": "PARTIAL"
+    },
+    "features": "F1–F15 full product acceptance NOT_RUN",
+    "flows": {
+      "FLOW-D1": "NOT_RUN",
+      "FLOW-D2": "NOT_RUN",
+      "FLOW-W1": "NOT_RUN",
+      "FLOW-W2": "NOT_RUN"
+    },
+    "full_repository": "NOT_RUN",
+    "quality_performance": "NOT_RUN"
+  },
+  "remaining": [
+    "Future durable job/execute/wait and Rust CLI parity",
+    "Cross-host authenticated authority and Wiki/ACL domain command migration; authority workers explicitly reject legacy SQL",
+    "Real backend delayed/uncertain write recovery and joint registry/AGFS/ACL/model backup",
+    "Independent human gold, multiple document/model groups, production query/quality/performance data",
+    "Four FLOW and full Feature acceptance"
+  ],
+  "sha256": {
+    "openviking_cli/client/_http_compat.py": "035722e78e9de8e1cefa8f31688a9977a164cad19b03db4af161ed4c64e248e9",
+    "sdk/python/openviking_sdk/kb.py": "2740045ad3655937ccf580f7f4b6121fc34289c266b223e0b670ae5ad42e72d0",
+    "openviking/server/routers/wiki.py": "d2a824b4d7e2fc0cd6a23ab320839c138c13f50b0ec42d72bb4724c1423b1736",
+    "openviking/indexing/publication.py": "2e4720928b7b59c911d0e06830acb61616ac4166d24788caa787956d3a8f7397",
+    "openviking/indexing/registry_authority.py": "0ab8fc1ba605f0051da54bc823847b301e45c778329b66c2a9d5d3521a497e62",
+    "openviking_cli/utils/config/embedding_config.py": "b7d7390c0f0e778993466bc0bfd52bee8367e97721637eb2d06e14fb5996097e",
+    "openviking/storage/collection_schemas.py": "2ffe63af8fed5f452f8a455afa72ffb46c16e382400ca65830ccc188319a96e4",
+    "openviking/indexing/plan.py": "91e02473b7d27162534a0266c7eab029a17a8080f6c2657b7db541e636ca178a",
+    "openviking/indexing/image.py": "851c4c29cbe690c911442b2ce692d6b7955b639263f2790dbdab1e9c2997ac7a",
+    "openviking/indexing/semantic.py": "ae613bdcb7b160b3eb54f42ee89b41c37e653a4700d844051ab24a6c3a9b43c4",
+    "docs/spec/tools/evaluate_gold.py": "dcbbe79e744325aa5b583956701c367a74a10c64bfb1ec482db49572f322844f",
+    "tests/enterprise_kb/test_registry_authority.py": "34a9a7526c5f0b534c70cf3a6c9ce6c01aad63e4ff6b72c634ed7cfe5a6005a5",
+    "tests/enterprise_kb/test_evaluation_gold.py": "703d83725958028c5a5f2e73448c076792188a292fff9e906132e27024ed8c3a",
+    "sdk/python/tests/test_legacy_search_contract.py": "590e5da5fc203c665bb61a75d86a06bc31a27021ed2734fd5f1b33f9205adf4a",
+    "tests/client/test_http_client_config.py": "21253c7bf65c91c86e8d5851ba060d44464f186ea6b10eb31e23363fc8c4b32b",
+    "web-studio/script/gen-server-client/gen-wiki-client.mjs": "2973d29f65d7738bc21f0f0b9ec769bfb7234f194405a8e212f4ee6550e8e89a",
+    "web-studio/src/gen/wiki-client/types.gen.ts": "76dc9e774b61d48301bc20b5f0ee52ec1de224166936f3c6abe13b187eae236d",
+    "web-studio/src/gen/wiki-client/sdk.gen.ts": "7b3c0484db04c616be23620e3ab9e2b0f428cf4b8bb7b63439e9917891a5c6f1",
+    "web-studio/src/gen/wiki-client/index.ts": "45e394cc7c3d7a79d8665dd679a2a0074727d41c0ca563b219aef094e9c172b2",
+    "docs/deployment/registry-authority.md": "daab73b40a26d0c56a146c06e9123a58de64dc81c9d14337ac63870a5be9177b",
+    "docs/spec/evaluation/independent-gold/README.md": "cf2cc8df923242bd0eca3d34b1507c55ee86123997872e25ebdda23a5aa0de4e",
+    "docs/spec/evaluation/independent-gold/frozen-v1/manifest.json": "25464fb72848e531004de1a062b68630f13a980efde0bd49dc6e12038a37e037",
+    "docs/spec/evaluation/independent-gold/frozen-v1/gold.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/spec/evaluation/independent-gold/frozen-v1/synthetic.jsonl": "f1c8dd5af59070a97376029b87718a058c920551d3e588e641b9149ed7a55afa",
+    "docs/spec/feature-status.json": "86a62688c6a4fce3e19df6666d21236699194995a7107367c0dacc53980a7ffc",
+    "docs/spec/README.md": "0ff0b97f48cee672a20c99603b4701243f11ff90deb75537f16cf0e9d8636859",
+    "docs/spec/openviking-enterprise-kb-backlog.md": "699bdfacc6a352ea2b37b52fd9238eecbbbbc51c8fc8748bf0b47af9dc797589",
+    "docs/spec/openviking-enterprise-kb-spec.md": "bfddaf0ed03f3821554c8bc1900b0ecd42a29dfa4b67ea3c81b85942ff21afcc",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "645d5b090e6b0c750ff32120952bf827feecce44dd0d555f81b3edcada46e4e5",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "2d6c9ed8353df1fe7efade127e0518fae4275794bd9fda986ff6f1ec5738963c",
+    "docs/spec/evidence/parallel-KB-001-2026-10-04.json": "31f53e6c727729bb11649796d91a8c2d3e1dcec6fc8438f76fdb76ed56548c8a",
+    "docs/spec/evidence/parallel-KB-002-2026-10-04.json": "0a65ff1ced0acb85dd7dd463f3be5af13175f7e7799a8f19bc50637487bf1beb",
+    "docs/spec/evidence/parallel-KB-031-2026-10-04.json": "e28d4d073eb46b1deaa5f8147e4d4d5ded6e4174221fe7729b51c94910052ad8",
+    "docs/spec/evidence/parallel-integration-final-2026-10-04.xml": "97b4a1b8f7b8e3e272e13976f1f12012a65a0ba08ec4c42f7e5feb9aae96d195"
+  },
+  "final_checks": {
+    "spec_consistency": "PASS: v0.10, 15 Features, 33 tasks, 19 cross assertions; four FLOW NOT_RUN",
+    "frozen_dataset_integrity": "PASS: 50 records, tool/config/data hashes frozen; gold 0",
+    "source_artifact_hashes": "PASS",
+    "tracked_diff_whitespace": "PASS within changed tracked source scope"
+  }
+}

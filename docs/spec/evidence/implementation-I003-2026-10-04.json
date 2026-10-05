@@ -1,0 +1,337 @@
+{
+  "run_id": "implementation-I003-2026-10-04",
+  "spec_version": "0.7",
+  "recorded_at": "2026-10-04T11:02:44.668690+08:00",
+  "status": "PARTIAL_IMPLEMENTATION_VERIFIED",
+  "working_tree": "uncommitted; unrelated pre-existing changes preserved",
+  "commit": "e8d634c88fa96ca589009355c54dca98295d04fd",
+  "code_and_document_sha256": {
+    "deploy/parser-models/evaluate_manual.py": "d9164baea846c0cf90413cc8556457bdf3831f8117e7894252aa88c8ef12921d",
+    "deploy/parser-models/worker.py": "ed49f73c88b0607ab2a3ba4d2684b0c449447d99bda58c62ef8880d07bb855c5",
+    "deploy/parser-models/model_artifact.py": "600bd3c3a4260c6eabe26629257e80e76a67a59860ba7d3cbacea1023971dd2b",
+    "openviking/parse/model_artifact.py": "600bd3c3a4260c6eabe26629257e80e76a67a59860ba7d3cbacea1023971dd2b",
+    "openviking/parse/model_backend.py": "fbb2293776bd45ecaa8959eb04c358f2caf7ea516f3794bf50deeaa2c869a866",
+    "openviking/parse/parser_router.py": "e45c5c2c5f5aabefaec842820732717c045e3c2ce07dfdfc0bc88834df8b415e",
+    "openviking/retrieve/hierarchical_retriever.py": "178361975e9edacdc59f0c1cf2916a2eaee88cfdd4cdf82fb15b67dff1667b0d",
+    "tests/enterprise_kb/test_parser_worker_lifecycle.py": "1a9dcbd80d699c5de32187e8ad018c46f39cb5ff538ccc8376ceba16b0600316",
+    "tests/enterprise_kb/test_model_artifact.py": "a932024315f36ff641aa4a458e93ff6824cc06bae503ba3634be8449ab87e1e0",
+    "tests/parse/test_parser_router.py": "019120ee4b3cca9e04ee69c0528a40cf553a401b6d62202a2d785f1faddf0c6e",
+    "tests/retrieve/test_hierarchical_retriever_rerank.py": "bf7d469ebdd2d851f718ac7bfcf12f653f1de6ae7a5aa679569b840bf84e14be",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "7ecafc98a200646d7418c28c1afaeb4ccae215ad2846b78a25f6a6bb659293e9",
+    "docs/spec/README.md": "2d942d3d42c88f2a8f7b6961aab1220049723fdc0c8cc9524ec64d72d494ed44",
+    "docs/spec/openviking-enterprise-kb-review.md": "fba5a081d1e85452243594a869e808757b5b9fe0298f4e6d2fe9bb9230756fef",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "184f2009e8de01fb8c99e00d0beeefd0a578f2ac69abcb16e9c81084e7e56170",
+    "docs/spec/openviking-enterprise-kb-spec.md": "88bc6f58babd07b8b19c14404a5b3da926b45eca2f0558f68c21ce11b64ef023",
+    "docs/spec/evaluation/README.md": "54933d421c30087ca74ffb02154def56328a3bed4e13956f1aa0ca939100ae02",
+    "docs/spec/evaluation/sy215c-candidates-I003.jsonl": "f5bed98ee3e5c323d06e0e1dc02bae5ea6d5142cef7bf233126247811ab9181a"
+  },
+  "tests": [
+    {
+      "file": "implementation-I003-backend.xml",
+      "tests": 106,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "implementation-I003-retrieval.xml",
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "remote": {
+    "host": "10.147.254.3",
+    "model_root": "/home/t-wanghai/models/openviking-parsers",
+    "artifacts": [
+      {
+        "backend": "teleocr",
+        "job_id": "5650de2c3497440b9459b8da8f1ad6b9",
+        "version": "1e71f4fe792d12bbb86d2671c5ed6f3a1499b27d",
+        "model_revision": "74509a76263aece9003418db2a146693cfa3da93",
+        "coverage": {
+          "input_pages": 12,
+          "processed_pages": 12,
+          "complete": true
+        },
+        "assets": 2,
+        "blocks": 174
+      },
+      {
+        "backend": "logics",
+        "job_id": "faa7444a722d49f58ebe417fad4c0633",
+        "version": "d75d42dbd92c518a4def19ac5895792828138d35",
+        "model_revision": "94a378ea8b5f20df05bea092f91e2d9cea71c569",
+        "coverage": {
+          "input_pages": 12,
+          "processed_pages": 12,
+          "complete": true
+        },
+        "assets": 2,
+        "blocks": 27
+      },
+      {
+        "backend": "mineru",
+        "job_id": "51d109687f2c47c4ba4ca275c316dc79",
+        "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+        "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+        "coverage": {
+          "input_pages": 12,
+          "processed_pages": 12,
+          "complete": true
+        },
+        "assets": 2,
+        "blocks": 18
+      }
+    ],
+    "full_manual": {
+      "status": "PASS",
+      "backend": "mineru",
+      "scope": "Full SY215C model parsing artifact coverage; not semantic retrieval quality",
+      "input_pages": 1072,
+      "source_sha256": "99a3a0d37696c7f76f8364a641e06b6a100d8e57f7030c1715beae0487196534",
+      "started": 1791074164.537643,
+      "job_id": "488c3636bf7945339ab8ae59b23c56c7",
+      "job_status": "completed",
+      "observed_at": 1791074521.6434507,
+      "coverage": {
+        "input_pages": 1072,
+        "processed_pages": 1072,
+        "complete": true
+      },
+      "assets": 2288,
+      "blocks": 8366,
+      "elapsed_seconds": 366.56,
+      "artifact_sha256": "20821030ff18cd52d66a00489fc3615b07bc3613ccbc314ed14c34939ae5ba2a"
+    },
+    "queued_cancel_input_removed": true,
+    "services": {
+      "teleocr": {
+        "health": {
+          "backend": "teleocr",
+          "ready_for_jobs": true,
+          "model_verified": true
+        },
+        "capabilities": {
+          "artifact_version": 1,
+          "backend": "teleocr",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "logics": {
+        "health": {
+          "backend": "logics",
+          "ready_for_jobs": true,
+          "model_verified": true
+        },
+        "capabilities": {
+          "artifact_version": 1,
+          "backend": "logics",
+          "modes": [
+            "auto",
+            "layout"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      },
+      "mineru": {
+        "health": {
+          "backend": "mineru",
+          "ready_for_jobs": true,
+          "model_verified": true
+        },
+        "capabilities": {
+          "artifact_version": 1,
+          "backend": "mineru",
+          "modes": [
+            "auto",
+            "layout",
+            "ocr",
+            "text"
+          ],
+          "resume_granularity": "document",
+          "ready_for_jobs": true,
+          "model_verified": true
+        }
+      }
+    },
+    "queued_cancel": {
+      "job_id": "0a819aff5fb34b84a755011884036b56",
+      "prior_status": "queued",
+      "after_status": "cancelled"
+    }
+  },
+  "live_mineru_chapter_integration": {
+    "status": "PASS",
+    "scope": "Live MinerU HTTP artifact -> PDFParser -> chapter directories on disk (not production AGFS publication/indexing)",
+    "elapsed_seconds": 7.51,
+    "meta": {
+      "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+      "structure_source": "markdown_headings",
+      "alignment_status": "not_available",
+      "info": [
+        {
+          "code": "BOOKMARKS_UNAVAILABLE",
+          "message": "PDF无可用书签，已按Markdown标题或规则切分继续入库",
+          "reason": "bookmarks_unavailable",
+          "fallback_strategy": "markdown_headings",
+          "unmatched_count": 0
+        }
+      ],
+      "chapters": [
+        {
+          "chapter_id": "heading_313d028fd686",
+          "title": "履带式液压挖掘机",
+          "level": 1,
+          "parent_id": null,
+          "path": "履带式液压挖掘机/index.md",
+          "page_start": null,
+          "match_status": "matched"
+        },
+        {
+          "chapter_id": "heading_53295e4d4e89",
+          "title": "SY215(StageⅢ)液压挖掘机",
+          "level": 2,
+          "parent_id": "heading_313d028fd686",
+          "path": "履带式液压挖掘机/SY215StageⅢ液压挖掘机.md",
+          "page_start": null,
+          "match_status": "matched"
+        },
+        {
+          "chapter_id": "heading_e8dd8a8a84b0",
+          "title": "维修手册",
+          "level": 2,
+          "parent_id": "heading_313d028fd686",
+          "path": "履带式液压挖掘机/维修手册.md",
+          "page_start": null,
+          "match_status": "matched"
+        },
+        {
+          "chapter_id": "heading_9687ba3c8c5a",
+          "title": "目录",
+          "level": 2,
+          "parent_id": "heading_313d028fd686",
+          "path": "履带式液压挖掘机/目录.md",
+          "page_start": null,
+          "match_status": "matched"
+        }
+      ],
+      "chapter_layout": true,
+      "preserve_relative_images": true,
+      "artifact_version": 1,
+      "backend": "mineru",
+      "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+      "mode": "auto",
+      "options": {
+        "quality_tier": "standard"
+      },
+      "options_digest": "7d4e35fe22e7d80101eade62b01e0e8308510f6d8557e5e16f5ee234567f2672",
+      "coverage": {
+        "input_pages": 12,
+        "processed_pages": 12,
+        "complete": true
+      },
+      "warnings": [],
+      "resume_granularity": "document",
+      "asset_count": 2,
+      "block_count": 18,
+      "strategy": "mineru",
+      "effective_backend": "mineru",
+      "library": "parser-artifact-v1",
+      "pdf_strategy": "mineru",
+      "intermediate_markdown_length": 6031,
+      "intermediate_markdown_preview": "# 履带式液压挖掘机\n\n**SY215(Stage**Ⅲ)\n\n![](images/page_0_image_4.jpg)\n\n![](images/page_2_image_1.jpg)\n\n## SY215(StageⅢ)液压挖掘机\n\n## 维修手册\n\n• 本维修手册是为有经验的技术人员编写的，其目的是提供本机器在保养和修理时所需的技术信息。\n\n• 本维修手册或许涉及到在贵地区买不到的工作装置和选购设备。关于这些零部件可向当地三一重机授权代理商咨询订购。材料和技术规格发生变化时，恕不预先通知。\n\n三一集团\n\n上海三一重机股份有限公司\n\n上海市临港工业园区两港大道318号A座\n\n邮编: 201413\n\n售后服务热线:4008 28 2318\n\n咨询投诉电话:4008 87 9318\n\nhttp://www.sanygroup.com\n\n由于技术和产品不断更新，材料与技术规范如有更改恕不另行通知。Copyright©2023三一集团版权所有，未经三一集团书面允许，不得擅自翻印、传播、销售或更改本手册。\n\n## 目录\n\n- 1 前言.... 1-1\n- 1.1 阅读维修手册的方法.... 1"
+    },
+    "files": [
+      "live-model-chapters/small12/toc.md",
+      "live-model-chapters/small12/_toc.json",
+      "live-model-chapters/small12/_manifest.json",
+      "live-model-chapters/small12/履带式液压挖掘机/SY215StageⅢ液压挖掘机.md",
+      "live-model-chapters/small12/履带式液压挖掘机/目录.md",
+      "live-model-chapters/small12/履带式液压挖掘机/维修手册.md",
+      "live-model-chapters/small12/履带式液压挖掘机/index.md",
+      "live-model-chapters/small12/履带式液压挖掘机/images/5591d3733820c3c817cfc1cb8b1961461e2229c7cc2817d83f709e760858bc95.jpg",
+      "live-model-chapters/small12/履带式液压挖掘机/images/d52afd4961b594ed9ca6c3b048fed908f1857df0f71cf2338c085f9aee740290.jpg"
+    ]
+  },
+  "fixes": [
+    "MinerU cancellation forwarded to resident engine",
+    "running-to-completed CAS prevents late publication after cancellation",
+    "SQLite connection closes after each operation",
+    "queued cancellation removes raw input",
+    "real HTML AST references distinguished from fenced code examples",
+    "non-regular ZIP members rejected",
+    "registered PDF default not bypassed by UnderstandingAPI",
+    "THINKING global leaf recall independent of ACL switch; tenant/scope proxy retained"
+  ],
+  "limitations": [
+    "106 backend/contract/parse tests and 37 retrieval tests are targeted code tests, not complete product acceptance",
+    "12-page real sample is front matter and has no bookmarks; chapter fallback works but full bookmark/content alignment quality remains unproven",
+    "Live chapter write uses disk test storage, not production AGFS publication/indexing",
+    "Queued cancellation is verified live; actual running GPU drain/restart failure injection remains NOT_RUN",
+    "Full manual artifact coverage is PASS (1072 pages); this does not prove independent OCR/figure/section quality or retrieval acceptance",
+    "F4 hierarchical parent/child embedding and shared IndexPlan remain unimplemented; chapter grouping is not embedding chunking",
+    "Joint image/text embedding, BM25/RRF/MMR, fuzzy metadata, Office conversion, namespace authorization/publication, Wiki/JEV full requirements remain incomplete",
+    "Fifteen feature acceptance gates are not all achieved; evaluation candidates are title-derived and need independent review, paraphrases and hard negatives"
+  ],
+  "full_manual_chapter_replay": {
+    "status": "PASS",
+    "scope": "Full real MinerU artifact replay -> PDF bookmarks/content alignment or automatic fallback -> chapter files and local images. Disk test storage, not production indexing.",
+    "pages": 1072,
+    "bookmarks": 491,
+    "elapsed_seconds": 2.06,
+    "alignment_status": "failed",
+    "structure_source": "markdown_headings",
+    "info": [
+      {
+        "code": "BOOKMARK_ALIGNMENT_FAILED",
+        "message": "书签对齐未成功，已按Markdown标题或规则切分继续入库",
+        "reason": "heading_order_conflict",
+        "fallback_strategy": "markdown_headings",
+        "unmatched_count": 491
+      }
+    ],
+    "chapter_count": 967,
+    "files_written": 2612,
+    "images_written": 1642,
+    "coverage": {
+      "input_pages": 1072,
+      "processed_pages": 1072,
+      "complete": true
+    },
+    "input_artifact_sha256": "20821030ff18cd52d66a00489fc3615b07bc3613ccbc314ed14c34939ae5ba2a"
+  },
+  "live_running_cancellation": {
+    "job_id": "a6ad7ae59b0d48a89f4829fb0df2f4fd",
+    "backend": "mineru",
+    "prior_status": "running",
+    "statuses_for_8_seconds_after_cancel": [
+      "cancelled",
+      "cancelled",
+      "cancelled",
+      "cancelled",
+      "cancelled",
+      "cancelled",
+      "cancelled",
+      "cancelled"
+    ],
+    "scope": "Live worker cancellation during engine request; no late completed state. GPU drain not independently measured."
+  },
+  "evaluation_candidates": {
+    "path": "evaluation/sy215c-candidates-I003.jsonl",
+    "count": 50,
+    "status": "GENERATED_UNREVIEWED",
+    "gold": false,
+    "source_uri_published": false
+  }
+}

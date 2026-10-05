@@ -1,0 +1,233 @@
+{
+  "raw_model": {
+    "engine_job": "job_2ee130227f4bf255022fd834",
+    "zip_members": [
+      "markdown.md",
+      "middle_json.json",
+      "structured_content.json",
+      "model_output.json"
+    ],
+    "markdown_image_references": 0,
+    "middle_keys": [
+      "metadata",
+      "extensions",
+      "pages",
+      "is_full_document",
+      "schema",
+      "schema_version"
+    ],
+    "markdown": "EXCEL\\_TAIL\n\nHIDDEN\\_SHEET\\_VALUE\n\n机型:SY215C。\n\n部件:履带张紧装置。\n\n故障现象:行走跑偏。\n\n，再检查右侧履带张紧度。\n\n张紧度。\n\nThe pressure reading is 12.5 MPa."
+  },
+  "after": {
+    "metadata": {
+      "artifact_version": 1,
+      "backend": "mineru",
+      "version": "ed50cc15bc2c9bfb00520dadfe61979866e62236",
+      "model_revision": "7aa8e2991b947a7bd913ba2dcccc432696f3574c",
+      "mode": "auto",
+      "options": {
+        "quality_tier": "standard"
+      },
+      "options_digest": "7d4e35fe22e7d80101eade62b01e0e8308510f6d8557e5e16f5ee234567f2672",
+      "coverage": {
+        "input_pages": 5,
+        "processed_pages": 5,
+        "complete": true,
+        "page_ids": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "warnings": [
+        {
+          "code": "SOURCE_PDF_IMAGES_RESTORED",
+          "count": 1,
+          "reason": "visible source PDF placements had no exact-pixel model asset; model extraction quality remains unaccepted"
+        }
+      ],
+      "resume_granularity": "document",
+      "source_image_preservation": {
+        "version": 1,
+        "source_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+        "scope": "visible embedded/inline PDF image placements; vector-only figures are not identified",
+        "model_quality_accepted": false,
+        "visible_placements": 1,
+        "restored_placements": 1,
+        "placements": [
+          {
+            "path": "__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png",
+            "asset_sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd",
+            "source_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+            "source_page_index": 0,
+            "source_page_number": 1,
+            "source_draw_index": 0,
+            "source_xref": 4,
+            "source_bbox_pt": [
+              224.78700256347656,
+              121.86175537109375,
+              314.67401123046875,
+              181.75775146484375
+            ],
+            "visible_bbox_pt": [
+              224.78700256347656,
+              121.86175537109375,
+              314.67401123046875,
+              181.75775146484375
+            ],
+            "page_bounds_pt": [
+              0.0,
+              0.0,
+              595.303955078125,
+              841.8897705078125
+            ],
+            "render_bbox_pt": [
+              224.78700256347656,
+              121.86175537109375,
+              314.67401123046875,
+              181.75775146484375
+            ],
+            "page_rotation": 0,
+            "source_coordinates": "unrotated page points",
+            "render_coordinates": "rotated page points",
+            "restored": true,
+            "model_extracted": false,
+            "exact_model_pixel_match": false,
+            "chapter_assignment": "unassigned",
+            "interpretation": "not inferred",
+            "extraction_method": "source_pdf_visible_region_render"
+          }
+        ]
+      },
+      "effective_backend": "mineru",
+      "effective_mode": "auto",
+      "page_identity_verified": true,
+      "asset_count": 1,
+      "block_count": 12,
+      "submitted_pdf_sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594"
+    },
+    "asset_files": [
+      "parsed.json",
+      "__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png"
+    ],
+    "markdown": "EXCEL\\_TAIL\n\nHIDDEN\\_SHEET\\_VALUE\n\n机型:SY215C。\n\n部件:履带张紧装置。\n\n故障现象:行走跑偏。\n\n，再检查右侧履带张紧度。\n\n张紧度。\n\nThe pressure reading is 12.5 MPa.\n\n# Preserved source PDF visuals\n\n## Source PDF image — page 1, placement 1\n\nSource PDF SHA-256: `3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594`. Page 1; bounds [224.78700256347656, 121.86175537109375, 314.67401123046875, 181.75775146484375] points (unrotated). This visual is preserved from the source PDF; its meaning and chapter membership are unverified.\n\n![Source PDF image, page 1](__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png)\n",
+    "artifact_sha256": "42d36f48b662d3a47dc555418724d474cb3f32e750b46be3a529f4f6dbbf57f1"
+  },
+  "dependency_lock": {
+    "package": "Pillow",
+    "version": "12.1.1",
+    "filename": "pillow-12.1.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "url": "https://files.pythonhosted.org/packages/ff/79/6df7b2ee763d619cda2fb4fea498e5f79d984dae304d45a8999b80d6cf5c/pillow-12.1.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "sha256": "7aac39bcf8d4770d089588a2e1dd111cbaa42df5a94be3114222057d68336bd0",
+    "size": 7041540,
+    "source": "official PyPI JSON digest",
+    "target": "CPython 3.12 Linux x86_64"
+  },
+  "api_restart": {
+    "pid": 99130,
+    "previous_pid": 96972,
+    "health": 200,
+    "started_at": 1791210503.217904,
+    "healthy_at": 1791210505.010189,
+    "source_hashes": {
+      "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+      "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+      "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+      "openviking/parse/model_backend.py": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076",
+      "openviking/parse/model_artifact.py": "9828bf1411eae83235f4e139a82c78916b7dca34cc212fb2a4f73d944a1d6388",
+      "openviking/parse/parsers/pdf.py": "2711b0856bedf90a5dad2041353e8730c19482892aa6cd58fb8ee4992ae43ac1",
+      "openviking/storage/viking_fs/__init__.py": "c5dceb2ad87855c1ee76678c66854d3068e3fd98713994ff3247ff5240658449",
+      "openviking/parse/office_converter.py": "811d52564ab3a6dfde2755d9610cea33cb7b8c5e3058c66bd81464b45e190aaa"
+    },
+    "office_environment_preserved": true,
+    "authority": "in-process PublicationStore",
+    "log_path": "/tmp/ov-server-office-latest.log"
+  },
+  "worker_started_at_utc": "2026-10-05T14:23:29.432800124Z",
+  "source_hashes": {
+    "deploy/parser-models/worker.py": "e75ff5df0dceb49d494348958c53e4a760e259ab6c27373a73e7a8b880e1fe28",
+    "deploy/parser-models/pdf_image_preservation.py": "3d832dade661156f19a90e363ab733a548d20c7f4b4f363d9d8f9013a5381fde",
+    "deploy/parser-models/model_artifact.py": "9828bf1411eae83235f4e139a82c78916b7dca34cc212fb2a4f73d944a1d6388",
+    "deploy/parser-models/image-preservation-requirements.txt": "afef94cb54188a888fb6b5b25f2997dc269414d0f5523f00b734ed9b0e3020ad"
+  },
+  "targeted_tests": 91,
+  "historical_failures_retained": [
+    "pymupdf.image_profile(bytes) compatibility failure retained by root integration-initial XML",
+    "remote network download stalled; terminated before worker change; official wheel downloaded locally, digest verified and installed offline",
+    "API restart source path validation FileNotFoundError; repaired validation order before process stop and recovered healthy pid99130"
+  ],
+  "quality_boundary": "Original MinerU model image omission remains quality FAIL; source PDF visual preservation is not model quality acceptance. TeleOCR/Logics preservation NOT_RUN; vector-only figures NOT_RUN.",
+  "retained_files": [
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/after-artifact/__source_pdf_images/page_000001_draw_000001_3abe120f21e54384.png",
+      "bytes": 468,
+      "sha256": "9dffe4114588e9669fee54ac8585f0b3ec496d89263920727900b5e719de4cfd"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/after-artifact/parsed.json",
+      "bytes": 6995,
+      "sha256": "0ff131745fbae7b82424ab599f793ae5957828266939f2e5ff075a5cf6111b23"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/after-artifact.zip",
+      "bytes": 1963,
+      "sha256": "42d36f48b662d3a47dc555418724d474cb3f32e750b46be3a529f4f6dbbf57f1"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/after-model-probe.json",
+      "bytes": 3858,
+      "sha256": "f2944304995be4ba47cef4dfaa933bf5d32faf66be730b0ed6d9dd556804d65a"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/api-d1.json",
+      "bytes": 1536,
+      "sha256": "2dec7d06cef645d8eaf631526a5f165fe1749fda8cb6d3e130649e007aef3ea1"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/api-final-restart.json",
+      "bytes": 1177,
+      "sha256": "5ff54ea5aa25fd85bdf16bef5223736aaaa4252e9a47c208bab22a4028577396"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/api-w1.json",
+      "bytes": 2005,
+      "sha256": "41206387a50bae8663369d2a0b85d412737ce9bc54bf39c4233791587ee32467"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/mineru-raw-before.zip",
+      "bytes": 3440,
+      "sha256": "59f29e323285ab0f3e979302f36a9c2a7ac07de25ddfe49ed01b97648394286b"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/pillow-wheel-lock.json",
+      "bytes": 513,
+      "sha256": "7374a64ff95eb9842c9488e176e3e12be08e1cb27bc95f77fa7b4a8d2468d8d4"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/raw-probe.json",
+      "bytes": 569,
+      "sha256": "7ec93193d00297501afae1ff676509abe62708a50551e55e9629e7d03ca72eaf"
+    },
+    {
+      "path": "docs/spec/evidence/office-image-preservation-I051-artifacts/source-input.pdf",
+      "bytes": 21680,
+      "sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594"
+    }
+  ],
+  "live_flow_report": {
+    "path": "docs/spec/evidence/office-image-preservation-I051-2026-10-05.json",
+    "sha256": "cd261e85562b64da0793b74dee0f73329cfcba539a3234c64d879c63360e0d45",
+    "passed": true,
+    "final_runtime_check": {
+      "observed_at_epoch": 1791211314.465476,
+      "health_http_status": 200,
+      "api_pid": 99130,
+      "running_durable_jobs": 0,
+      "held_parse_slots": 0
+    },
+    "job_id": "08a1d93ecc0b499db57281efde48f299",
+    "quality_boundary": "Three private candidates use simplified business/v1 Thing schema and synthetic content; not adjudicated repair gold or accepted diagnostic-quality publication."
+  }
+}

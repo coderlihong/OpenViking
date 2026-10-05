@@ -1,0 +1,784 @@
+{
+  "scope": "Legacy DOC/XLS/PPT real HTTP and Async SDK D1/W1 contracts",
+  "sample_class": "synthetic_not_gold",
+  "quality_gold": "NOT_RUN",
+  "tag": "I050",
+  "image": "sha256:6a2cfcf932ad67e7f0445d50b87e446e0b5c9710053eee27324d54d06201cc70",
+  "fixtures": [
+    {
+      "family": ".doc",
+      "flow": "d1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+      "original_sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.docx",
+      "ooxml_sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050.doc",
+      "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    },
+    {
+      "family": ".doc",
+      "flow": "w1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-word-fontchecked-I047.docx",
+      "original_sha256": "34232bdf2fc4a8e69a9274edd0612c62be4f3146b072bd7fe0554f3908cb3de3",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.docx",
+      "ooxml_sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.doc",
+      "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    },
+    {
+      "family": ".xls",
+      "flow": "d1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+      "original_sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.xlsx",
+      "ooxml_sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-xls.xls",
+      "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    },
+    {
+      "family": ".xls",
+      "flow": "w1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-sheets-diagnostic-I047.xlsx",
+      "original_sha256": "5760ade753ee041e0e0c580bf63f2d17c2a7f48379434f3c32e73c7ae20338ff",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.xlsx",
+      "ooxml_sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-xls.xls",
+      "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    },
+    {
+      "family": ".ppt",
+      "flow": "d1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+      "original_sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.pptx",
+      "ooxml_sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-ppt.ppt",
+      "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    },
+    {
+      "family": ".ppt",
+      "flow": "w1",
+      "original_path": "/tmp/ov-flow/office-I047/w1-office-slides-fontchecked-I047.pptx",
+      "original_sha256": "a94e098eef51510cc0137c3475e8513776a7523ff6bb2f2610ea2f90d7a6b414",
+      "ooxml_path": "/tmp/ov-flow/office-legacy-I050/source.pptx",
+      "ooxml_sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+      "declared_ooxml_fonts": [
+        "Noto Sans CJK SC"
+      ],
+      "path": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-ppt.ppt",
+      "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+      "synthetic_statement": "Synthetic repair contract: SY215C hydraulic pump pressure is low. Check the inlet filter for blockage before replacing the hydraulic pump. The pressure reading is 12.5 MPa.",
+      "legacy_font_limitation": "font inventory validated before LibreOffice export; legacy CFB source font introspection is not implemented"
+    }
+  ],
+  "runs": [
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050.doc",
+        "url": "http://127.0.0.1:1933",
+        "account": null,
+        "user": null,
+        "backend": "mineru",
+        "timeout": 1800,
+        "query": "SY215C hydraulic pump low pressure inlet filter blockage 12.5 MPa"
+      },
+      "add_resource": {
+        "status": "success",
+        "root_uri": "viking://resources/raw/legacy-d1-I050",
+        "structure_source": "markdown_headings",
+        "alignment_status": "failed",
+        "elapsed_s": 69.3
+      },
+      "assert_root_appends_name": true,
+      "tree_names": [
+        "00_legacy-d1-I050.md",
+        "Repair_Omega.md",
+        "_manifest.json",
+        "_toc.json",
+        "images",
+        "toc.md"
+      ],
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "reindex": {
+        "status": "completed",
+        "rebuilt_records": 8,
+        "failed_records": 0,
+        "elapsed_s": 50.2
+      },
+      "assert_reindex_clean": true,
+      "search_uris": [
+        "viking://resources/raw/legacy-d1-I050/Repair_Omega.md",
+        "viking://resources/raw/legacy-d1-I050/00_legacy-d1-I050.md",
+        "viking://resources/raw/legacy-d1-I050/images/0a796d73b708beb4eaf455c97dc78efaaeba2892ada131f1a14ebbb756dfcd82.jpg",
+        "viking://resources/raw/legacy-d1-I050/toc.md"
+      ],
+      "assert_uri_traceable": true,
+      "passed": true,
+      "family": ".doc",
+      "flow": "d1",
+      "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526"
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.doc",
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "job_id": null,
+        "build_id": null,
+        "ingest_key": "I050-legacy-.doc-ingest",
+        "exec_key": "I050-legacy-.doc-exec",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_154787b061bc46a493a3a3e9cc353d13.doc",
+      "plan": {
+        "build_id": "b24524bfa21b4424bebe2c78fa58504f",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/legacy-w1-I050/00_legacy-w1-I050.md",
+        "viking://resources/raw/legacy-w1-I050/Repair_Omega.md",
+        "viking://resources/raw/legacy-w1-I050/toc.md"
+      ],
+      "captured_count": 3,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "078f9ef25c4e42b1913e90f92677142d",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 3,
+      "candidate_count": 3,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/WORD_TABLE_12.5.md",
+        "viking://resources/wiki/sany/Thing/Repair Omega.md",
+        "viking://resources/wiki/sany/Thing/文档目录.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true,
+      "candidate_evidence": [
+        {
+          "uri": "viking://resources/wiki/sany/Thing/WORD_TABLE_12.5.md",
+          "evidence": [
+            {
+              "claim": "WORD_TABLE 12.5",
+              "quote": "WORD\\_TABLE 12.5",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/00_legacy-w1-I050.md"
+            },
+            {
+              "claim": "Pressure MPa",
+              "quote": "Pressure MPa",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/00_legacy-w1-I050.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050/00_legacy-w1-I050.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/Repair Omega.md",
+          "evidence": [
+            {
+              "claim": "Repair Omega",
+              "quote": "## Repair Omega",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+            },
+            {
+              "claim": "WORD\\_TAIL pressure 12.5",
+              "quote": "WORD\\_TAIL pressure 12.5",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+            },
+            {
+              "claim": "Synthetic repair contract: SY215C hydraulic pump pressure is low.",
+              "quote": "Synthetic repair contract: SY215C hydraulic pump pressure is low.",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+            },
+            {
+              "claim": "Check the inlet filter for blockage before replacing the hydraulic pump.",
+              "quote": "Check the inlet filter for blockage before replacing the hydraulic pump.",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+            },
+            {
+              "claim": "The pressure reading is 12.5 MPa.",
+              "quote": "The pressure reading is 12.5 MPa.",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050/Repair_Omega.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/文档目录.md",
+          "evidence": [
+            {
+              "claim": "标题是文档目录。",
+              "quote": "# 文档目录",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/toc.md"
+            },
+            {
+              "claim": "文档目录包含指向 00_legacy-w1-I050.md 的链接。",
+              "quote": "- [前置内容](00_legacy-w1-I050.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/toc.md"
+            },
+            {
+              "claim": "文档目录包含指向 Repair_Omega.md 的链接。",
+              "quote": "- [Repair Omega](Repair_Omega.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050/toc.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050/toc.md"
+          ]
+        }
+      ],
+      "family": ".doc",
+      "flow": "w1",
+      "legacy_sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526"
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-xls.xls",
+        "url": "http://127.0.0.1:1933",
+        "account": null,
+        "user": null,
+        "backend": "mineru",
+        "timeout": 1800,
+        "query": "SY215C hydraulic pump low pressure inlet filter blockage 12.5 MPa"
+      },
+      "add_resource": {
+        "status": "success",
+        "root_uri": "viking://resources/raw/legacy-d1-I050-xls",
+        "structure_source": "rule_blocks",
+        "alignment_status": "failed",
+        "elapsed_s": 47.1
+      },
+      "assert_root_appends_name": true,
+      "tree_names": [
+        "_manifest.json",
+        "_toc.json",
+        "section_0001.md",
+        "toc.md"
+      ],
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "reindex": {
+        "status": "completed",
+        "rebuilt_records": 4,
+        "failed_records": 0,
+        "elapsed_s": 22.6
+      },
+      "assert_reindex_clean": true,
+      "search_uris": [
+        "viking://resources/raw/legacy-d1-I050-xls/section_0001.md",
+        "viking://resources/raw/legacy-d1-I050-xls/toc.md"
+      ],
+      "assert_uri_traceable": true,
+      "passed": true,
+      "family": ".xls",
+      "flow": "d1",
+      "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860"
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-xls.xls",
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "job_id": null,
+        "build_id": null,
+        "ingest_key": "I050-legacy-.xls-ingest",
+        "exec_key": "I050-legacy-.xls-exec",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_1e4b4067ce054cc09fd6e9ea21456e24.xls",
+      "plan": {
+        "build_id": "856db283a37b43d9a6d97341be4cb39d",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/legacy-w1-I050-xls/section_0001.md",
+        "viking://resources/raw/legacy-w1-I050-xls/toc.md"
+      ],
+      "captured_count": 2,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "d9f8b4de5c1d4ab881374aac476ac204",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 2,
+      "candidate_count": 2,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/SY215C.md",
+        "viking://resources/wiki/sany/Thing/文档目录.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true,
+      "candidate_evidence": [
+        {
+          "uri": "viking://resources/wiki/sany/Thing/SY215C.md",
+          "evidence": [
+            {
+              "claim": "机型:SY215C。",
+              "quote": "机型:SY215C。",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            },
+            {
+              "claim": "部件:履带张紧装置。",
+              "quote": "部件:履带张紧装置。",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            },
+            {
+              "claim": "故障现象:行走跑偏。",
+              "quote": "故障现象:行走跑偏。",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            },
+            {
+              "claim": "，再检查右侧履带张紧度。",
+              "quote": "，再检查右侧履带张紧度。",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            },
+            {
+              "claim": "张紧度。",
+              "quote": "张紧度。",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            },
+            {
+              "claim": "The pressure reading is 12.5 MPa.",
+              "quote": "The pressure reading is 12.5 MPa.",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-xls/section_0001.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/文档目录.md",
+          "evidence": [
+            {
+              "claim": "# 文档目录",
+              "quote": "# 文档目录",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/toc.md"
+            },
+            {
+              "claim": "- [section_0001](section_0001.md)",
+              "quote": "- [section_0001](section_0001.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-xls/toc.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-xls/toc.md"
+          ]
+        }
+      ],
+      "family": ".xls",
+      "flow": "w1",
+      "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860"
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050-ppt.ppt",
+        "url": "http://127.0.0.1:1933",
+        "account": null,
+        "user": null,
+        "backend": "mineru",
+        "timeout": 1800,
+        "query": "SY215C hydraulic pump low pressure inlet filter blockage 12.5 MPa"
+      },
+      "add_resource": {
+        "status": "success",
+        "root_uri": "viking://resources/raw/legacy-d1-I050-ppt",
+        "structure_source": "markdown_headings",
+        "alignment_status": "failed",
+        "elapsed_s": 79.6
+      },
+      "assert_root_appends_name": true,
+      "tree_names": [
+        "00_legacy-d1-I050-ppt.md",
+        "SLIDE_OMEGA.md",
+        "SLIDE_TAB_LE_23.md",
+        "_manifest.json",
+        "_toc.json",
+        "images",
+        "toc.md"
+      ],
+      "assert_manifest_present": true,
+      "assert_chapter_written": true,
+      "reindex": {
+        "status": "completed",
+        "rebuilt_records": 9,
+        "failed_records": 0,
+        "elapsed_s": 52.7
+      },
+      "assert_reindex_clean": true,
+      "search_uris": [
+        "viking://resources/raw/legacy-d1-I050-ppt/00_legacy-d1-I050-ppt.md",
+        "viking://resources/raw/legacy-d1-I050-ppt/images/081129580b1b579909b85ecfaa352026ec3e7795ff5d82292f1abc96b601d5ec.jpg",
+        "viking://resources/raw/legacy-d1-I050-ppt/SLIDE_OMEGA.md",
+        "viking://resources/raw/legacy-d1-I050-ppt/SLIDE_TAB_LE_23.md",
+        "viking://resources/raw/legacy-d1-I050-ppt/toc.md"
+      ],
+      "assert_uri_traceable": true,
+      "passed": true,
+      "family": ".ppt",
+      "flow": "d1",
+      "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234"
+    },
+    {
+      "args": {
+        "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-w1-I050-ppt.ppt",
+        "url": "http://127.0.0.1:1933",
+        "collection": "sany",
+        "job_id": null,
+        "build_id": null,
+        "ingest_key": "I050-legacy-.ppt-ingest",
+        "exec_key": "I050-legacy-.ppt-exec",
+        "timeout": 1800,
+        "deadline_seconds": 1800,
+        "poll_attempts": null,
+        "poll_interval": 3,
+        "target_prefix": "viking://resources/wiki/sany",
+        "out": null
+      },
+      "temp_file_id": "upload_53b5e3c0db5e41bdaddfd4ae1bd13979.ppt",
+      "plan": {
+        "build_id": "e4ec976a4a744ffb99e85084b371264d",
+        "state": "prepared"
+      },
+      "assert_plan_prepared": true,
+      "captured_uris": [
+        "viking://resources/raw/legacy-w1-I050-ppt/00_legacy-w1-I050-ppt.md",
+        "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_OMEGA.md",
+        "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_TAB_LE_23.md",
+        "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+      ],
+      "captured_count": 4,
+      "assert_captured_nested_md": true,
+      "assert_captured_multiple": true,
+      "job_id": "86cae9ad6ee74f3a8377d92fc26587ca",
+      "job_kind": "W1",
+      "assert_job_kind_w1": true,
+      "job_final": {
+        "state": "draft_ready",
+        "kind": "W1",
+        "error": null,
+        "stage": "wiki_validate"
+      },
+      "assert_draft_ready": true,
+      "draft_count": 4,
+      "candidate_count": 4,
+      "candidate_uris": [
+        "viking://resources/wiki/sany/Thing/c-pump-pressure-is-low.md",
+        "viking://resources/wiki/sany/Thing/SLIDE_OMEGA.md",
+        "viking://resources/wiki/sany/Thing/SLIDE_TAB_LE_23.md",
+        "viking://resources/wiki/sany/Thing/文档目录.md"
+      ],
+      "assert_all_drafts_read": true,
+      "assert_candidate_counts_match": true,
+      "assert_receipt_sources_match": true,
+      "assert_has_candidate": true,
+      "assert_source_traceable": true,
+      "assert_quotes_verbatim": true,
+      "assert_draft_under_target": true,
+      "assert_private_no_diagnostic_publish": true,
+      "passed": true,
+      "candidate_evidence": [
+        {
+          "uri": "viking://resources/wiki/sany/Thing/c-pump-pressure-is-low.md",
+          "evidence": [
+            {
+              "claim": "c pump pressure is low. Check the inlet filter for blockage before replacing the hydraul",
+              "quote": "c pump pressure is low. Check the inlet filter for blockage before replacing the hydraul",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/00_legacy-w1-I050-ppt.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-ppt/00_legacy-w1-I050-ppt.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/SLIDE_OMEGA.md",
+          "evidence": [
+            {
+              "claim": "## SLIDE\\_OMEGA",
+              "quote": "## SLIDE\\_OMEGA",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_OMEGA.md"
+            },
+            {
+              "claim": "Torque Nm",
+              "quote": "Torque Nm",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_OMEGA.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_OMEGA.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/SLIDE_TAB_LE_23.md",
+          "evidence": [
+            {
+              "claim": "The title is SLIDE\\_TAB LE 23.",
+              "quote": "## SLIDE\\_TAB LE 23",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_TAB_LE_23.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-ppt/SLIDE_TAB_LE_23.md"
+          ]
+        },
+        {
+          "uri": "viking://resources/wiki/sany/Thing/文档目录.md",
+          "evidence": [
+            {
+              "claim": "# 文档目录",
+              "quote": "# 文档目录",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+            },
+            {
+              "claim": "- [前置内容](00_legacy-w1-I050-ppt.md)",
+              "quote": "- [前置内容](00_legacy-w1-I050-ppt.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+            },
+            {
+              "claim": "- [SLIDE\\_OMEGA](SLIDE_OMEGA.md)",
+              "quote": "- [SLIDE\\_OMEGA](SLIDE_OMEGA.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+            },
+            {
+              "claim": "- [SLIDE\\_TAB LE 23](SLIDE_TAB_LE_23.md)",
+              "quote": "- [SLIDE\\_TAB LE 23](SLIDE_TAB_LE_23.md)",
+              "source_uri": "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+            }
+          ],
+          "contributors": [
+            "viking://resources/raw/legacy-w1-I050-ppt/toc.md"
+          ]
+        }
+      ],
+      "family": ".ppt",
+      "flow": "w1",
+      "legacy_sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234"
+    }
+  ],
+  "contract_passed": true,
+  "legacy_binary_font_validation": "NOT_RUN; source OOXML declaration inventory was normalized before frozen LibreOffice export",
+  "office_feature_acceptance": "NOT_RUN",
+  "assert_visible_xls_image_materialized": false,
+  "known_image_defect": {
+    "visible_pdf_image_count": 1,
+    "stored_xls_tree": [
+      "_manifest.json",
+      "_toc.json",
+      "section_0001.md",
+      "toc.md"
+    ],
+    "source_probe": "/tmp/ov-flow/office-legacy-I050/xls-image-probe.json",
+    "status": "FAIL",
+    "location": "MinerU worker artifact before OpenViking materialization",
+    "model_asset_count": 0,
+    "model_markdown_image_refs": 0,
+    "model_block_count": 8,
+    "source_media_count": 1,
+    "actual_displayed_pdf_image_count": 1,
+    "normalized_worker_artifact": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-artifact",
+    "not_an_export_or_pdf_conversion_loss": true
+  },
+  "passed": false,
+  "harness_correction": {
+    "classification": "harness fixture name collision/path correction; original DOC retained; initial D1 XLS allocated a collision-safe alternate root and passed parsing/index/search but failed strict filename assertion",
+    "errors": {
+      "d1-xls": {
+        "args": {
+          "pdf": "/tmp/ov-flow/office-legacy-I050/legacy-d1-I050.xls",
+          "url": "http://127.0.0.1:1933",
+          "account": null,
+          "user": null,
+          "backend": "mineru",
+          "timeout": 1800,
+          "query": "SY215C hydraulic pump low pressure inlet filter blockage 12.5 MPa"
+        },
+        "add_resource": {
+          "status": "success",
+          "root_uri": "viking://resources/raw/legacy-d1-I050_1",
+          "structure_source": "rule_blocks",
+          "alignment_status": "failed",
+          "elapsed_s": 35.9
+        },
+        "assert_root_appends_name": false,
+        "tree_names": [
+          "_manifest.json",
+          "_toc.json",
+          "section_0001.md",
+          "toc.md"
+        ],
+        "assert_manifest_present": true,
+        "assert_chapter_written": true,
+        "reindex": {
+          "status": "completed",
+          "rebuilt_records": 4,
+          "failed_records": 0,
+          "elapsed_s": 32.1
+        },
+        "assert_reindex_clean": true,
+        "search_uris": [
+          "viking://resources/raw/legacy-d1-I050_1/section_0001.md",
+          "viking://resources/raw/legacy-d1-I050_1/toc.md"
+        ],
+        "assert_uri_traceable": true,
+        "passed": false,
+        "family": ".xls",
+        "flow": "d1",
+        "legacy_sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860"
+      },
+      "w1-xls": {
+        "family": ".xls",
+        "flow": "w1",
+        "passed": false,
+        "error_type": "FileNotFoundError",
+        "error": "[Errno 2] No such file or directory: '/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.xls'"
+      },
+      "d1-ppt": {
+        "family": ".ppt",
+        "flow": "d1",
+        "passed": false,
+        "error_type": "PermissionDeniedError",
+        "error": "HTTP server only accepts remote resource URLs or temp-uploaded files; direct host filesystem paths are not allowed."
+      },
+      "w1-ppt": {
+        "family": ".ppt",
+        "flow": "w1",
+        "passed": false,
+        "error_type": "FileNotFoundError",
+        "error": "[Errno 2] No such file or directory: '/tmp/ov-flow/office-legacy-I050/legacy-w1-I050.ppt'"
+      }
+    },
+    "repair": "XLS/PPT paths now have independent family-specific stems; reuse successful DOC results and existing job/build identifiers"
+  },
+  "retained_artifacts": [
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.docx",
+      "sha256": "a3d61a86979ceb5ea32d4dfb5e90a6bb1929590eb4b3dd831d791b31a92e3a3e",
+      "bytes": 37974
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.xlsx",
+      "sha256": "3e890e368012617ce8af018e0f43c2e837bfafb0b45fa1564029f13594056688",
+      "bytes": 8718
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/source.pptx",
+      "sha256": "d136866f6fd853b628176ec2fc7b451c71c9901f9a7dc406eca789cccc0ba739",
+      "bytes": 29709
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050.doc",
+      "sha256": "c897223c15ae7c9d9f492ab5eb77601f33a09a14ee8ec22c9e6f09a708399526",
+      "bytes": 20480
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050-xls.xls",
+      "sha256": "2a9257550e12a388e7bf53660384159f2b617865bb1914612cb8b379daf99860",
+      "bytes": 9216
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-d1-I050-ppt.ppt",
+      "sha256": "122f8c0195fb31e0af1f0fad70e1c4467a6511908836acf613eb17d52d9e9234",
+      "bytes": 614400
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/legacy-xls-intermediate.pdf",
+      "sha256": "3abe120f21e54384c90d1f06b618f3b7851ebb149f9f15fa401d30e2eed57594",
+      "bytes": 21680
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-artifact.zip",
+      "sha256": "75d314006e480b0f8187e2b7f69052d6cd46860b0bf2e6dccfc024944713ea17",
+      "bytes": 738
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-image-probe.json",
+      "sha256": "b6b3b7ae77f894504e0d2a8c6c13c98b6a7cf4f1484192969bdb65c3f0fb5ea9",
+      "bytes": 6268
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/xls-mineru-image-probe.json",
+      "sha256": "ab22d97984ed931053a5744ec5744719bc4e16e1b78b960aa32988514f19cc4a",
+      "bytes": 1200
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/fixtures.json",
+      "sha256": "b46ab635a9000d8d35db92d91b399f2ec3b49c924677d6bbd981505442c4f0cb",
+      "bytes": 5658
+    },
+    {
+      "path": "docs/spec/evidence/office-legacy-I050-artifacts/harness-path-correction.json",
+      "sha256": "8a81c534b9beca7484a8dc699be798a13e8f81ec0c3c1555fa4ff44ee6ed35e4",
+      "bytes": 2465
+    }
+  ]
+}

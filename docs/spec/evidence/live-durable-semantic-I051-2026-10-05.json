@@ -1,0 +1,149 @@
+{
+  "kind": "D2",
+  "profile": "synthetic_live_protocol_probe",
+  "full_flow_acceptance": false,
+  "started_at": 1791209323.0897439,
+  "source_uri": "viking://resources/raw/durable-semantic-I051",
+  "job_id": "b7e21c056eb245249d22765643792f14",
+  "sources_sha256": {
+    "viking://resources/raw/durable-semantic-I051/chapter-one.md": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+    "viking://resources/raw/durable-semantic-I051/chapter-two.md": "e35659cd5580bcea1d88f122c0a741e36037e1662552db6e7a540fe10a709256"
+  },
+  "transitions": [
+    [
+      "backoff",
+      "index",
+      "published"
+    ]
+  ],
+  "final_state": "backoff",
+  "stage": "index",
+  "attempt": 5,
+  "job_updated_at": 1791209322.9601989,
+  "publication_batch_id": "7cc9d88715b6434490946ef7809e0c4c",
+  "index_result": {
+    "duration_ms": 17603,
+    "failed_records": 0,
+    "mode": "semantic_and_vectors",
+    "object_type": "resource",
+    "rebuilt_records": 4,
+    "scanned_records": 3,
+    "semantics_required_records": 0,
+    "status": "completed",
+    "unsupported_records": 0,
+    "uri": "viking://resources/raw/durable-semantic-I051",
+    "warnings": []
+  },
+  "index_publication": {
+    "all_submitted_members_complete": true,
+    "batch_id": "7cc9d88715b6434490946ef7809e0c4c",
+    "document_ready_verified": false,
+    "expected_count": 9,
+    "member_count": 3,
+    "membership_sha256": "7f08cf01d589be0e56a28b8029173f67a64c2bd224afe04c1c7228c2151ec601",
+    "received_count": 9,
+    "state": "published"
+  },
+  "publication_gate": {
+    "code": "PUBLICATION_GATE_PENDING",
+    "missing_joint_receipts": [
+      "body_tree",
+      "images",
+      "parent_child",
+      "semantic_levels",
+      "bm25",
+      "metadata",
+      "version_switch"
+    ],
+    "verified": false
+  },
+  "reason_code": "PUBLICATION_GATE_PENDING",
+  "error": null,
+  "directory_listing_count": 2,
+  "assertions": {
+    "batch_published": true,
+    "actual_members_nonempty": true,
+    "actual_receipts_complete": true,
+    "receipt_counts_match": true,
+    "full_ready_not_claimed": true,
+    "full_gate_pending": true,
+    "source_bytes_preserved": true,
+    "generated_L0_L1_nonempty": true
+  },
+  "read_sources_sha256": {
+    "viking://resources/raw/durable-semantic-I051/chapter-one.md": "1018fab3d1690b9d9c79a3610e09b73ad001d9514e66b17b68ba324c29f75aa7",
+    "viking://resources/raw/durable-semantic-I051/chapter-two.md": "e35659cd5580bcea1d88f122c0a741e36037e1662552db6e7a540fe10a709256"
+  },
+  "passed": true,
+  "finished_at": 1791209323.127157,
+  "generated_semantic_levels": {
+    "L0": {
+      "chars": 126,
+      "sha256": "ddaecb8acea5b325c80927cb215c7e54d99456c8bfe8ae362e8f588c45b6e035"
+    },
+    "L1": {
+      "chars": 3470,
+      "sha256": "a995a1d6f2a9b3e333a182e9bf87d15983d00ee7d311371cee7cd91286bb0971"
+    }
+  },
+  "actual_receipt_categories": {
+    "metadata": 3,
+    "semantic": 2,
+    "text_chunk": 2,
+    "lexical": 2
+  },
+  "cancel_state": "cancelled",
+  "source_snapshot_at_evidence_export": {
+    "openviking/service/kb_job_runtime.py": {
+      "sha256": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+      "mtime": 1791206980.808443
+    },
+    "openviking/indexing/jobs.py": {
+      "sha256": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+      "mtime": 1791206980.7968616
+    },
+    "openviking/indexing/registry_authority.py": {
+      "sha256": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+      "mtime": 1791206980.8039937
+    },
+    "openviking/service/reindex_executor.py": {
+      "sha256": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+      "mtime": 1791208765.1812963
+    },
+    "openviking/storage/queuefs/semantic_processor.py": {
+      "sha256": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74",
+      "mtime": 1791208899.5629234
+    },
+    "openviking/parse/model_backend.py": {
+      "sha256": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076",
+      "mtime": 1791209079.0369105
+    },
+    "tests/enterprise_kb/flows/flow_durable_joint.py": {
+      "sha256": "212c25c0bd733558c184deae8fef2e04f5ee9cea810711ba7324af0afc9af6de",
+      "mtime": 1791209322.9385715
+    }
+  },
+  "exported_at": 1791209494.997857,
+  "acceptance_scope": "Real API + SDK + configured models + local authority submitted-member publication; full document-ready gates unverified",
+  "final_api_deployment": {
+    "pid": 96972,
+    "previous_pid": 95836,
+    "started_at": 1791209496.3380811,
+    "healthy_at": 1791209498.488821,
+    "health": 200,
+    "authority": "in-process PublicationStore",
+    "source_snapshot_at_startup": {
+      "openviking/service/kb_job_runtime.py": "855107bb92449775dc7eaf9093d865b88729d5a84483d62899d0313f0aa02d13",
+      "openviking/indexing/jobs.py": "48042f682a10c061b5dec8457c13c6c23b5717957215fa4944e765889fa6fc62",
+      "openviking/indexing/registry_authority.py": "22f0f06b54b2197dfd4f02c15bdcc3c8dd38ff16c0b4e9551bedbd4863333695",
+      "openviking/service/reindex_executor.py": "d0a847d4b9dbb2ecab9f14901d0369344814fd31e1e6bbdaf2965c8080b11daf",
+      "openviking/storage/queuefs/semantic_processor.py": "6e0b631744e15a8772e114ebc72a25d7a0d7f85dcf6a810f5b70dc96a6910c74",
+      "openviking/parse/model_backend.py": "a862e36aa685dcb660f2e25dcd06bc6670f55b16a3c766415664fd3b7d285076"
+    },
+    "sources_unchanged_during_startup": true,
+    "office_environment_preserved": true,
+    "log_path": "/tmp/ov-server-I051-final.log",
+    "preflight_active_jobs": 0,
+    "preflight_active_queue_work": 0
+  }
+}

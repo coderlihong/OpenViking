@@ -1,0 +1,861 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="356" failures="1" errors="0" time="72.370749872">
+    <testsuite name="src/components/account-switcher.test.ts" timestamp="2026-10-04T23:25:50.660Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.001781167">
+        <testcase classname="src/components/account-switcher.test.ts" name="selectAccountUser &gt; selects the first user returned by the target account" time="0.000791417">
+        </testcase>
+        <testcase classname="src/components/account-switcher.test.ts" name="selectAccountUser &gt; falls back to the first user for a new account" time="0.000227584">
+        </testcase>
+        <testcase classname="src/components/account-switcher.test.ts" name="selectAccountUser &gt; rejects prefix-only users in API-key mode" time="0.000093792">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/app-shell.test.tsx" timestamp="2026-10-04T23:25:50.663Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.056932666">
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; does not mount route content while the server mode is unresolved" time="0.024038042">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving api_key mode" time="0.008505666">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving trusted mode" time="0.004854666">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving dev mode" time="0.002514458">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving oidc mode" time="0.006978209">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving ldap mode" time="0.0041935">
+        </testcase>
+        <testcase classname="src/components/app-shell.test.tsx" name="ConnectionScopedRouteContent &gt; mounts route content after resolving offline mode" time="0.004694375">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/current-user-menu.interaction.test.tsx" timestamp="2026-10-04T23:25:50.665Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="7.208886667">
+        <testcase classname="src/components/current-user-menu.interaction.test.tsx" name="CurrentUserMenu &gt; switches trusted identities without requiring a user API key" time="2.56956925">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.interaction.test.tsx" name="CurrentUserMenu &gt; switches API-key identities when management access exposes a user key" time="1.964320375">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.interaction.test.tsx" name="CurrentUserMenu &gt; keeps ordinary API-key user menus read-only" time="0.30902875">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.interaction.test.tsx" name="CurrentUserMenu &gt; disables API-key identities whose secret is unavailable" time="1.427929875">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.interaction.test.tsx" name="CurrentUserMenu &gt; accepts a user ID when trusted mode has no user directory" time="0.936772458">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/current-user-menu.test.ts" timestamp="2026-10-04T23:25:50.670Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.002796208">
+        <testcase classname="src/components/current-user-menu.test.ts" name="getUserInitial &gt; uses the first character of the normalized user id" time="0.000846541">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.test.ts" name="getUserInitial &gt; supports non-Latin user ids" time="0.001029917">
+        </testcase>
+        <testcase classname="src/components/current-user-menu.test.ts" name="getUserInitial &gt; returns a fallback when the user id is empty" time="0.000077792">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/use-app-connection.test.ts" timestamp="2026-10-04T23:25:50.673Z" hostname="whdeMacBook-Pro.local" tests="21" failures="0" errors="0" skipped="0" time="0.008867916">
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createConnectionError &gt; reads the active locale when the asynchronous error is created" time="0.003497959">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createConnectionRoleProbeKey &gt; matches the connection produced by an internal identity synchronization" time="0.00027175">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createConnectionRoleProbeKey &gt; changes when a credential or asserted identity changes" time="0.00060425">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveInitialApiKey &gt; keeps the stored connection key paired with the stored account and user" time="0.000107375">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveInitialApiKey &gt; falls back to the default key when no connection key is stored" time="0.000060083">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveInitialApiKey &gt; honors an explicit environment key first" time="0.000072166">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createIdentityScopeKey &gt; changes when the active account changes" time="0.000130375">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createIdentityScopeKey &gt; does not expose the raw data credential" time="0.000131417">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="synchronizeResolvedDataIdentity &gt; updates the active account and user even when a Root control key is configured" time="0.000236417">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="synchronizeResolvedDataIdentity &gt; does not rewrite an already synchronized identity" time="0.000102333">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveSwitchedIdentity &gt; uses the requested account and user for legacy health responses" time="0.000118">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveSwitchedIdentity &gt; rejects a credential that resolves to another identity" time="0.000056334">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveSwitchedIdentity &gt; uses an Admin API credential association with legacy health endpoints" time="0.000072416">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="createManagementAccountConnection &gt; keeps the Root credential while clearing stale tenant data credentials" time="0.000083917">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="synchronizeConnectionRuntime &gt; updates the imperative client before React state consumers remount" time="0.000579833">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveConnectionRoleProbeState &gt; treats dev mode as root without requiring an API key" time="0.000088583">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveConnectionRoleProbeState &gt; keeps non-dev no-key connections unknown without probing" time="0.000989166">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="resolveConnectionRoleProbeState &gt; probes non-dev keyed connections through /health" time="0.00027625">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="shouldRedirectToLoginOnApiError &gt; redirects on HTTP 401 session failures" time="0.000080875">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="shouldRedirectToLoginOnApiError &gt; does not redirect on HTTP 403 business permission errors" time="0.000047833">
+        </testcase>
+        <testcase classname="src/hooks/use-app-connection.test.ts" name="shouldRedirectToLoginOnApiError &gt; does not redirect on other HTTP 403 permission denials" time="0.000040125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/hooks/use-server-mode.test.ts" timestamp="2026-10-04T23:25:50.688Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.013064583">
+        <testcase classname="src/hooks/use-server-mode.test.ts" name="fetchServerHealth &gt; reuses an identical health probe during connection initialization" time="0.011917834">
+        </testcase>
+        <testcase classname="src/hooks/use-server-mode.test.ts" name="fetchServerHealth &gt; does not share health probes across credentials" time="0.000242542">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/okf-markdown.test.ts" timestamp="2026-10-04T23:25:50.690Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.029168834">
+        <testcase classname="src/lib/okf-markdown.test.ts" name="parseOkfSidecarMarkdown &gt; separates valid OKF metadata from the Markdown body for .abstract.md" time="0.011159667">
+        </testcase>
+        <testcase classname="src/lib/okf-markdown.test.ts" name="parseOkfSidecarMarkdown &gt; separates valid OKF metadata from the Markdown body for .overview.md" time="0.013855">
+        </testcase>
+        <testcase classname="src/lib/okf-markdown.test.ts" name="parseOkfSidecarMarkdown &gt; does not reinterpret frontmatter in an ordinary Markdown file" time="0.000176708">
+        </testcase>
+        <testcase classname="src/lib/okf-markdown.test.ts" name="parseOkfSidecarMarkdown &gt; falls back to the original Markdown path for malformed metadata" time="0.00282725">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/retrieval.test.ts" timestamp="2026-10-04T23:25:50.693Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.015229833">
+        <testcase classname="src/lib/retrieval.test.ts" name="pattern retrieval &gt; passes advanced semantic filters through one find request" time="0.009917916">
+        </testcase>
+        <testcase classname="src/lib/retrieval.test.ts" name="pattern retrieval &gt; uses one find request for the server-grouped result types" time="0.000962709">
+        </testcase>
+        <testcase classname="src/lib/retrieval.test.ts" name="pattern retrieval &gt; maps grep line matches into retrieval result rows" time="0.000479">
+        </testcase>
+        <testcase classname="src/lib/retrieval.test.ts" name="pattern retrieval &gt; maps glob URI matches into retrieval result rows" time="0.000399958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sse.test.ts" timestamp="2026-10-04T23:25:50.696Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.038630459">
+        <testcase classname="src/lib/sse.test.ts" name="fetchSse &gt; supports POST and parses standard SSE event boundaries" time="0.017423041">
+        </testcase>
+        <testcase classname="src/lib/sse.test.ts" name="fetchSse &gt; rejects non-SSE responses without retrying the POST" time="0.01721275">
+        </testcase>
+        <testcase classname="src/lib/sse.test.ts" name="fetchSse &gt; aborts an active POST stream" time="0.001149709">
+        </testcase>
+        <testcase classname="src/lib/sse.test.ts" name="fetchSse &gt; does not start a POST when the signal is already aborted" time="0.001979666">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/studio-permissions.test.ts" timestamp="2026-10-04T23:25:50.701Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.002811333">
+        <testcase classname="src/lib/studio-permissions.test.ts" name="resolveStudioManagementCapabilities &gt; allows a validated root control credential to manage accounts and users" time="0.001276292">
+        </testcase>
+        <testcase classname="src/lib/studio-permissions.test.ts" name="resolveStudioManagementCapabilities &gt; allows a verified trusted Root key to manage accounts and users" time="0.0001565">
+        </testcase>
+        <testcase classname="src/lib/studio-permissions.test.ts" name="resolveStudioManagementCapabilities &gt; limits account admins to user management" time="0.000110541">
+        </testcase>
+        <testcase classname="src/lib/studio-permissions.test.ts" name="resolveStudioManagementCapabilities &gt; does not expose management to ordinary users" time="0.000086334">
+        </testcase>
+        <testcase classname="src/lib/studio-permissions.test.ts" name="resolveStudioManagementCapabilities &gt; does not infer permissions from an unverified input value" time="0.000131417">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/viking-uri.test.ts" timestamp="2026-10-04T23:25:50.708Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.073085167">
+        <testcase classname="src/lib/viking-uri.test.ts" name="cleanVikingUri &gt; keeps spaces in direct viking uri values" time="0.000910208">
+        </testcase>
+        <testcase classname="src/lib/viking-uri.test.ts" name="cleanVikingUri &gt; still extracts a uri from prose" time="0.000230541">
+        </testcase>
+        <testcase classname="src/lib/viking-uri.test.ts" name="retrievalResultNameFromUri &gt; adds the summarized directory to .abstract.md results" time="0.012874417">
+        </testcase>
+        <testcase classname="src/lib/viking-uri.test.ts" name="retrievalResultNameFromUri &gt; adds the summarized directory to .overview.md results" time="0.000420375">
+        </testcase>
+        <testcase classname="src/lib/viking-uri.test.ts" name="retrievalResultNameFromUri &gt; keeps ordinary result names unchanged" time="0.000088333">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/ov-client/client.test.ts" timestamp="2026-10-04T23:25:50.711Z" hostname="whdeMacBook-Pro.local" tests="6" failures="0" errors="0" skipped="0" time="0.013931834">
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; uses the data API key for dashboard metrics when both keys are configured" time="0.006284417">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; uses the data API key for scoped audit logs when both keys are configured" time="0.000318792">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; keeps admin endpoints on the admin API key" time="0.000259584">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; falls back to the admin API key for console data when no data key is configured" time="0.000314666">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; preserves an explicit API key used to probe a candidate identity" time="0.003596916">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; preserves explicit trusted identity headers used to probe a candidate user" time="0.000632">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sessions/api.test.ts" timestamp="2026-10-04T23:25:50.714Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.011792208">
+        <testcase classname="src/lib/sessions/api.test.ts" name="fetchSessionMessages &gt; combines completed archives with current context in chronological order" time="0.002990291">
+        </testcase>
+        <testcase classname="src/lib/sessions/api.test.ts" name="fetchSessionMessages &gt; keeps readable history when an unfinished archive is unavailable" time="0.002322625">
+        </testcase>
+        <testcase classname="src/lib/sessions/api.test.ts" name="fetchSessionMessages &gt; propagates archive failures that are not missing archives" time="0.004885833">
+        </testcase>
+        <testcase classname="src/lib/sessions/api.test.ts" name="serializeParts &gt; keeps persisted content order while filtering timeline-only events" time="0.000535208">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sessions/group-messages.test.ts" timestamp="2026-10-04T23:25:50.716Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.008910958">
+        <testcase classname="src/lib/sessions/group-messages.test.ts" name="server message presentation &gt; merges user-role tool transports with their calls without changing source records" time="0.004452667">
+        </testcase>
+        <testcase classname="src/lib/sessions/group-messages.test.ts" name="server message presentation &gt; respects real user messages and explicit turn boundaries" time="0.000375291">
+        </testcase>
+        <testcase classname="src/lib/sessions/group-messages.test.ts" name="server message presentation &gt; retains orphan legacy tools, images and context-only user messages" time="0.002897083">
+        </testcase>
+        <testcase classname="src/lib/sessions/group-messages.test.ts" name="server message presentation &gt; drops empty records and retains mixed user text and tools as a boundary" time="0.000174708">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sessions/memory-diff.test.ts" timestamp="2026-10-04T23:25:50.720Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.003743375">
+        <testcase classname="src/lib/sessions/memory-diff.test.ts" name="parseSessionMemoryDiff &gt; normalizes real memory operations and derives the summary from them" time="0.002516625">
+        </testcase>
+        <testcase classname="src/lib/sessions/memory-diff.test.ts" name="parseSessionMemoryDiff &gt; returns null for an empty or invalid diff" time="0.000311917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sessions/use-chat-timeline.test.tsx" timestamp="2026-10-04T23:25:50.723Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.114460709">
+        <testcase classname="src/lib/sessions/use-chat-timeline.test.tsx" name="useChat event timeline &gt; keeps grouped event blocks in SSE arrival order" time="0.047119084">
+        </testcase>
+        <testcase classname="src/lib/sessions/use-chat-timeline.test.tsx" name="useChat event timeline &gt; keeps only the latest reasoning block running" time="0.013711666">
+        </testcase>
+        <testcase classname="src/lib/sessions/use-chat-timeline.test.tsx" name="useChat event timeline &gt; renders a complete reasoning event as completed" time="0.024079958">
+        </testcase>
+        <testcase classname="src/lib/sessions/use-chat-timeline.test.tsx" name="useChat event timeline &gt; finalizes when the response event arrives before the stream closes" time="0.02321775">
+        </testcase>
+        <testcase classname="src/lib/sessions/use-chat-timeline.test.tsx" name="useChat event timeline &gt; keeps reasoning and tool timeline when aborted before content arrives" time="0.004642666">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/sessions/use-session-titles.test.ts" timestamp="2026-10-04T23:25:50.727Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.002259167">
+        <testcase classname="src/lib/sessions/use-session-titles.test.ts" name="createSessionTitleStorageKey &gt; partitions session titles by active identity" time="0.001248458">
+        </testcase>
+        <testcase classname="src/lib/sessions/use-session-titles.test.ts" name="createSessionTitleStorageKey &gt; does not expose unescaped identity separators in the storage key" time="0.000163083">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/route.test.tsx" timestamp="2026-10-04T23:25:50.728Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="4.452406542">
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; clears a deleted selected file from the preview and URL search" time="1.140563125">
+        </testcase>
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; does not clear a newer selection when the old file stat finishes late" time="0.341508625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/route.test.tsx" timestamp="2026-10-04T23:25:50.730Z" hostname="whdeMacBook-Pro.local" tests="5" failures="1" errors="0" skipped="0" time="11.7922795">
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; keeps all twelve running tasks running in both rows and the count" time="1.475026917">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; shows no pending tasks when all tasks are running, including after type filtering" time="5.224819959">
+            <failure message="Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with &quot;testTimeout&quot;." type="Error">
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with &quot;testTimeout&quot;.
+ ❯ src/routes/tasks/route.test.tsx:125:3
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; renders and filters actual pending tasks in en" time="1.425811667">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; renders and filters actual pending tasks in zh-CN" time="1.694545042">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; preserves task statuses when grouping and pagination change the visible rows" time="0.721292459">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/watches/route.test.tsx" timestamp="2026-10-04T23:25:50.736Z" hostname="whdeMacBook-Pro.local" tests="8" failures="0" errors="0" skipped="0" time="6.162858166">
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; shows edit as a direct row action" time="0.963600875">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; keeps Sync now disabled and labelled as syncing while processing is active" time="1.303564792">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; falls back to the watch execution time when the task baseline fails" time="1.128507458">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; updates the enabled state and reports mutation failures" time="0.31001175">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; disables manual sync when the scheduled sync is disabled" time="0.307458667">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; enters creation state after submitting a new watch" time="0.480668292">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; clears creation state when resource submission fails" time="0.39932025">
+        </testcase>
+        <testcase classname="src/routes/watches/route.test.tsx" name="WatchManagementPage &gt; warns and clears creation state when discovery times out" time="1.26663175">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/home/-components/token-trend-chart.test.tsx" timestamp="2026-10-04T23:25:50.742Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.186157583">
+        <testcase classname="src/routes/home/-components/token-trend-chart.test.tsx" name="TokenTrendChart &gt; lets the Y-axis fit million-scale labels without clipping" time="0.182467833">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/agent-experience/-lib/api.test.ts" timestamp="2026-10-04T23:25:50.744Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.010514">
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="experience listing server pagination &gt; requests a page beyond the old 1000 limit with one lookahead entry" time="0.006388958">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="experience listing server pagination &gt; does not skip lookahead records between pages" time="0.000306625">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="experience listing server pagination &gt; applies pagination to raw entries before filtering out directories" time="0.000168708">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="experience listing server pagination &gt; allows an empty later page without inventing a total" time="0.000151709">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="account-scoped evolution settings &gt; reads the selected account effective value instead of its override" time="0.000796083">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="account-scoped evolution settings &gt; patches only evolution for the selected account and reads the effective response" time="0.001275916">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/api.test.ts" name="account-scoped evolution settings &gt; preserves the returned account so the UI can reject a scope mismatch" time="0.000170125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/agent-experience/-lib/experience.test.ts" timestamp="2026-10-04T23:25:50.751Z" hostname="whdeMacBook-Pro.local" tests="27" failures="0" errors="0" skipped="0" time="0.032914917">
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildExperiencesUri &gt; builds the experiences directory URI for a user" time="0.002261375">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildExperiencesUri &gt; encodes user ids with reserved characters" time="0.0007645">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildExperiencesUri &gt; falls back to the default user for empty ids" time="0.000229834">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="getExperienceDisplayName &gt; strips the markdown extension from the file name" time="0.000277959">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="getExperienceDisplayName &gt; returns the raw segment when there is no extension" time="0.000075375">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeTrajectoryPage &gt; normalizes items, pagination and has_more" time="0.001694167">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeTrajectoryPage &gt; derives has_more when the flag is missing" time="0.000128667">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeTrajectoryPage &gt; returns null for non-object payloads" time="0.00007325">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeTrajectoryPage &gt; falls back to the provided uri when the response omits it" time="0.000094958">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeOutcomeDistribution &gt; fills the five fixed buckets and zeroes missing counts" time="0.001511333">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeOutcomeDistribution &gt; keeps the stable order regardless of server ordering" time="0.000623333">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="normalizeOutcomeDistribution &gt; handles empty or malformed payloads" time="0.0005385">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="resolveTimeRange &gt; disables filtering for the all preset" time="0.000120333">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="resolveTimeRange &gt; returns no bounds for the custom preset" time="0.000766">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="resolveTimeRange &gt; computes inclusive UTC bounds for the 7d preset" time="0.000345208">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="resolveTimeRange &gt; computes inclusive UTC bounds for the 30d preset" time="0.000070958">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="resolveTimeRange &gt; handles month boundaries" time="0.000053166">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildCustomTimeRange &gt; builds a range from both bounds" time="0.000178916">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildCustomTimeRange &gt; supports an open-ended start bound only" time="0.000064875">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildCustomTimeRange &gt; supports an open-ended end bound only" time="0.000054125">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildCustomTimeRange &gt; rejects invalid formats" time="0.000086625">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="buildCustomTimeRange &gt; rejects reversed ranges" time="0.000046708">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="last-seen tracking &gt; reports unseen experiences as updated until marked seen" time="0.000761875">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="formatTimestamp &gt; formats parseable timestamps" time="0.018057917">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="formatTimestamp &gt; returns undefined for missing or invalid values" time="0.000584125">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="formatFileSize &gt; formats bytes, kilobytes and megabytes" time="0.000239209">
+        </testcase>
+        <testcase classname="src/routes/agent-experience/-lib/experience.test.ts" name="formatFileSize &gt; returns undefined for missing or invalid sizes" time="0.000212916">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/agent-experience/-lib/router-params.test.ts" timestamp="2026-10-04T23:25:50.762Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.284965583">
+        <testcase classname="src/routes/agent-experience/-lib/router-params.test.ts" name="router param round-trip &gt; encodes params into the href and decodes them on match" time="0.283954833">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/localize-observer-status.test.ts" timestamp="2026-10-04T23:25:50.763Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.004541709">
+        <testcase classname="src/routes/monitoring/-lib/localize-observer-status.test.ts" name="localizeObserverStatusBlocks &gt; localizes registered observer labels and preserves technical values" time="0.00267475">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/localize-observer-status.test.ts" name="localizeObserverStatusBlocks &gt; localizes total rows only in summary columns" time="0.000562208">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/parse-status.test.ts" timestamp="2026-10-04T23:25:50.765Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.004065125">
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; converts an ASCII table into structured rows" time="0.001625459">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; keeps plain status messages as text" time="0.000193375">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; keeps adjacent ASCII tables as separate blocks" time="0.000175208">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/version.test.ts" timestamp="2026-10-04T23:25:50.768Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.001994083">
+        <testcase classname="src/routes/monitoring/-lib/version.test.ts" name="stripVersionPrefix &gt; removes a leading version prefix" time="0.0010025">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/version.test.ts" name="stripVersionPrefix &gt; preserves versions without a prefix" time="0.000111917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/agent-panel-initialization.test.tsx" timestamp="2026-10-04T23:25:50.769Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.228041708">
+        <testcase classname="src/routes/playground/-components/agent-panel-initialization.test.tsx" name="keeps a new draft out of history requests and the URL" time="0.046713792">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-initialization.test.tsx" name="loads history for an existing session" time="0.048109958">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-initialization.test.tsx" name="creates the draft before sending and publishes only the persisted ID" time="0.081767625">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-initialization.test.tsx" name="does not send or publish the draft when creation fails" time="0.050524917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/agent-panel-submission.test.tsx" timestamp="2026-10-04T23:25:50.773Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="2.872987375">
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves edits and blocks duplicate submission while creation waits" time="1.0973405">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="ignores a late creation after switching to another session" time="0.698199458">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves the first input when creation fails" time="0.372461417">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="clears accepted input once creation succeeds" time="0.463157125">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="does not send or publish after the panel unmounts" time="0.241033625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/agent-panel.test.tsx" timestamp="2026-10-04T23:25:50.777Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.201431792">
+        <testcase classname="src/routes/playground/-components/agent-panel.test.tsx" name="AgentToolbar &gt; portals the active session title beside the panel controls" time="0.185128583">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/context-explorer.test.tsx" timestamp="2026-10-04T23:25:50.778Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="1.12962925">
+        <testcase classname="src/routes/playground/-components/context-explorer.test.tsx" name="ContextTree keyboard semantics &gt; renders native controls in a labelled, nested list" time="0.5952855">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/context-explorer.test.tsx" name="ContextTree keyboard semantics &gt; activates disclosure with Enter without selecting the directory" time="0.289060625">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/context-explorer.test.tsx" name="ContextTree keyboard semantics &gt; selects directories with Space and files with Enter" time="0.244168375">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/terminal-panel.test.tsx" timestamp="2026-10-04T23:25:50.781Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.066231292">
+        <testcase classname="src/routes/playground/-components/terminal-panel.test.tsx" name="TerminalHistoryItem &gt; renders command entries with their terminal icon" time="0.065117125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-components/observer-status-content.test.tsx" timestamp="2026-10-04T23:25:50.782Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="1.3318805">
+        <testcase classname="src/routes/monitoring/-components/observer-status-content.test.tsx" name="ObserverStatusContent &gt; renders localized labels from adjacent observer tables" time="1.330733084">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-lib/utils.test.ts" timestamp="2026-10-04T23:25:50.783Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.003670875">
+        <testcase classname="src/routes/playground/-lib/utils.test.ts" name="createIdentityStorageKey &gt; isolates persisted Playground state by identity scope" time="0.001642333">
+        </testcase>
+        <testcase classname="src/routes/playground/-lib/utils.test.ts" name="createIdentityStorageKey &gt; keeps the storage key browser-safe" time="0.000389375">
+        </testcase>
+        <testcase classname="src/routes/playground/-lib/utils.test.ts" name="Playground expanded directory persistence &gt; restores normalized expanded URIs for the same identity" time="0.000535875">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/request-logs/-components/row.test.tsx" timestamp="2026-10-04T23:25:50.786Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="1.521692583">
+        <testcase classname="src/routes/request-logs/-components/row.test.tsx" name="RequestLogRow &gt; expands structured error information from the existing audit row" time="1.265792459">
+        </testcase>
+        <testcase classname="src/routes/request-logs/-components/row.test.tsx" name="RequestLogRow &gt; also expands when the user clicks the error row" time="0.057734417">
+        </testcase>
+        <testcase classname="src/routes/request-logs/-components/row.test.tsx" name="RequestLogRow &gt; omits the structured details section for an empty object" time="0.194535042">
+        </testcase>
+        <testcase classname="src/routes/request-logs/-components/row.test.tsx" name="RequestLogRow &gt; does not add an expansion control to rows without captured errors" time="0.00268875">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/add-resource-page.test.tsx" timestamp="2026-10-04T23:25:50.788Z" hostname="whdeMacBook-Pro.local" tests="14" failures="0" errors="0" skipped="0" time="10.364761083">
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; shows supported resource types and switches their parameter forms" time="4.301634208">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; lets the server validate an address that differs from the selected type" time="0.850997708">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; hides unfinished TOS imports in the watch creation flow" time="0.34596075">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; clears source values when switching resource types" time="1.45747875">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits watch_interval for a watched remote resource" time="0.6214495">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits Feishu user credentials and defers token validation" time="0.624345708">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits Git commit and HTTPS credentials" time="0.496926916">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; clears HTTPS Git credentials when the source changes to SSH" time="0.321608375">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; restores native upload capabilities after detecting TOS" time="0.187156416">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits recursive web crawl options" time="0.276019542">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; forwards server-owned option rules instead of blocking submission" time="0.411985917">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits only server-supported site and feed options" time="0.193945541">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits exact destination and common processing options" time="0.188766583">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits TOS through the built-in server route" time="0.085464125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/file-preview-html.test.tsx" timestamp="2026-10-04T23:25:50.796Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.746844958">
+        <testcase classname="src/routes/resources/-components/file-preview-html.test.tsx" name="FilePreview Markdown raw HTML &gt; renders raw HTML elements instead of escaping them" time="0.54682725">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview-html.test.tsx" name="FilePreview Markdown raw HTML &gt; renders raw HTML tables through the shared table components" time="0.1062165">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview-html.test.tsx" name="FilePreview Markdown raw HTML &gt; strips script tags" time="0.092601167">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/file-preview.test.tsx" timestamp="2026-10-04T23:25:50.797Z" hostname="whdeMacBook-Pro.local" tests="34" failures="0" errors="0" skipped="0" time="4.056726667">
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; opens internal Markdown links in the resource preview" time="0.725232042">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; opens viking links from a directory overview" time="0.361150083">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; decodes encoded viking links before navigating" time="0.210373083">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; opens encoded filenames from &apos;index.md&apos;" time="0.140937667">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; opens encoded filenames from &apos;wiki&apos;" time="0.395015959">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; preserves non-viking links in a directory overview" time="0.321067292">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview Markdown links &gt; renders directory L0 and L1 frontmatter as independent metadata panels" time="0.341889458">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview OKF semantic sidecars &gt; renders .abstract.md frontmatter as metadata and keeps the body as Markdown" time="0.440469459">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview OKF semantic sidecars &gt; renders .overview.md frontmatter as metadata and keeps the body as Markdown" time="0.3386245">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview OKF semantic sidecars &gt; leaves ordinary Markdown frontmatter in the document" time="0.115837875">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview OKF semantic sidecars &gt; warns when the sidecar reports pending child changes" time="0.040161209">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview OKF semantic sidecars &gt; shows the empty state instead of leaking frontmatter for an empty body" time="0.140312875">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="normalizeJsonlDisplayText &gt; restores encoded and carriage-return line breaks" time="0.000278333">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="normalizeJsonlDisplayText &gt; leaves plain text untouched" time="0.000064667">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; classifies a plain-text user message from the OpenViking parts shape" time="0.003261167">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; classifies a plain-text assistant message" time="0.000213417">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; keeps text and tool_use as separate parts on one assistant message" time="0.000377542">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; classifies a tool_use-only assistant message as a tool call" time="0.00013125">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; classifies a tool_result carried by a user message" time="0.000171">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; flattens a tool_result whose content is a list of text blocks" time="0.000139125">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; expands an OpenViking tool part into a call and its output" time="0.000124833">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; classifies an OpenViking tool part with only an output as a result" time="0.000101334">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; treats a null tool_input with an output as a result-only part" time="0.002410875">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; keeps a call part for a tool part that has no output yet" time="0.000205083">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; reads the role and timestamp from a nested message field" time="0.000291">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; treats a plain string content as a single text part" time="0.007648917">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; falls back to a raw part for an unknown record shape" time="0.000247125">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; marks an unparsable line as invalid and keeps it verbatim" time="0.000157667">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="JSONL message classification &gt; skips blank lines and numbers records by their source line" time="0.00012975">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview JSONL rendering &gt; renders text and tool_use of one assistant message separately" time="0.135235667">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview JSONL rendering &gt; renders a result-only tool record without an empty input block" time="0.072390625">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview JSONL rendering &gt; shows the no-arguments placeholder for an empty tool_use input" time="0.030996666">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview JSONL rendering &gt; keeps the dialog-mode label and the tool toggle in both modes" time="0.077500417">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/file-preview.test.tsx" name="FilePreview JSONL rendering &gt; hides tool-only records in raw mode when tool calls are off" time="0.151064708">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/upload-resource-fields.test.tsx" timestamp="2026-10-04T23:25:50.816Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.60620675">
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; appends concurrent drops against the latest selected files" time="0.073954917">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; reports truncation when concurrent drops exceed the latest limit" time="0.142072292">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; removes from the latest files after an asynchronous append" time="0.388576458">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-hooks/use-resource-upload.test.tsx" timestamp="2026-10-04T23:25:50.819Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.216893583">
+        <testcase classname="src/routes/resources/-hooks/use-resource-upload.test.tsx" name="ResourceUploadProvider remote completion &gt; notifies after submission and again after the background task completes" time="0.123540708">
+        </testcase>
+        <testcase classname="src/routes/resources/-hooks/use-resource-upload.test.tsx" name="ResourceUploadProvider remote completion &gt; notifies when the background task fails" time="0.0642175">
+        </testcase>
+        <testcase classname="src/routes/resources/-hooks/use-resource-upload.test.tsx" name="ResourceUploadProvider remote completion &gt; updates an empty server error fallback when the language changes" time="0.028266209">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-hooks/viking-fm.test.tsx" timestamp="2026-10-04T23:25:50.821Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.1095475">
+        <testcase classname="src/routes/resources/-hooks/viking-fm.test.tsx" name="useVikingFilePreview &gt; exposes explicitly loaded content for a large file" time="0.105811959">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/retrieval/-components/date-range-picker.test.tsx" timestamp="2026-10-04T23:25:50.822Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="2.123824083">
+        <testcase classname="src/routes/retrieval/-components/date-range-picker.test.tsx" name="DateRangePicker &gt; supports quick and custom date ranges" time="2.121813417">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/retrieval/-components/retrieval-detail-sheet.test.tsx" timestamp="2026-10-04T23:25:50.824Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.784339166">
+        <testcase classname="src/routes/retrieval/-components/retrieval-detail-sheet.test.tsx" name="RetrievalDetailSheet &gt; shows only the result summary without loading full content" time="0.783209792">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/retrieval/-components/retrieval-results.test.tsx" timestamp="2026-10-04T23:25:50.825Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="0.995875458">
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; sizes the metadata column to fit translated labels in en" time="0.122464709">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; sizes the metadata column to fit translated labels in zh-CN" time="0.046483708">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; exposes provenance returned by semantic retrieval" time="0.016304583">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; shows parent context in the title of .abstract.md results" time="0.588380042">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; shows parent context in the title of .overview.md results" time="0.17854825">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; shows the API error message and diagnostic metadata" time="0.034290333">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-components/retrieval-results.test.tsx" name="RetrievalResults &gt; explains network failures instead of showing a generic error" time="0.008306291">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/retrieval/-components/tag-filter-input.test.tsx" timestamp="2026-10-04T23:25:50.832Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.420860459">
+        <testcase classname="src/routes/retrieval/-components/tag-filter-input.test.tsx" name="TagFilterInput &gt; reports invalid tags and only publishes strict key=value values" time="0.420060917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/api.test.ts" timestamp="2026-10-04T23:25:50.833Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.006061708">
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; does not read a abstract sidecar for the virtual root" time="0.001565875">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; does not read a overview sidecar for the virtual root" time="0.000776084">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; reads raw L0/L1 sidecars instead of the body-only semantic accessors" time="0.001540416">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchFsList &gt; requests newest entries before the server applies node_limit" time="0.001275625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/find-search.test.ts" timestamp="2026-10-04T23:25:50.836Z" hostname="whdeMacBook-Pro.local" tests="12" failures="0" errors="0" skipped="0" time="0.009440167">
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; roots exact file path searches at the containing directory" time="0.001390209">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; keeps directory path searches scoped to that subtree" time="0.000191125">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; matches exact files and descendant directory entries" time="0.000313292">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="normalizeGlobPattern &gt; prefixes bare patterns so they match at any depth" time="0.000212458">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="normalizeGlobPattern &gt; leaves anchored patterns untouched" time="0.000084333">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; appends the line number and keeps the snippet for grep hits" time="0.000245792">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; shows the score for semantic hits and nothing for glob hits" time="0.000138625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; adds parent context to L0/L1 semantic sidecar names only" time="0.0001215">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; returns nothing without a result" time="0.000076042">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; shows only the body for a directory with sidecar frontmatter" time="0.004553625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; hides clipped directory frontmatter when the list payload has no body" time="0.000147583">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; keeps legacy directory summaries and file abstracts unchanged" time="0.00011525">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/json-format.test.ts" timestamp="2026-10-04T23:25:50.844Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.002847458">
+        <testcase classname="src/routes/resources/-lib/json-format.test.ts" name="formatJsonContent &gt; adds indentation and line breaks to compact JSON" time="0.000948041">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/json-format.test.ts" name="formatJsonContent &gt; throws for invalid JSON" time="0.00088175">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/normalize.test.ts" timestamp="2026-10-04T23:25:50.845Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.010300541">
+        <testcase classname="src/routes/resources/-lib/normalize.test.ts" name="shouldAutoRead &gt; waits for JSON size metadata when required" time="0.008904333">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/normalize.test.ts" name="shouldAutoRead &gt; automatically reads a known small JSON file" time="0.000210042">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/normalize.test.ts" name="shouldAutoRead &gt; requires an explicit load for a known large JSON file" time="0.000119875">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/resource-import-request.test.ts" timestamp="2026-10-04T23:25:50.848Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.003541">
+        <testcase classname="src/routes/resources/-lib/resource-import-request.test.ts" name="resource import request builders &gt; serializes native form options in one place" time="0.002057959">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-import-request.test.ts" name="resource import request builders &gt; merges parse mode with source-specific Git options" time="0.000199">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-import-request.test.ts" name="resource import request builders &gt; keeps TOS selectable but emits only its supported request fields" time="0.000143041">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-import-request.test.ts" name="resource import request builders &gt; preserves source-specific remote options" time="0.00012825">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-import-request.test.ts" name="resource import request builders &gt; removes remote-only scheduling and routing fields from uploads" time="0.000110334">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/resource-option-values.test.ts" timestamp="2026-10-04T23:25:50.852Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.004420583">
+        <testcase classname="src/routes/resources/-lib/resource-option-values.test.ts" name="resource option values &gt; parses comma and newline separated values" time="0.002444708">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-option-values.test.ts" name="resource option values &gt; converts optional numeric values without applying server rules" time="0.000572083">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-option-values.test.ts" name="resource option values &gt; normalizes resource tags without duplicating server validation" time="0.000234791">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/resource-source-strategy.test.ts" timestamp="2026-10-04T23:25:50.855Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.004131333">
+        <testcase classname="src/routes/resources/-lib/resource-source-strategy.test.ts" name="remote resource source strategy &gt; declares TOS as an exact, connector-only, non-watchable source" time="0.001668041">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source-strategy.test.ts" name="remote resource source strategy &gt; builds watched Feishu user credentials" time="0.000194916">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source-strategy.test.ts" name="remote resource source strategy &gt; forwards recursive web limits for server validation" time="0.000939834">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source-strategy.test.ts" name="remote resource source strategy &gt; builds site filters as top-level comma-delimited patterns" time="0.000154958">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source-strategy.test.ts" name="remote resource source strategy &gt; does not build token authentication for a non-HTTPS Git source" time="0.000106666">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/resource-source.test.ts" timestamp="2026-10-04T23:25:50.859Z" hostname="whdeMacBook-Pro.local" tests="16" failures="0" errors="0" skipped="0" time="0.007931667">
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://example.feishu.cn/docx/doxcn123 as feishu" time="0.001931167">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://open.larksuite.com/wiki/wikcn123 as feishu" time="0.000772208">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://github.com/volcengine/OpenViking as git" time="0.000183583">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects git@github.com:volcengine/OpenViking.git as git" time="0.000066833">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://gitlab.com/group/repo.git as git" time="0.000069916">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://git.example.com/group/repo.git as git" time="0.000070458">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://dev.azure.com/org/project/_git/repo as git" time="0.000092584">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://example.com/sitemap.xml as webFeed" time="0.000109375">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://example.com/feed.atom as webFeed" time="0.000889583">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://example.com/guide.pdf as remoteFile" time="0.000132291">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects https://example.com/docs/getting-started as webPage" time="0.000302">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects tos://bucket/docs as tos" time="0.000042875">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects custom://workspace/source as unknown" time="0.000387875">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; detects  as unknown" time="0.000082458">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; does not classify a GitHub blob URL as a repository" time="0.000120042">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-source.test.ts" name="detectRemoteResourceKind &gt; does not classify an Azure DevOps file browser URL as a repository" time="0.00038125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/resource-upload-tasks.test.ts" timestamp="2026-10-04T23:25:50.869Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.006203084">
+        <testcase classname="src/routes/resources/-lib/resource-upload-tasks.test.ts" name="mergeServerTasks &gt; preserves an existing server error when a later record omits it" time="0.001149625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-upload-tasks.test.ts" name="mergeServerTasks &gt; refreshes a generated fallback when the locale changes" time="0.0001825">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-upload-tasks.test.ts" name="mergeServerTasks &gt; localizes the generic server processing error" time="0.000152208">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-upload-tasks.test.ts" name="mergeServerTasks &gt; preserves a detailed server error" time="0.0001265">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/resource-upload-tasks.test.ts" name="mergeServerTasks &gt; keeps a detailed raw error when a later record is generic" time="0.0021355">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/retrieval/-lib/search-state.test.ts" timestamp="2026-10-04T23:25:50.873Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.005036916">
+        <testcase classname="src/routes/retrieval/-lib/search-state.test.ts" name="retrieval search state &gt; validates advanced parameters from URL search values" time="0.002284541">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-lib/search-state.test.ts" name="retrieval search state &gt; builds a new submission for the selected mode" time="0.000643292">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-lib/search-state.test.ts" name="retrieval search state &gt; drops the retired recall mode and its parameters" time="0.000215625">
+        </testcase>
+        <testcase classname="src/routes/retrieval/-lib/search-state.test.ts" name="retrieval search state &gt; derives memory type labels without leaking file extensions" time="0.000643708">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/sessions/-components/memory-impact.test.tsx" timestamp="2026-10-04T23:25:50.875Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="1.752301834">
+        <testcase classname="src/routes/sessions/-components/memory-impact.test.tsx" name="MemoryImpact &gt; filters archives and recomputes per-archive counts by memory type" time="1.750969833">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/sessions/-components/message-list.test.tsx" timestamp="2026-10-04T23:25:50.875Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.282062">
+        <testcase classname="src/routes/sessions/-components/message-list.test.tsx" name="MessageList tool calls &gt; merges tool input and result into one disclosure for &apos;completed&apos; messages" time="0.162491416">
+        </testcase>
+        <testcase classname="src/routes/sessions/-components/message-list.test.tsx" name="MessageList tool calls &gt; merges tool input and result into one disclosure for &apos;streaming&apos; messages" time="0.038173625">
+        </testcase>
+        <testcase classname="src/routes/sessions/-components/message-list.test.tsx" name="MessageList reasoning &gt; renders &apos;chat.reasoning&apos; as a lightweight disclosure" time="0.047239833">
+        </testcase>
+        <testcase classname="src/routes/sessions/-components/message-list.test.tsx" name="MessageList reasoning &gt; renders &apos;chat.thinking&apos; as a lightweight disclosure" time="0.009881">
+        </testcase>
+        <testcase classname="src/routes/sessions/-components/message-list.test.tsx" name="MessageList images &gt; renders an image using the server message format" time="0.020258917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/settings/-lib/localize-capability-probe.test.ts" timestamp="2026-10-04T23:25:50.878Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.010397541">
+        <testcase classname="src/routes/settings/-lib/localize-capability-probe.test.ts" name="localizeCapabilityDetail &gt; maps every structured capability detail code" time="0.002262375">
+        </testcase>
+        <testcase classname="src/routes/settings/-lib/localize-capability-probe.test.ts" name="localizeCapabilityDetail &gt; preserves an unstructured server error" time="0.000185625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/skills/-components/skill-scope-tabs.test.tsx" timestamp="2026-10-04T23:25:50.880Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.919977875">
+        <testcase classname="src/routes/skills/-components/skill-scope-tabs.test.tsx" name="SkillScopeTabs &gt; filters skills by the selected scope" time="0.005400666">
+        </testcase>
+        <testcase classname="src/routes/skills/-components/skill-scope-tabs.test.tsx" name="SkillScopeTabs &gt; shows counts and switches to the selected scope" time="0.913705917">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-components/durable-jobs-panel.test.tsx" timestamp="2026-10-04T23:25:50.882Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="1.127639083">
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; shows an unavailable surface as unknown rather than empty" time="0.572262">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; keeps written and private drafts separate from ready" time="0.150862208">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; sends durable cancellation and shows unresolved writes as pending confirmation" time="0.328953">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; separates cached jobs when the current identity changes" time="0.07464625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-components/task-detail-sheet.test.tsx" timestamp="2026-10-04T23:25:50.885Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="3.600510958">
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in en without synthetic lines" time="1.069833125">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in zh without synthetic lines" time="0.405596417">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.427285292">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.552891541">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; retains the last recorded events and reports a refresh error" time="0.383322083">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; keeps unfamiliar event types visible and never imports another identity cache" time="0.444275459">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="chapter fallback information &gt; shows persistent parsing notes without marking a completed task as failed" time="0.315943958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/users/-components/delete-account-button.test.tsx" timestamp="2026-10-04T23:25:50.889Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="2.751054708">
+        <testcase classname="src/routes/users/-components/delete-account-button.test.tsx" name="DeleteAccountButton &gt; requires the exact account name before deleting" time="2.123535">
+        </testcase>
+        <testcase classname="src/routes/users/-components/delete-account-button.test.tsx" name="DeleteAccountButton &gt; clears the deleted identity and opens settings when no account remains" time="0.626367584">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/users/-components/user-memory-policy-cell.test.tsx" timestamp="2026-10-04T23:25:50.890Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.763939459">
+        <testcase classname="src/routes/users/-components/user-memory-policy-cell.test.tsx" name="reads the latest policy before editing and preserves save error details" time="0.65969575">
+        </testcase>
+        <testcase classname="src/routes/users/-components/user-memory-policy-cell.test.tsx" name="does not open stale data when refresh fails" time="0.074079292">
+        </testcase>
+        <testcase classname="src/routes/users/-components/user-memory-policy-cell.test.tsx" name="refreshes mounted policies when the account prefix is invalidated" time="0.0293025">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/durable-job.test.ts" timestamp="2026-10-04T23:25:50.892Z" hostname="whdeMacBook-Pro.local" tests="12" failures="0" errors="0" skipped="0" time="0.010808292">
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; never treats written or an empty queue as ready" time="0.001391209">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; reports an unknown phase rather than guessing" time="0.001602625">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; shows the Nth-in-line position and totals" time="0.000354375">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; reports unknown progress instead of a fabricated percentage" time="0.000652333">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; describes a successful auto-fallback as persistent and clear" time="0.000337708">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; summarizes durable phases into queue rows" time="0.000333458">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; preserves transport failure instead of displaying an empty queue" time="0.002908708">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; unwraps the response envelope" time="0.001298375">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; uses durable state rather than a conflicting ready projection or legacy task" time="0.000283542">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; keeps private drafts separate from published completion" time="0.000123791">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; rejects malformed lists instead of silently treating them as empty" time="0.00016875">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; cancels by durable id and preserves uncertain write cancellation status" time="0.000202875">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-list.test.ts" timestamp="2026-10-04T23:25:50.893Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.008033708">
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; uses the server limit without filtering older tasks locally" time="0.003186417">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; uses the generated client contract for task-type filters" time="0.001654917">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; finds matching tasks before the server applies its result limit" time="0.000821584">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; propagates request failures to the query error state" time="0.000887166">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-record.test.ts" timestamp="2026-10-04T23:25:50.894Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.010921667">
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; normalizes task records from API payloads" time="0.001446375">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; drops invalid list entries" time="0.004859667">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; only reports meaningful results" time="0.000316333">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; recognizes task statuses that still require polling" time="0.000188375">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-time.test.ts" timestamp="2026-10-04T23:25:50.895Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.02231525">
+        <testcase classname="src/routes/tasks/-lib/task-time.test.ts" name="getTaskDate &gt; prefers the ISO timestamp returned by the task API" time="0.021243125">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-time.test.ts" name="getTaskDate &gt; converts legacy epoch seconds to milliseconds" time="0.000192792">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/watches/-components/edit-watch-dialog.test.tsx" timestamp="2026-10-04T23:25:50.895Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="2.720703958">
+        <testcase classname="src/routes/watches/-components/edit-watch-dialog.test.tsx" name="EditWatchDialog &gt; submits changed interval, reason, and instruction fields" time="2.12107125">
+        </testcase>
+        <testcase classname="src/routes/watches/-components/edit-watch-dialog.test.tsx" name="EditWatchDialog &gt; keeps unchanged fields out of a partial update" time="0.004756166">
+        </testcase>
+        <testcase classname="src/routes/watches/-components/edit-watch-dialog.test.tsx" name="EditWatchDialog &gt; defers interval range validation to the server" time="0.576498584">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/watches/-lib/api.test.ts" timestamp="2026-10-04T23:25:50.896Z" hostname="whdeMacBook-Pro.local" tests="6" failures="0" errors="0" skipped="0" time="0.006737458">
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API normalization &gt; normalizes a watch task" time="0.002313">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API normalization &gt; drops malformed tasks from list responses" time="0.000278">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API operations &gt; queries resource processing history by target URI" time="0.001058375">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API operations &gt; maps update fields to the REST request body" time="0.001738709">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API operations &gt; triggers an immediate sync by encoded task ID" time="0.000216292">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/api.test.ts" name="watch API operations &gt; deletes a watch by encoded task ID" time="0.000193459">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/watches/-lib/watch-discovery.test.ts" timestamp="2026-10-04T23:25:50.897Z" hostname="whdeMacBook-Pro.local" tests="6" failures="0" errors="0" skipped="0" time="0.00293625">
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; polls only while discovering a newly created watch" time="0.00095125">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; normalizes trailing slashes before matching a created watch" time="0.000407375">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; keeps polling when the created watch is absent" time="0.000110291">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; keeps the syncing state while resource processing is active" time="0.000204292">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; finishes only after a newly triggered processing task is terminal" time="0.000200125">
+        </testcase>
+        <testcase classname="src/routes/watches/-lib/watch-discovery.test.ts" name="watch discovery &gt; detects completion from a newer watch execution time" time="0.000145459">
+        </testcase>
+    </testsuite>
+</testsuites>

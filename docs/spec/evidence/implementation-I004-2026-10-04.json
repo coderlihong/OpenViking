@@ -1,0 +1,81 @@
+{
+  "run_id": "I004-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "unit_regression": {
+    "status": "PASS",
+    "tests": 96,
+    "report": "tests-I004-index.xml"
+  },
+  "real_model": {
+    "scope": "Real model input/embedding only; URI planned, no production Viking persistence/search",
+    "source_uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh/履带式液压挖掘机/9.5.10_故障代码_E008传感器电源异常.md",
+    "source_file": "/tmp/openviking-enterprise-pdf/full-chapters/full-manual-chapters/SY215C_SY021NCB62788_维修手册_zh/履带式液压挖掘机/9.5.10_故障代码_E008传感器电源异常.md",
+    "source_sha256": "c2717a1a969f90999a55b562e47c2a920c711dde8e1109606627a6e82ef79400",
+    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    "source_chars": 91298,
+    "chunks": 98,
+    "parents": 25,
+    "max_child_tokens": 550,
+    "source_coverage": true,
+    "model": "local/qwen3-embedding-4b-vllm-v1",
+    "embedding_call": {
+      "status": "PASS",
+      "vectors": 3,
+      "dimensions": [
+        2560,
+        2560,
+        2560
+      ],
+      "elapsed_seconds": 0.097,
+      "model": "local/qwen3-embedding-4b-vllm-v1",
+      "prompt_tokens": 954,
+      "scope": "Real remote embedding only, no production persistence/search"
+    }
+  },
+  "feature_acceptance": "F4/F9/F11 and four FLOW E2E NOT_RUN; no production-ready claim",
+  "pending": [
+    "atomic index publication and GC",
+    "schema/namespace/collection registry and Wiki builders",
+    "contextual image joint embedding",
+    "BM25/RRF/MMR complete retrieval",
+    "long table semantic quality",
+    "source move/copy full identity migration"
+  ],
+  "file_sha256": {
+    "openviking/indexing/plan.py": "fbe3cafb4d8d7a08025164b0e0805c59e60d3b9b837f5c816fbcc4cf77d4838f",
+    "openviking/indexing/enqueue.py": "994dfbe22c0bc0d47f2f274bfef34c224c3f55a2934badb7b9397d941830b030",
+    "openviking_cli/utils/config/embedding_config.py": "71dc639bed8d5848a5020a7864f3da32044bd9dbec898783b43696cc8644f099",
+    "openviking/utils/embedding_utils.py": "d07b022205180b7ad7e158f968dfda529a4dde72408429d40b48dee2aa66af61",
+    "openviking/storage/vector_ids.py": "6952e5040971b0872856bb24243369cb37e41720170421fa3fb958dbcba43aac",
+    "openviking/storage/collection_schemas.py": "2d01c8b75c32ef1abd1b4c0e9cec558f7edff90d1cf7126185b25997cc524912",
+    "openviking/storage/vector_migration.py": "0d990b9903233ffa321a4bc4b64f0e1f13748907ef395f4e0829f8c0fef21299",
+    "openviking/storage/viking_vector_index_backend.py": "0ebfd4c1953afc6c636c837a0c876bcec20c53f7b11da9f82c50c9c235bbe9ba",
+    "openviking/service/reindex_executor.py": "23e30a20dad623e8a95c7e246cd267b58b1de461155921c1b323cee6b37fe518",
+    "openviking/retrieve/hierarchical_retriever.py": "9b6f4fc522e3c72a614f52dcd995f660edee9a8a823ac157c01bdb5249c62cfe",
+    "openviking_cli/retrieve/types.py": "c2cfa3a56a33e5db4d2853845e672e7694cb87ceb3a9417acd1aa50533afb2ec",
+    "tests/enterprise_kb/test_index_plan.py": "735bde34c8c60fb7f427da82f2003d09206b27794f30c019dcf241a346d29a9c",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "f61e39666f38c6fd2488cf3ab9159db917dd48a352d353a79edf6606f8cc7b18",
+    "docs/spec/README.md": "b0c4c300186ac9cf64e3689ad0acf8ef8a9e1c6604ea1638d3af60d636cee1f1",
+    "docs/spec/openviking-enterprise-kb-review.md": "1a58dabddae9d335c34583e34e17c905b67b74a5090d154828a4fedf36472b78",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "7524cbaf96ace15fe08f0f4ab98435acfeab61fb54a4bbc7dc076ffbbc5f519f",
+    "docs/spec/openviking-enterprise-kb-spec.md": "b93357a004fcf86c835bb697d5b7cd4185295399373f26b13d7a0ba05864e717",
+    "docs/spec/evidence/tests-I004-index.xml": "8add41333c8eec5ef79279509c28676b9f3e46e50c721b4696d036e75989cda9",
+    "docs/spec/evidence/tests-I004-parse-regression.xml": "e26519ed7aed8ec2101e2c96221dffaf61c25097895711feaa872e4ff5abed02",
+    "tests/retrieve/test_hierarchical_retriever_rerank.py": "60bb5097b40e0f64a806a9025c0805a39ef1b7ec2d1ff4da0f98ad75cd198723",
+    "tests/storage/test_collection_schemas.py": "73ec1f103266c25af8fb2ec02762f49b155edb069cebd94015a2801633a88b99",
+    "pyproject.toml": "12c2234eb9926d155d5ba28e05f058cfa8149b04d2ac74fa49998f9f3f3c602a",
+    "uv.lock": "5ea55b721125e8371a4bce932a4df06b89027f78aad72d494b028ceab2a51db4"
+  },
+  "parse_regression": {
+    "status": "PASS",
+    "tests": 65,
+    "report": "tests-I004-parse-regression.xml"
+  },
+  "document_validation": {
+    "status": "PASS",
+    "four_flow_mapping": true,
+    "local_links": true,
+    "diff_whitespace": true
+  }
+}

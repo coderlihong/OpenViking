@@ -1,0 +1,41 @@
+{
+  "implementation": "I046",
+  "spec_version": "0.15",
+  "date": "2026-10-05",
+  "scope": "W1 PDF job diagnosis, real API all-draft verification, harness repair and targeted regression",
+  "real_flow_report": "flow-w1-pdf-2026-10-05.json",
+  "resumed_harness_report": "flow-w1-pdf-resumed-I046-2026-10-05.json",
+  "harness_assertions": 13,
+  "harness_passed": true,
+  "targeted_tests": {
+    "w1-pdf-regression-I046-2026-10-05.xml": {
+      "tests": 70,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "w1-harness-I046-2026-10-05.xml": {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "file_sha256": {
+    "tests/enterprise_kb/flows/flow_w1_pdf.py": "a911d717336b7a38b92f00b055860adc0f5e3bea19480a56d2c3034dc553cb3d",
+    "tests/enterprise_kb/test_flow_w1_pdf_harness.py": "3ae307b8c5162f0849a4371166134b8d8f95a8efd661d14bd8813a83bf691ce4",
+    "tests/enterprise_kb/test_wiki_ingestion_http.py": "c6617e5840cee53d86e9eec47e12b31469c11e4e2edf2d98a10c93b70c80c423",
+    "tests/enterprise_kb/test_pdf_chapter_pipeline.py": "e9035ab349d6df2f9119a52f1cabe1f7f06874b34253bff0f821e1ca620b794c",
+    "openviking/server/routers/wiki.py": "4c77a53fad06843a460305b8f718f99fe5446bfe1cb96ce3a1a2586658b1e3a4",
+    "openviking/parse/parsers/markdown.py": "f81a72e0c3be6b135fef45549b23fb80b5f75a898a8a1f66445a2a875d531129"
+  },
+  "complete_features": 0,
+  "complete_flows": 0,
+  "task_states": {
+    "PARTIAL": 32,
+    "OPEN": 1,
+    "DONE": 0
+  },
+  "full_repository_tests": "NOT_RUN",
+  "documentation_consistency": "PASS v0.15, 15 features, 33 tasks, 19 cross-acceptance assertions"
+}

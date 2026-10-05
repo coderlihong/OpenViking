@@ -1,0 +1,63 @@
+{
+  "id": "wiki-extraction-real-model-probe",
+  "timestamp": "2026-10-04T23:28:34.432967+00:00",
+  "sample_class": "synthetic",
+  "gold": false,
+  "quality_claim": false,
+  "performance_claim": false,
+  "actual_model": true,
+  "status": "CONTRACT_PASS",
+  "model_profile": {
+    "model": "qwen3.8-27b",
+    "provider": "openai",
+    "temperature": 0.0
+  },
+  "plan_digest": "f7bbf40469555ac1d66c2724ed4a0c0d75d5a3dacfc04eb9692c8f687bc5d30e",
+  "sources": [
+    {
+      "uri": "viking://resources/raw/manual/one.md",
+      "sha256": "c42fbb1407f42b8bac82b107f9b2e006755176d124690b114c454de542a24d21",
+      "size": 34
+    }
+  ],
+  "configuration": {
+    "extractor_version": "wiki-fixed-source-extractor-v1",
+    "schema_digest": "3076045a143dd34319d67638737a548715776d7790a45de5e87f526b337465a1",
+    "model_profile": {
+      "model": "qwen3.8-27b",
+      "provider": "openai",
+      "temperature": 0.0
+    },
+    "limits": {
+      "source_chars": 12000,
+      "model_calls": 256,
+      "candidates": 512,
+      "response_bytes": 1048576,
+      "prompt_bytes": 4194304,
+      "timeout_seconds": 180,
+      "retries": 0
+    },
+    "profile": "draft"
+  },
+  "candidate_count": 1,
+  "state": "draft_ready",
+  "diagnostic_publishable": false,
+  "receipts": [
+    {
+      "source_uri": "viking://resources/raw/manual/one.md",
+      "source_chunk": 0,
+      "candidate_count": 1,
+      "reference": {
+        "sha256": "cc9b32cb1c62164281085013359f2855fc15378508e9cabc2af3eb7249579938",
+        "size": 1214
+      },
+      "state": "draft_ready",
+      "private": true
+    }
+  ],
+  "private_read_verified": true,
+  "entity_types": [
+    "Thing"
+  ],
+  "elapsed_seconds": 7.747
+}

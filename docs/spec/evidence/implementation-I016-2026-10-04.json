@@ -1,0 +1,40 @@
+{
+  "run_id": "I016-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 498,
+    "new_write_fence_tests": 10,
+    "report": "tests-I016-regression.xml"
+  },
+  "verified": [
+    "Durable independent writer tokens cover four standard VikingFS storage awaits",
+    "Capture/begin/publication guard source, image context and semantic sidecar dependencies",
+    "Successful completion advances epoch; unknown writes persist across registry reopen",
+    "Cancellation/transport failure blocks new publication while old published content remains readable"
+  ],
+  "fixtures": [
+    "Actual SQLite/disk/VikingFS; AGFS transport/embedder/vector DB mocked",
+    "Append fixture corrected to existing lease_ref contract"
+  ],
+  "scope_exclusions": [
+    "Verified uncertain/crashed-write recovery not implemented",
+    "External AGFS/WebDAV/sync/move/delete and cross-host independent registries",
+    "Directory reference-set and ACL transaction dependencies",
+    "Production transport/cancellation/quality and full four FLOW/Wiki E2E"
+  ],
+  "deployment_requirement": "Drain old unfenced writes before enabling the new writer protocol",
+  "file_sha256": {
+    "openviking/indexing/publication.py": "53fcb56ced6abd48b08c8bbd6e7be66fffebb4d64b1a813cdaffd6ccb3f4d654",
+    "openviking/indexing/content.py": "adda31e306eea8ca1bf58caa6d456060929b04659311ed1ea7e04de5d23860d0",
+    "openviking/storage/viking_fs/_ops.py": "a7199f904452528a87a85cfa6f662d1f797708ccea760e6992f01ca6df057316",
+    "tests/enterprise_kb/test_source_write_fence.py": "04dcb60b895acaed26a1f157201c589ddbe47873097d85772ba8dc29c3ed86bb",
+    "docs/spec/evidence/tests-I016-regression.xml": "a53e381cbc6b0cbafbb9cbbe797621c45a7421d421734769ba09600bc9508b1f",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "cb4da5966ef4a4d34c1b0e9128f459abe92486b92db162b6de8cf8a816d9b1a4",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "8e9d10fda4bf04526a081689339362228912263495752abf1a0ce4b2a1d675ee",
+    "docs/spec/openviking-enterprise-kb-review.md": "da7d26052a84d2becee2952e8c2d5accf19aaa667025285be37466c9b703b487",
+    "docs/spec/README.md": "5bc625e01fff119d89689d290da0fd1bbcff7212f1bf93e3edad85e371c16f68",
+    "docs/spec/openviking-enterprise-kb-spec.md": "6f6e550c2c18cca34076d590c9db787614ea1ee12ae66a9dd4afef1ee25bdf08"
+  }
+}

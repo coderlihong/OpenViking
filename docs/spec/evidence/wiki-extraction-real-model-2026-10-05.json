@@ -1,0 +1,99 @@
+{
+  "id": "wiki-extraction-real-model-probe",
+  "timestamp": "2026-10-05T01:04:51.368736+00:00",
+  "sample_class": "synthetic",
+  "gold": false,
+  "quality_claim": false,
+  "performance_claim": false,
+  "actual_model": true,
+  "status": "CONTRACT_PASS",
+  "model_profile": {
+    "model": "svc/deepseek-v4-flash",
+    "provider": "openai",
+    "temperature": 0.0
+  },
+  "plan_digest": "f7bbf40469555ac1d66c2724ed4a0c0d75d5a3dacfc04eb9692c8f687bc5d30e",
+  "sources": [
+    {
+      "uri": "viking://resources/raw/manual/one.md",
+      "sha256": "c42fbb1407f42b8bac82b107f9b2e006755176d124690b114c454de542a24d21",
+      "size": 34
+    }
+  ],
+  "configuration": {
+    "extractor_version": "wiki-fixed-source-extractor-v2",
+    "policy_version": "wiki-policy-coverage-v1",
+    "schema_digest": "3076045a143dd34319d67638737a548715776d7790a45de5e87f526b337465a1",
+    "model_profile": {
+      "model": "svc/deepseek-v4-flash",
+      "provider": "openai",
+      "temperature": 0.0
+    },
+    "limits": {
+      "source_chars": 12000,
+      "model_calls": 256,
+      "candidates": 512,
+      "response_bytes": 1048576,
+      "prompt_bytes": 4194304,
+      "timeout_seconds": 180,
+      "retries": 0
+    },
+    "profile": "draft"
+  },
+  "candidate_count": 1,
+  "state": "draft_ready",
+  "authorization_revision": 3,
+  "diagnostic_publishable": false,
+  "receipts": [
+    {
+      "source_uri": "viking://resources/raw/manual/one.md",
+      "source_chunk": 0,
+      "candidate_count": 1,
+      "reference": {
+        "sha256": "fdf239a79f1eb1a25a6a788d14847166626ebdd4f9283702bb4800d85031e863",
+        "size": 1469
+      },
+      "state": "draft_ready",
+      "private": true
+    }
+  ],
+  "private_read_verified": true,
+  "entity_types": [
+    "Thing"
+  ],
+  "synthetic_candidate_pages": [
+    {
+      "contributors": [
+        "viking://resources/raw/manual/one.md"
+      ],
+      "evidence": [
+        {
+          "claim": "一章",
+          "quote": "# 一章",
+          "source_uri": "viking://resources/raw/manual/one.md"
+        },
+        {
+          "claim": "液压泵故障诊断。",
+          "quote": "液压泵故障诊断。",
+          "source_uri": "viking://resources/raw/manual/one.md"
+        }
+      ],
+      "identity": null,
+      "kind": "Thing",
+      "markdown": "---\ntitle: 一章\nsources:\n  - viking://resources/raw/manual/one.md\n---\n# 一章\n\n液压泵故障诊断。\n\n## 来源\n- viking://resources/raw/manual/one.md",
+      "references": [
+        {
+          "expected_kind": "source",
+          "field": "sources",
+          "uri": "viking://resources/raw/manual/one.md"
+        }
+      ],
+      "uncompiled_rules": [],
+      "uri": "viking://resources/wiki/Thing/一章.md"
+    }
+  ],
+  "prompt_sha256": [
+    "f1ecb949a3a6e8aeb66773eb1f909e034a2a36a19496f85410d1f6bff8dc23df"
+  ],
+  "elapsed_seconds": 8.056
+}

@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="94" failures="14" errors="0" time="10.858301457">
+    <testsuite name="src/lib/ov-client/client.test.ts" timestamp="2026-10-04T23:18:18.343Z" hostname="whdeMacBook-Pro.local" tests="6" failures="0" errors="0" skipped="0" time="0.009942916">
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; uses the data API key for dashboard metrics when both keys are configured" time="0.003839">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; uses the data API key for scoped audit logs when both keys are configured" time="0.000258792">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; keeps admin endpoints on the admin API key" time="0.002968">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; falls back to the admin API key for console data when no data key is configured" time="0.00169525">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; preserves an explicit API key used to probe a candidate identity" time="0.000195458">
+        </testcase>
+        <testcase classname="src/lib/ov-client/client.test.ts" name="createOvClient API key selection &gt; preserves explicit trusted identity headers used to probe a candidate user" time="0.000259834">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/route.test.tsx" timestamp="2026-10-04T23:18:18.349Z" hostname="whdeMacBook-Pro.local" tests="2" failures="2" errors="0" skipped="0" time="1.404929625">
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; clears a deleted selected file from the preview and URL search" time="0.020904834">
+            <failure message="Cannot read properties of undefined (reading &apos;getItem&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;getItem&apos;)
+ ❯ prev src/routes/playground/-lib/utils.ts:57:35
+ ❯ src/routes/playground/route.tsx:95:3
+ ❯ mountStateImpl node_modules/react-dom/cjs/react-dom-client.development.js:8268:24
+ ❯ mountState node_modules/react-dom/cjs/react-dom-client.development.js:8289:22
+ ❯ Object.useState node_modules/react-dom/cjs/react-dom-client.development.js:26243:18
+ ❯ prev node_modules/react/cjs/react.development.js:1263:34
+ ❯ PlaygroundWorkbench src/routes/playground/route.tsx:95:3
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; does not clear a newer selection when the old file stat finishes late" time="0.003628">
+            <failure message="Cannot read properties of undefined (reading &apos;getItem&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;getItem&apos;)
+ ❯ prev src/routes/playground/-lib/utils.ts:57:35
+ ❯ src/routes/playground/route.tsx:95:3
+ ❯ mountStateImpl node_modules/react-dom/cjs/react-dom-client.development.js:8268:24
+ ❯ mountState node_modules/react-dom/cjs/react-dom-client.development.js:8289:22
+ ❯ Object.useState node_modules/react-dom/cjs/react-dom-client.development.js:26243:18
+ ❯ prev node_modules/react/cjs/react.development.js:1263:34
+ ❯ PlaygroundWorkbench src/routes/playground/route.tsx:95:3
+ ❯ Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:20
+ ❯ renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:22
+ ❯ updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:19
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/route.test.tsx" timestamp="2026-10-04T23:18:18.354Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="3.246762166">
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; keeps all twelve running tasks running in both rows and the count" time="0.617233458">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; shows no pending tasks when all tasks are running, including after type filtering" time="0.91305475">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; renders and filters actual pending tasks in en" time="0.332742292">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; renders and filters actual pending tasks in zh-CN" time="0.322736">
+        </testcase>
+        <testcase classname="src/routes/tasks/route.test.tsx" name="task status presentation &gt; preserves task statuses when grouping and pagination change the visible rows" time="0.36347375">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-components/observer-status-content.test.tsx" timestamp="2026-10-04T23:18:18.355Z" hostname="whdeMacBook-Pro.local" tests="1" failures="0" errors="0" skipped="0" time="0.385385792">
+        <testcase classname="src/routes/monitoring/-components/observer-status-content.test.tsx" name="ObserverStatusContent &gt; renders localized labels from adjacent observer tables" time="0.384589083">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/agent-panel-submission.test.tsx" timestamp="2026-10-04T23:18:18.355Z" hostname="whdeMacBook-Pro.local" tests="5" failures="5" errors="0" skipped="0" time="0.01339775">
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves edits and blocks duplicate submission while creation waits" time="0.006404459">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/playground/-components/agent-panel-submission.test.tsx:38:23
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="ignores a late creation after switching to another session" time="0.001578958">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/playground/-components/agent-panel-submission.test.tsx:38:23
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves the first input when creation fails" time="0.003755541">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/playground/-components/agent-panel-submission.test.tsx:38:23
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="clears accepted input once creation succeeds" time="0.000351709">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/playground/-components/agent-panel-submission.test.tsx:38:23
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="does not send or publish after the panel unmounts" time="0.000763625">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/playground/-components/agent-panel-submission.test.tsx:38:23
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/localize-observer-status.test.ts" timestamp="2026-10-04T23:18:18.367Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.002854833">
+        <testcase classname="src/routes/monitoring/-lib/localize-observer-status.test.ts" name="localizeObserverStatusBlocks &gt; localizes registered observer labels and preserves technical values" time="0.001859208">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/localize-observer-status.test.ts" name="localizeObserverStatusBlocks &gt; localizes total rows only in summary columns" time="0.0003725">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/parse-status.test.ts" timestamp="2026-10-04T23:18:18.369Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.012007458">
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; converts an ASCII table into structured rows" time="0.001447542">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; keeps plain status messages as text" time="0.000152709">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/parse-status.test.ts" name="parseObserverStatus &gt; keeps adjacent ASCII tables as separate blocks" time="0.000161208">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/monitoring/-lib/version.test.ts" timestamp="2026-10-04T23:18:18.371Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.002526542">
+        <testcase classname="src/routes/monitoring/-lib/version.test.ts" name="stripVersionPrefix &gt; removes a leading version prefix" time="0.001001167">
+        </testcase>
+        <testcase classname="src/routes/monitoring/-lib/version.test.ts" name="stripVersionPrefix &gt; preserves versions without a prefix" time="0.000429083">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/add-resource-page.test.tsx" timestamp="2026-10-04T23:18:18.374Z" hostname="whdeMacBook-Pro.local" tests="14" failures="0" errors="0" skipped="0" time="3.417180708">
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; shows supported resource types and switches their parameter forms" time="0.765465542">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; lets the server validate an address that differs from the selected type" time="0.156361625">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; hides unfinished TOS imports in the watch creation flow" time="0.0620565">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; clears source values when switching resource types" time="0.327179166">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits watch_interval for a watched remote resource" time="0.117203584">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits Feishu user credentials and defers token validation" time="0.195477125">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits Git commit and HTTPS credentials" time="0.289170583">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; clears HTTPS Git credentials when the source changes to SSH" time="0.23186225">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; restores native upload capabilities after detecting TOS" time="0.183934583">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits recursive web crawl options" time="0.267079125">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; forwards server-owned option rules instead of blocking submission" time="0.365214542">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits only server-supported site and feed options" time="0.198849792">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits exact destination and common processing options" time="0.172663583">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/add-resource-page.test.tsx" name="AddResourceForm watch options &gt; submits TOS through the built-in server route" time="0.083489083">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-components/upload-resource-fields.test.tsx" timestamp="2026-10-04T23:18:18.383Z" hostname="whdeMacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.44162525">
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; appends concurrent drops against the latest selected files" time="0.031727">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; reports truncation when concurrent drops exceed the latest limit" time="0.091619">
+        </testcase>
+        <testcase classname="src/routes/resources/-components/upload-resource-fields.test.tsx" name="UploadResourceFields &gt; removes from the latest files after an asynchronous append" time="0.317455292">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/api.test.ts" timestamp="2026-10-04T23:18:18.386Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.006367792">
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; does not read a abstract sidecar for the virtual root" time="0.001872417">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; does not read a overview sidecar for the virtual root" time="0.000154541">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchDirectorySidecarContent &gt; reads raw L0/L1 sidecars instead of the body-only semantic accessors" time="0.002064542">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/api.test.ts" name="fetchFsList &gt; requests newest entries before the server applies node_limit" time="0.001558167">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/resources/-lib/find-search.test.ts" timestamp="2026-10-04T23:18:18.388Z" hostname="whdeMacBook-Pro.local" tests="12" failures="0" errors="0" skipped="0" time="0.014852834">
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; roots exact file path searches at the containing directory" time="0.002059916">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; keeps directory path searches scoped to that subtree" time="0.000401333">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resource path search &gt; matches exact files and descendant directory entries" time="0.000325041">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="normalizeGlobPattern &gt; prefixes bare patterns so they match at any depth" time="0.00062525">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="normalizeGlobPattern &gt; leaves anchored patterns untouched" time="0.000154958">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; appends the line number and keeps the snippet for grep hits" time="0.000825625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; shows the score for semantic hits and nothing for glob hits" time="0.000329209">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; adds parent context to L0/L1 semantic sidecar names only" time="0.000188708">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="retrievalItemsToEntries &gt; returns nothing without a result" time="0.001223291">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; shows only the body for a directory with sidecar frontmatter" time="0.004970625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; hides clipped directory frontmatter when the list payload has no body" time="0.000138625">
+        </testcase>
+        <testcase classname="src/routes/resources/-lib/find-search.test.ts" name="resourceEntryAbstractForDisplay &gt; keeps legacy directory summaries and file abstracts unchanged" time="0.000112208">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/skills/-components/skill-scope-tabs.test.tsx" timestamp="2026-10-04T23:18:18.396Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.322220833">
+        <testcase classname="src/routes/skills/-components/skill-scope-tabs.test.tsx" name="SkillScopeTabs &gt; filters skills by the selected scope" time="0.001137083">
+        </testcase>
+        <testcase classname="src/routes/skills/-components/skill-scope-tabs.test.tsx" name="SkillScopeTabs &gt; shows counts and switches to the selected scope" time="0.320462625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-components/durable-jobs-panel.test.tsx" timestamp="2026-10-04T23:18:18.397Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.502212208">
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; shows an unavailable surface as unknown rather than empty" time="0.245356292">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; keeps written and private drafts separate from ready" time="0.103792667">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; sends durable cancellation and shows unresolved writes as pending confirmation" time="0.112069875">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/durable-jobs-panel.test.tsx" name="durable job panel &gt; separates cached jobs when the current identity changes" time="0.03896875">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-components/task-detail-sheet.test.tsx" timestamp="2026-10-04T23:18:18.400Z" hostname="whdeMacBook-Pro.local" tests="7" failures="7" errors="0" skipped="0" time="1.035988042">
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in en without synthetic lines" time="0.008240958">
+            <failure message="Cannot read properties of undefined (reading &apos;setItem&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;setItem&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:108:20
+            </failure>
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in zh without synthetic lines" time="0.00113625">
+            <failure message="Cannot read properties of undefined (reading &apos;setItem&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;setItem&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:108:20
+            </failure>
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.492536792">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.14167475">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; retains the last recorded events and reports a refresh error" time="0.173404583">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; keeps unfamiliar event types visible and never imports another identity cache" time="0.143596292">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="chapter fallback information &gt; shows persistent parsing notes without marking a completed task as failed" time="0.074513125">
+            <failure message="Cannot read properties of undefined (reading &apos;clear&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;clear&apos;)
+ ❯ src/routes/tasks/-components/task-detail-sheet.test.tsx:101:16
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/durable-job.test.ts" timestamp="2026-10-04T23:18:18.416Z" hostname="whdeMacBook-Pro.local" tests="12" failures="0" errors="0" skipped="0" time="0.020600834">
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; never treats written or an empty queue as ready" time="0.00113125">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; reports an unknown phase rather than guessing" time="0.002349875">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; shows the Nth-in-line position and totals" time="0.000148666">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; reports unknown progress instead of a fabricated percentage" time="0.004317834">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; describes a successful auto-fallback as persistent and clear" time="0.000151875">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; summarizes durable phases into queue rows" time="0.001794125">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; preserves transport failure instead of displaying an empty queue" time="0.000766291">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable job state projection &gt; unwraps the response envelope" time="0.001249791">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; uses durable state rather than a conflicting ready projection or legacy task" time="0.000992167">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; keeps private drafts separate from published completion" time="0.00012275">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; rejects malformed lists instead of silently treating them as empty" time="0.000154417">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/durable-job.test.ts" name="durable lifecycle boundaries &gt; cancels by durable id and preserves uncertain write cancellation status" time="0.000161417">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-list.test.ts" timestamp="2026-10-04T23:18:18.425Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.008355791">
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; uses the server limit without filtering older tasks locally" time="0.005336041">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; uses the generated client contract for task-type filters" time="0.000230375">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; finds matching tasks before the server applies its result limit" time="0.001688583">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-list.test.ts" name="task list requests &gt; propagates request failures to the query error state" time="0.0005105">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-record.test.ts" timestamp="2026-10-04T23:18:18.430Z" hostname="whdeMacBook-Pro.local" tests="4" failures="0" errors="0" skipped="0" time="0.00458025">
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; normalizes task records from API payloads" time="0.002477125">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; drops invalid list entries" time="0.000307458">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; only reports meaningful results" time="0.000155667">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-record.test.ts" name="task record helpers &gt; recognizes task statuses that still require polling" time="0.000121209">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-lib/task-time.test.ts" timestamp="2026-10-04T23:18:18.433Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.006509833">
+        <testcase classname="src/routes/tasks/-lib/task-time.test.ts" name="getTaskDate &gt; prefers the ISO timestamp returned by the task API" time="0.003126792">
+        </testcase>
+        <testcase classname="src/routes/tasks/-lib/task-time.test.ts" name="getTaskDate &gt; converts legacy epoch seconds to milliseconds" time="0.000467042">
+        </testcase>
+    </testsuite>
+</testsuites>

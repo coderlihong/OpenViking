@@ -1,0 +1,73 @@
+{
+  "task": "KB-009/KB-011",
+  "run_id": "parallel3-KB-009-logics-2026-10-04",
+  "status": "DONE",
+  "feature": "F1/F2 Logics-Parsing-V3 PDF backend adaptation",
+  "defect": {
+    "observed": "logics artifact validation failed: ValueError: Missing or external parser image: imgs/img_in_image_box_328_184_402_240.jpg",
+    "root_cause": "The Logics-Parsing-V3 worker emits synthetic HTML placeholders <img src=\"imgs/img_in_image_box_<x0>_<y0>_<x1>_<y1>.jpg\"> inside table cells for regions it never crops to files. Those files are absent from the shipped assets (real figures ship as images/page_XXXX_figure_N_0.png). validate_document rejected any markdown image reference not in the declared asset set.",
+    "secondary": "The remote worker runs its own copy of the shared normalizer at /models/model_artifact.py and validates before publishing, so the same stale copy also failed the job worker-side."
+  },
+  "files_changed": [
+    "openviking/parse/model_artifact.py",
+    "tests/enterprise_kb/test_model_artifact.py",
+    "docs/spec/evidence/parallel3-KB-009-logics-2026-10-04.json"
+  ],
+  "fix": {
+    "location": "openviking/parse/model_artifact.py",
+    "summary": "Added _strip_unavailable_images(): for the logics backend only, drops HTML/Markdown image references whose resolved path is not a declared, hash-verified asset, then regenerates blocks and appends a structured warning {code: LOGICS_IMAGE_UNAVAILABLE, unavailable_count, unavailable_images}. Declared references are never dropped; fenced code blocks and srcset violations are left untouched so existing security checks keep rejecting them. Security invariants (traversal, remote URLs, symlinks, hash/size verification) and the every-referenced-image-is-declared invariant for mineru/teleocr are unchanged.",
+    "not_changed": "No second OpenViking source file required. The deploy-side copy deploy/parser-models/model_artifact.py is out of the assigned footprint and was NOT edited in the repo; the live worker's /models/model_artifact.py was updated only to execute the real end-to-end run (backup kept at /models/model_artifact.py.bak-20261004)."
+  },
+  "tests": {
+    "command": "cd /Users/wh/code/OpenViking && .venv/bin/python -m pytest --no-cov -q tests/enterprise_kb/test_model_artifact.py tests/parse/test_parser_router.py",
+    "result": "40 passed",
+    "added_cases": [
+      "test_logics_synthetic_box_images_are_stripped_with_warning",
+      "test_logics_declared_image_is_never_stripped",
+      "test_unavailable_image_stripping_is_logics_only[mineru/teleocr]",
+      "test_logics_external_and_traversal_images_still_rejected"
+    ],
+    "wider": "tests/enterprise_kb/ tests/parse/ -> 1434 passed, 34 skipped, 1 failed; the single failure (tests/parse/test_feishu_unified_import.py::test_downloaded_file_routes_by_extension_but_normalized_markdown_does_not, KeyError 'resolved_name' in parser_router.py:180) is an unrelated concurrent change in parser_router.py, not model_artifact.py."
+  },
+  "real_run": {
+    "worker": "logics at http://127.0.0.1:19102 (SSH tunnel to 10.147.254.3)",
+    "input": "/tmp/sy215c-probe/chapters-1.pdf (24 pages of the SANY SY215C manual)",
+    "pre_fix_job": {"job_id": "34465f9fff1c4a32bbeb816768377b34", "status": "failed", "error": "ValueError: Missing or external parser image: imgs/img_in_image_box_328_184_402_240.jpg", "wall_seconds": 553.2},
+    "post_fix_job": {"job_id": "8c80f08b51ab4d91b99bbc8328dc0e2a", "status": "completed", "wall_seconds": 538.0},
+    "openviking_e2e": {
+      "path": "ParseModelBackend('http://127.0.0.1:19102').parse(..., backend='logics', expected_pages=24)",
+      "result": "OK",
+      "markdown_chars": 26838,
+      "asset_count": 34,
+      "block_count": 312,
+      "box_refs_remaining": 0,
+      "real_figure_refs": 34,
+      "surrounding_table_text_preserved": true,
+      "warning": {"code": "LOGICS_IMAGE_UNAVAILABLE", "unavailable_count": 7, "unavailable_images": ["imgs/img_in_image_box_227_462_411_512.jpg", "imgs/img_in_image_box_240_400_410_447.jpg", "imgs/img_in_image_box_270_527_346_581.jpg", "imgs/img_in_image_box_270_600_346_654.jpg", "imgs/img_in_image_box_306_324_410_382.jpg", "imgs/img_in_image_box_328_184_402_240.jpg", "imgs/img_in_image_box_329_254_402_310.jpg"]}
+    },
+    "chapter_tree": {
+      "path": "PDFParser(PDFConfig(strategy='logics', model_endpoints={'logics': ...})).parse(..., structure_policy='bookmarks_preferred')",
+      "result": "OK",
+      "chapter_md_files": 59,
+      "images": 34,
+      "toc_md": true,
+      "manifest_json": true,
+      "manifest_chapters": 58,
+      "structure_source": "markdown_headings",
+      "note": "Slice has no PDF bookmarks, so chapter split fell back to markdown headings as expected; no image-missing failure."
+    }
+  },
+  "security_invariants_verified": [
+    "external URL image refs still raise ValueError (https://evil.example/x.png)",
+    "path traversal image refs still raise ValueError (../../etc/passwd.png)",
+    "asset size/sha256 verification unchanged",
+    "symlink/absolute/duplicate asset checks unchanged",
+    "mineru/teleocr keep the strict every-referenced-image-must-be-declared invariant"
+  ],
+  "not_run": [
+    "full 1072-page logics run",
+    "reindex/vector/embedding after chapter write",
+    "deploy/parser-models/model_artifact.py repo update (outside footprint) - worker copy updated out-of-band for the e2e only",
+    "multi-window / long_document logics mode"
+  ]
+}

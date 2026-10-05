@@ -1,0 +1,50 @@
+{
+  "run_id": "I007-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_version": "v0.8",
+  "regression": {
+    "status": "PASS",
+    "tests": 220,
+    "content_tests": 7,
+    "report": "tests-I007-content.xml"
+  },
+  "verified": [
+    "On-disk derived text source revisions, SQLite metadata only",
+    "Actual vectorize_file and TextEmbeddingHandler integrate source/generation references",
+    "Actual VikingFS original URI reads project active/query content with line and byte slicing",
+    "Failure preserves old body and vector publication pointer",
+    "Current source ACL/existence checks precede revision read; corruption fails closed",
+    "Standard write epoch changes reject obsolete plans, subsequent reindex uses working source",
+    "Read-only derived-body roots include active, read and pending revisions"
+  ],
+  "fixtures": [
+    "AGFS transport replaced with DiskAGFS; encryption not verified",
+    "Vector DB and embedder are fixtures",
+    "Permission denial is injected, not production ACL validation"
+  ],
+  "scope_exclusions": [
+    "No physical GC",
+    "No whole PDF multi-chapter publication barrier",
+    "No L0/L1, BM25, image joint snapshot publication",
+    "No full CAS coverage for direct AGFS/move/sync/WebDAV",
+    "No production deployment, cross-host durability or remote full indexing this turn",
+    "No completed namespace/Wiki registry or four-FLOW E2E"
+  ],
+  "file_sha256": {
+    "openviking/indexing/content.py": "dcb6075614b02387d2ca5e5f508ae7f741cefe1782042245b1ce1e3f39d61d3b",
+    "openviking/indexing/publication.py": "fe3b0247afb999070d6295ec6dc8be23e5641819141397cac13556d8ca71f5f4",
+    "openviking/indexing/enqueue.py": "5ed1672e8081075e8222436255d6fee1a6afe9bbb829d820018326c215d97c86",
+    "openviking/utils/embedding_utils.py": "88cf651df7df0a152eb5a36833146081b285c9dead186e0dc14b2b8a440b571a",
+    "openviking/storage/collection_schemas.py": "0cf3f7a236aa313f6526a90aaf9a54ee07655174431a2593e423cce20fdf9ac7",
+    "openviking/storage/viking_fs/_ops.py": "5d4674f2a497eb9eee04e9d2b19eab80f87a8593e9e3ca3ad4bbb46927d77538",
+    "openviking/storage/queuefs/semantic_processor.py": "5ca6306c34dc2b81ed9dbd4342ccbe05011334fd9b06b0fb3926720f3b51fe15",
+    "openviking_cli/utils/config/embedding_config.py": "3b3b4978f2642aaa505620a20901dd2b703b5e52910ba8780af34046d4d03d41",
+    "tests/enterprise_kb/test_content_publication.py": "936f5b689682194e59713b4b1f10221e5f045f975f41e59266e0d5e4b855cbfb",
+    "docs/spec/evidence/tests-I007-content.xml": "98d2732dc04f7a383b66508777c78ca95dfd7d3579fcced23ae4a9fb9aae94ef",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "0833732fa2c47f3896eb25efa43524841d8157b9baba1a5acd7903daf364c003",
+    "docs/spec/README.md": "77e543e4285c8d265511ef863c77194f4fed0cf732e534deef1ab86711cb8a95",
+    "docs/spec/openviking-enterprise-kb-review.md": "3e928007375d612db77a32317063d58d5f39e34be14c91c23b80f5cff19f065c",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "007e2071ecacc5d3b11fb4911a184ca6e3c27319593198b54ec976b3ae90b845",
+    "docs/spec/openviking-enterprise-kb-spec.md": "6ba1b93af30b16c4e007417798dbf72c8a17a8a6d5fc1165fb5420b6d563f2d9"
+  }
+}

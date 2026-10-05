@@ -1,0 +1,94 @@
+{
+  "evidence_id": "parallel-KB-031-2026-10-04",
+  "task": "KB-031",
+  "status": "PARTIAL",
+  "feature_acceptance": "NOT_RUN",
+  "date": "2026-10-04",
+  "scope": "Independent offline audit/freeze/split-leakage/config-stale/statistical reporting tool; does not promote synthetic or claim production acceptance",
+  "implementation": [
+    "docs/spec/tools/evaluate_gold.py",
+    "tests/enterprise_kb/test_evaluation_gold.py",
+    "docs/spec/evaluation/independent-gold/README.md"
+  ],
+  "verification": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_evaluation_gold.py -q --no-cov",
+    "passed": 46,
+    "failed": 0,
+    "warnings": 4,
+    "cli": [
+      "import-candidates",
+      "audit",
+      "freeze",
+      "verify",
+      "score"
+    ],
+    "cli_exit_codes": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "compile": "python3 -m py_compile docs/spec/tools/evaluate_gold.py"
+  },
+  "actual_data": {
+    "synthetic": 50,
+    "gold": 0,
+    "document_groups": 1,
+    "machine_groups": 1,
+    "split": "unassigned",
+    "query_class": "title_derived_lookup",
+    "original_generator_version": "unknown",
+    "generator_provenance_verified": false,
+    "production_uri_verified": false,
+    "original_pdf_sha256": "99a3a0d37696c7f76f8364a641e06b6a100d8e57f7030c1715beae0487196534",
+    "quality_performance_status": "NOT_RUN",
+    "ci95": null
+  },
+  "hashes": {
+    "tool_sha256": "dcbbe79e744325aa5b583956701c367a74a10c64bfb1ec482db49572f322844f",
+    "frozen_tool_sha256": "dcbbe79e744325aa5b583956701c367a74a10c64bfb1ec482db49572f322844f",
+    "dataset_sha256": "4ac43c92a41670f965bc40224479889c9adeffe0d3f579a21bf22e0fafaa0539",
+    "evaluation_config_sha256": "32af80c12a131d231212de490e67b93a28009e6964170c70811c25aef53b82d6",
+    "manifest_sha256": "25464fb72848e531004de1a062b68630f13a980efde0bd49dc6e12038a37e037",
+    "input_candidates_sha256": "f5bed98ee3e5c323d06e0e1dc02bae5ea6d5142cef7bf233126247811ab9181a"
+  },
+  "partial_test_mapping": {
+    "TC-15.1": [
+      "explicit populations",
+      "mandatory generator hashes/version",
+      "human independent-source review and sample hash binding",
+      "no automatic promotion"
+    ],
+    "TC-15.2": [
+      "document/machine/passage grouping",
+      "source/query/excerpt duplicate scan",
+      "cross-population leakage refusal",
+      "title-derived bias reporting"
+    ],
+    "TC-15.3": [
+      "exact-result coverage enforcement",
+      "per-class n and descriptive Wilson CI",
+      "machine-cluster bootstrap quality/performance CI",
+      "cold/warm hardware/version context required"
+    ],
+    "TC-15.4": [
+      "frozen evaluation config digest",
+      "changed config result becomes STALE"
+    ]
+  },
+  "remaining_acceptance": [
+    "Actual independent human review against controlled original PDF and diagnostic truth; no gold currently exists",
+    "At least 100 retrieval gold and per-query-class minima, 30 image-purpose labels, 50 chapter boundaries, 20 diagnostic paths and rule counterexamples",
+    "Additional document/machine groups and reviewed passage identities for genuine held-out split; do not split this one manual across train/test",
+    "Recover original generator version/provenance and verify production source URIs",
+    "Production parser/retrieval/Wiki runner with frozen models/R/F/chunk/schema; real cold/warm measurements and quality labels",
+    "Shared feature/TC ledger impact and migration updates; four FLOW acceptance remains NOT_RUN"
+  ],
+  "limitations": [
+    "Review attestations are externally verified human assertions, not proven by a hash or populated fields",
+    "Semantic paraphrase leakage requires human passage grouping; deterministic duplicate checks do not prove absence of all semantic leakage",
+    "Single machine produces null machine-cluster CI; Wilson descriptive intervals assume independence and cannot justify generalization",
+    "No production acceptance, no shared spec/backlog/feature-status edits, no commit or reset"
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "id": "I040",
+  "date": "2026-10-05",
+  "head": "e8d634c88fa9",
+  "scope": "Reindex 图片摘要贯通 + 图文联合 embedding 的真实闭环（企业分块路径）",
+  "not_product_acceptance": true,
+  "findings": [
+    {
+      "id": "FIND-1",
+      "title": "命名空间 reindex 丢失 image_summaries，导致图片向量永远写不进去",
+      "root_cause": "openviking/service/reindex_executor.py 的 _refresh_namespace_resource_semantics 丢弃了语义处理器返回的 image_summaries，namespace 模式 semantic_and_vectors 下每张图片都判定为无当前摘要，被计为 unsupported_records 且不写联合图片向量。",
+      "fix": "_refresh_namespace_resource_semantics 改为返回 (directories, files, image_summaries)，并在 _reindex_user_namespace / _reindex_global_namespace 把 image_summaries 透传给 _reindex_resource_vectors_from_entries；仅两处调用点，均已同步。",
+      "regression_test": "tests/enterprise_kb/test_reindex_contract.py::test_namespace_refresh_forwards_image_summaries_to_vector_phase"
+    },
+    {
+      "id": "FIND-2",
+      "title": "部署配置把 multimodal embedding 指向了纯文本模型",
+      "detail": "本机 ~/.openviking/ov.conf 的 embedding.dense 指向 :8024 的 local/qwen3-embedding-4b-vllm-v1（非多模态）。该端点对 messages/图片输入返回 400 'is not a multimodal model'，因此开启 chunking + require_joint_image_embedding 时图片记录必然失败。",
+      "resolution": "真实的 VL embedding 模型 qwen3-vl-embed（dim 4096，messages 协议）在 :8020。配置改为 model=qwen3-vl-embed、api_base=http://10.147.254.3:8020/v1、dimension=4096、input=multimodal、wire_format=messages 后，文本与图文联合向量进入同一空间，图片记录全部写入。"
+    }
+  ],
+  "runs": [
+    {
+      "id": "RUN-A",
+      "harness": "/tmp/ov-d1/d1_chunked.py",
+      "config": {
+        "chunking.enabled": true,
+        "embedding.dense.model": "local/qwen3-embedding-4b-vllm-v1",
+        "embedding.dense.api_base": "http://10.147.254.3:8024/v1",
+        "embedding.dense.wire_format": "input",
+        "embedding.dense.dimension": 2560
+      },
+      "result": {
+        "reindex.status": "completed",
+        "scanned_records": 35,
+        "rebuilt_records": 17,
+        "failed_records": 22,
+        "unsupported_records": 1
+      },
+      "interpretation": "17 个文本 chunk 写入成功；22 张图片全部失败（embedding 端点非多模态）。"
+    },
+    {
+      "id": "RUN-B",
+      "harness": "/tmp/ov-d1/d1_vl.py",
+      "config": {
+        "chunking.enabled": true,
+        "embedding.dense.model": "qwen3-vl-embed",
+        "embedding.dense.api_base": "http://10.147.254.3:8020/v1",
+        "embedding.dense.wire_format": "messages",
+        "embedding.dense.dimension": 4096,
+        "embedding.dense.input": "multimodal"
+      },
+      "result": {
+        "ingest.status": "success",
+        "ingest.structure_source": "pdf_bookmarks",
+        "ingest.alignment_status": "matched",
+        "reindex.status": "completed",
+        "scanned_records": 35,
+        "rebuilt_records": 39,
+        "failed_records": 0,
+        "unsupported_records": 1,
+        "embedding_failures_logged": 0
+      },
+      "interpretation": "17 个文本 chunk + 22 个图文联合向量（summary+原图）全部写入同一 4096 维空间，failed_records 由 22 归零。"
+    }
+  ],
+  "search_traceability": {
+    "query": "液压部件处理注意事项",
+    "top_hit_uri": "viking://resources/raw/slice_ch1/00_slice_ch1.md",
+    "level": 2,
+    "score": 0.8747,
+    "chunk_id_present": true,
+    "parent_chunk_id_present": true,
+    "parent_text_present": true,
+    "note": "命中携带 chunk_id/parent_chunk_id/parent_text，多个 chunk 指向同一 Viking URI，满足溯源要求。"
+  },
+  "micro_probe": {
+    "embedder": "OpenAIDenseEmbedder(model=qwen3-vl-embed, wire_format=messages, input=multimodal)",
+    "text_dim": 4096,
+    "joint_image_text_dim": 4096,
+    "cosine_text_vs_joint": 0.6715,
+    "supports_multimodal": true
+  },
+  "deployment_applied": {
+    "target": "~/.openviking/ov.conf",
+    "decision": "用户批准切换到 :8020 VL 模型（推荐）",
+    "change": {
+      "embedding.dense.model": "local/qwen3-embedding-4b-vllm-v1 -> qwen3-vl-embed",
+      "embedding.dense.api_base": "http://10.147.254.3:8024/v1 -> http://10.147.254.3:8020/v1",
+      "embedding.dense.dimension": "2560 -> 4096",
+      "embedding.dense.wire_format": "input(default) -> messages",
+      "embedding.dense.input": "multimodal (unchanged)"
+    },
+    "verified": "OpenVikingConfigSingleton 加载部署配置后 get_embedder() = OpenAIDenseEmbedder，dimension=4096，supports_multimodal=True，embedding.dimension=4096",
+    "template_updated": "deploy/wolf-local/ov.conf.example 同步为 qwen3-vl-embed/4096/messages + text_source=content_only",
+    "dimension_migration_required": "旧 2560 维向量与新 4096 维空间不兼容，存量向量必须 reindex 重建；embedding 维度在服务启动时固定，改维度需重启 OV 服务",
+    "workspace_migration": {
+      "path": "data/vectordb/context",
+      "reason": "原集合为 2560 维（model_identity=local/qwen3-embedding-4b-vllm-v1），与新配置维度不一致；init_context_collection 对非空旧集合会抛 EmbeddingRebuildRequiredError，阻塞服务启动。",
+      "action": "将旧集合目录归档为 data/vectordb/context.2560.bak（可回退），让新配置在首次启动时重建 4096 维集合。",
+      "old_content": "仅 e2e/测试 fixture（viking://resources/raw 为空），无生产数据丢失。",
+      "result": "新集合创建成功，vector Dim=4096，metadata model_identity=qwen3-vl-embed:wire:messages；二次打开 created=False（幂等，不再报重建错误）。"
+    },
+    "real_boot": {
+      "command": "OpenVikingService(user=default).initialize()，真实 RAGFS binding（openviking/lib/ragfs_python.abi3.so）+ 部署 ov.conf",
+      "result": "REAL_INIT_OK；collection vector Dim=4096；服务在 4096 维配置下正常启动。"
+    }
+  },
+  "verification": {
+    "scoped_tests": "tests/enterprise_kb/test_reindex_contract.py 18 PASS（含新增回归）；5 个企业测试文件合计 66 PASS",
+    "checker": "python docs/spec/tools/check_spec_status.py"
+  },
+  "ledger_impact": {
+    "KB-013": "F4/F9 追加证据（企业分块父子 chunk 真实写入 + 同 URI 多命中）",
+    "KB-014": "F5 追加证据（真实 VLM 摘要 + 原图联合 embedding 落库）",
+    "KB-020": "F9/F11 追加证据（reindex 语义分层/向量路径图片摘要贯通）",
+    "F5": "实现状态保持 PARTIAL（多空间搜索与引用分页未完）",
+    "F9": "实现状态保持 PARTIAL（原 URI 完整图文/搜索/授权 E2E 待验收）"
+  }
+}

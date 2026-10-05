@@ -1,0 +1,89 @@
+{
+  "evidence_id": "parallel2-parser-contract-2026-10-04",
+  "tasks": [
+    "KB-009",
+    "KB-011"
+  ],
+  "status": "PARTIAL",
+  "full_acceptance": "NOT_RUN",
+  "date": "2026-10-04",
+  "fixes": [
+    "Only actually implemented backend/mode bindings are accepted: MinerU auto/text/ocr, TeleOCR auto, Logics auto. Previously silent MinerU layout→auto and unused TeleOCR/Logics mode switches now reject.",
+    "MinerU flash/basic tiers use different current_model identities than the pinned standard/advanced model, so this adapter rejects them rather than recording the standard revision.",
+    "Resident MinerU readiness has live authenticated tier probes, bounded refresh, expiry, background monitoring and submission gate; dependencies or prior verified marker alone cannot imply engine reachable.",
+    "Partial resident engine output fails and propagates cancellation rather than packaging a completed artifact.",
+    "Artifact validates actual options as well as digest, positive integer pages, unique blocks/assets, canonical paths, symlink containment, decoded image references, unquoted HTML and unsupported srcset.",
+    "Extracted archives cannot traverse through preexisting symlink parents, overwrite files or use noncanonical path aliases.",
+    "Native MinerU/TeleOCR page_idx identities and Logics window page IDs must exactly cover the source in order; equal page counts with duplicates or missing identities reject.",
+    "Own-body coverage rejects duplicated structural/alias content, invalid intervals/parents/aliases and duplicate chapter IDs; empty headings use rule_blocks.",
+    "Chapter path reservation includes branch own-body index.md, preventing a child named index from overwriting parent content; repeated collisions resolve deterministically.",
+    "Document-wide reference-style image definitions are carried across chapter splitting; local encoded image destinations and unquoted HTML images are materialized beside each chapter using content hash names; unsupported/unmaterialized image AST rejects."
+  ],
+  "files_sha256": {
+    "openviking/parse/model_artifact.py": "a8ffb382ba2ebd0d2aeeb105f5c3d54fc7faeee83316e9cd0f434bed8164b9d3",
+    "openviking/parse/model_backend.py": "3eaa64d0837a5d94b6429db21934b06a90a4bc8b1e3702f07a3d3c976f4c755e",
+    "openviking/parse/chapter_splitter.py": "0260921fa873a26b8a173ea1a2b3585cf75153cbd87618f9b25c8601b5e2b444",
+    "openviking/parse/parsers/markdown.py": "28efa3098b454dee36bf7a2e91ff3e3246b129df6850681af785fd953fa72a68",
+    "deploy/parser-models/model_artifact.py": "a8ffb382ba2ebd0d2aeeb105f5c3d54fc7faeee83316e9cd0f434bed8164b9d3",
+    "deploy/parser-models/worker.py": "dc31d06739501827e4c8e26bdefcb7bad2be4309b5d5e6933256543b7188d63b",
+    "deploy/parser-models/probe_contract.py": "013f4eab41c96cd94fa91909c5e5c0f2e9b267095797a5c220025ca2d108e0be",
+    "tests/enterprise_kb/test_parser_contract_hardening.py": "f6c5d0d13e408d64e1ef8a2abe7836eac7cb1151a766e5c554ce4979ac2c815d",
+    "tests/enterprise_kb/test_parser_worker_lifecycle.py": "86202ee77583591e5b12ba7d3985f8be264e6946de0e1b0f974e0a40e7270ed6"
+  },
+  "verification": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_parser_contract_hardening.py tests/enterprise_kb/test_model_artifact.py tests/enterprise_kb/test_chapter_splitter.py tests/enterprise_kb/test_parser_worker_lifecycle.py tests/enterprise_kb/test_pdf_chapter_pipeline.py -q --no-cov",
+    "passed": 104,
+    "failed": 0,
+    "warnings": 9,
+    "new_hardening_cases": 54,
+    "py_compile": "PASS for all six changed runtime Python modules"
+  },
+  "real_probe": {
+    "report": "docs/spec/evidence/parallel2-parser-contract-probes-2026-10-04.json",
+    "server": "10.147.254.3",
+    "synthetic": true,
+    "pages_per_request": 2,
+    "backends": [
+      "teleocr",
+      "logics",
+      "mineru"
+    ],
+    "requested_modes": [
+      "auto"
+    ],
+    "result": "3 CONTRACT_PASS; final validator rechecks 3 PASS",
+    "each_artifact": {
+      "processed_pages": 2,
+      "input_pages": 2,
+      "assets": 2,
+      "blocks": 8
+    },
+    "source_commits_and_model_revisions": "read from deployed lock files and returned artifacts, not guessed",
+    "container_image_ids": "read from docker inspect, not inferred from a mutable image tag",
+    "deployed_workers_changed": false,
+    "deployed_workers_restarted": false,
+    "local_readiness_changes_deployed": false,
+    "page_identity_verified_in_legacy_probe_artifacts": false,
+    "scope": "Existing deployed workers emitted v1 count-only coverage. New validator rechecked those legacy artifacts; strengthened native page_idx normalization is locally tested and not deployed."
+  },
+  "partial_TC_mapping": {
+    "TC-1.*": "backend/mode/options/artifact coverage and bounded 2-page synthetic three-backend contract evidence only",
+    "TC-2.*": "lossless chapter fallback, own-body uniqueness, safe deterministic paths and sibling image materialization local tests only"
+  },
+  "remaining_acceptance": [
+    "Deploy and validate new worker readiness and page_idx normalization under real cold-start/restart/disconnect failures; no remote rollout was performed.",
+    "Run real non-auto MinerU text/ocr and advanced tier requests to verify actual engine behavior, not merely parameter plumbing.",
+    "Recover/prove exact identities for flash/basic before enabling those tiers; reject them meanwhile.",
+    "Full 1072-page SY215C three-model quality, chapter and image gold remains incomplete; this probe cannot replace it.",
+    "Independent original-derived chapter boundaries and figure-purpose annotations, scan/table/drawing/no-bookmark samples and production URI readability are still required.",
+    "Legacy v1 artifacts without page_ids remain count-only evidence. New worker emits actual verified page_ids; historical count-only archives must not be treated as new identity verification.",
+    "Complex reference-image syntaxes outside the supported materializer fail explicitly rather than silently losing assets; further compatibility validation remains.",
+    "D1/D2/W1/W2 and joint publication/indexing/permissions acceptance remains NOT_RUN; source-control documents were not updated by this agent."
+  ],
+  "boundaries": [
+    "No shared spec/backlog/feature-status, resource_service, parser_config, SDK or publication source changes",
+    "No commit/reset",
+    "Finite remote jobs use independently generated synthetic content; no user original PDF copied",
+    "Transient live-edit syntax error was repaired and all runtime modules compile; final regression passed"
+  ]
+}

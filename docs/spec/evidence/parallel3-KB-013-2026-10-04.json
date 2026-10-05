@@ -1,0 +1,54 @@
+{
+  "task_id": "KB-013",
+  "title": "Real parent-child chunk write + recall (F4/F9)",
+  "date": "2026-10-04",
+  "run_id": "parallel3-KB-013-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "spec_refs": [
+    "docs/spec/openviking-enterprise-kb-spec.md#6 (lines ~302-345, esp. 324/338)",
+    "docs/spec/openviking-enterprise-kb-test-cases.md#TC-4.1..TC-4.7, TC-9.2"
+  ],
+  "implemented": [
+    "openviking/indexing/plan.py: IndexPlan gains parent_token_budget (default 0) carried from chunking.parent_max_tokens; build_plan sets it on every plan.",
+    "openviking/indexing/plan.py: IndexPlan.validate_parent_budget(count) rejects any parent context exceeding the declared recall budget (no silent truncation).",
+    "openviking/indexing/plan.py: chunk_fields now emits explicit source_uri == the ORIGINAL plan URI, alongside chunk_id/parent_chunk_id; no position/span/offset/hash fields are added.",
+    "openviking/indexing/plan.py: children_by_parent(chunks) groups many children under one parent identity.",
+    "openviking/indexing/plan.py: expand_parent_budget(candidates, budget_tokens, count) attaches parent context in rank order within a token budget, dropping only parent_text (never the child hit) once exhausted; budget<=0 disables expansion."
+  ],
+  "verified_contracts": [
+    "One parent with multiple children yields DISTINCT primary keys via vector_record_id_for_data (account_id, uri, chunk_id, generation).",
+    "Head/mid/tail facts are all present in stored chunk_text; every stored record uri and source_uri equals the original Viking URI.",
+    "A distant tail hit sharing a URI with a head hit is NOT dropped: aggregate_by_uri keeps both matches[] and group source_uri is the original URI.",
+    "Parent expansion stays within the token budget while all child hits survive.",
+    "Superseded generation is excluded by PublicationStore.visibility while the retired build stays 'published'.",
+    "D2 path: reindexing existing Markdown builds the text plan from the original bytes only; zero ParserRouter.parse calls, zero write_file calls, and read URIs are exactly {original URI} (no _toc.json)."
+  ],
+  "test_command": ".venv/bin/python -m pytest tests/enterprise_kb/test_parent_child_recall.py tests/enterprise_kb/test_index_plan.py --no-cov -q",
+  "test_counts": {
+    "test_parent_child_recall.py": 11,
+    "test_index_plan.py": 15,
+    "total_passed": 26,
+    "failed": 0
+  },
+  "supporting_regression": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_publication.py tests/enterprise_kb/test_batch_publication.py tests/enterprise_kb/test_content_publication.py tests/enterprise_kb/test_semantic_publication.py tests/enterprise_kb/test_image_publication.py tests/enterprise_kb/test_business_meta.py tests/enterprise_kb/test_lexical_bm25.py tests/retrieve/test_fusion.py --no-cov -q",
+    "passed": 125,
+    "failed": 0
+  },
+  "not_run": [
+    "Real vector backend end-to-end: no live VikingDB/Qdrant/cuvs write, ANN search, or top-k recall of the head/mid/tail gold facts. Tests use the shared IndexPlan, deterministic record-id derivation, PublicationStore (real SQLite), the embedding worker handler with a fixture Database, and the pure fusion primitives.",
+    "No production collection schema migration was exercised (source_uri is dropped by adapters that filter to known fields; it is informational for consumers that read chunk_fields directly).",
+    "BM25/lexical recall of the same gold facts and cross-space fusion are out of scope (KB-016/KB-017).",
+    "No real embedding model or tokenizer beyond the fixture BPE tokenizer; no measured recall/NDCG quality numbers.",
+    "Chunk-level parent expansion inside the live hierarchical retriever path is not wired to expand_parent_budget in this task (pure helper only)."
+  ],
+  "files_touched": [
+    "openviking/indexing/plan.py",
+    "tests/enterprise_kb/test_parent_child_recall.py",
+    "docs/spec/evidence/parallel3-KB-013-2026-10-04.json"
+  ],
+  "file_sha256": {
+    "openviking/indexing/plan.py": "57e546b1ee0acabc1d342db7b984807c4f50d1a80de63ff9e9208ba8d31187f6",
+    "tests/enterprise_kb/test_parent_child_recall.py": "6156e7b37f9a58bce12a720a953ca4f9a970fb098e065660fa9607916cbdc7a3"
+  }
+}

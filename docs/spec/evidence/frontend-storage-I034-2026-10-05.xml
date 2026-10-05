@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="14" failures="0" errors="0" time="4.687637499">
+    <testsuite name="src/routes/playground/route.test.tsx" timestamp="2026-10-04T23:24:58.963Z" hostname="whdeMacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="2.379824958">
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; clears a deleted selected file from the preview and URL search" time="0.345821333">
+        </testcase>
+        <testcase classname="src/routes/playground/route.test.tsx" name="playground context tree refresh &gt; does not clear a newer selection when the old file stat finishes late" time="0.125128292">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/playground/-components/agent-panel-submission.test.tsx" timestamp="2026-10-04T23:24:58.967Z" hostname="whdeMacBook-Pro.local" tests="5" failures="0" errors="0" skipped="0" time="0.946505958">
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves edits and blocks duplicate submission while creation waits" time="0.439668666">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="ignores a late creation after switching to another session" time="0.24734825">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="preserves the first input when creation fails" time="0.103290041">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="clears accepted input once creation succeeds" time="0.093866458">
+        </testcase>
+        <testcase classname="src/routes/playground/-components/agent-panel-submission.test.tsx" name="does not send or publish after the panel unmounts" time="0.06109725">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/routes/tasks/-components/task-detail-sheet.test.tsx" timestamp="2026-10-04T23:24:58.973Z" hostname="whdeMacBook-Pro.local" tests="7" failures="0" errors="0" skipped="0" time="1.361306583">
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in en without synthetic lines" time="0.532329">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; shows and copies backend events in zh without synthetic lines" time="0.182489083">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.1705035">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; explains unavailable history while preserving task details" time="0.144963917">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; retains the last recorded events and reports a refresh error" time="0.133938084">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="recorded task execution events &gt; keeps unfamiliar event types visible and never imports another identity cache" time="0.119577959">
+        </testcase>
+        <testcase classname="src/routes/tasks/-components/task-detail-sheet.test.tsx" name="chapter fallback information &gt; shows persistent parsing notes without marking a completed task as failed" time="0.07618375">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,556 @@
+{
+  "source_directory": "/Users/wh/code/iroot-llm/packages/xeno-adp-agentic/config/agentic-front/entities",
+  "scope": "Offline metadata inventory only; no runtime validation or schema registration",
+  "declared_version": 2,
+  "bundle_sha256": "7c0b3aaf1995a4e18e8daed8f449402652d565e6ee7b3a4ee63f9b2591551ec4",
+  "member_sha256": {
+    "Component.fewshot.md": "6d4bb1ad48f910796051087bdfdafb1e22d210fd6a5b60c4c0a8bce444c7afcc",
+    "Component.schema.yaml": "71167dc2345d4d53c9ad1605f3e631820118f22476485943ef42be6bd5b8d1a5",
+    "ConfigSpec.fewshot.md": "70e63e2d0f145a228966a2915a087d01b3a90244d3656ab76433c04bc1730c55",
+    "ConfigSpec.schema.yaml": "017291569b202dcd46751307f197a17b4ecba9ae2cef573f69f604c4bb8f6320",
+    "DTC.fewshot.md": "62c6cdbea7d77a4b305e7f2a120c26e823db3ed5ef4a6b82feea610388a5c59c",
+    "DTC.schema.yaml": "44b58406b2d37a14ebd55015e5459ed015f7aa1ba197f39a66e22cba688bce80",
+    "Device.fewshot.md": "d6b640e0f74e49a5a932253308d225eadf508fb229d2ece6faea01708be40768",
+    "Device.schema.yaml": "7f3a2dc8fd390031db6f8af29a70733504554f1c6cbdf5ceecdc16afa5229006",
+    "Fault.fewshot.md": "1e46fddc5fa150a40ac97c6b77fff96117f352f321070d03d2d9d16c8718c9e8",
+    "Fault.schema.yaml": "d9dcd4c9c1fad2779baa3704d645f22505eaf66568485a2ff3eefc5053873838",
+    "Procedure.fewshot.md": "f6b2245371edcb6a9dc4cee006bfc1d717c42f654984f0095a884c1128a9f055",
+    "Procedure.schema.yaml": "e8383e2d562c777fc1b2240c072df886aabd38951c5adf910a7b56c3966fe1b4",
+    "Profile.fewshot.md": "5846b2e4d1f0192da62d3e3a23ab4979433d0af1451d1caff00c8be9e229fcd3",
+    "Profile.schema.yaml": "d7f61e4140446cd6550b0bf27d915a5c33a8fd1239b4b8cc6df1ceae34f70ceb",
+    "Symptom.fewshot.md": "eaeb0f279a5ec9577411da1e414d812df5659cf6d2cbc6518eca788bf3089d77",
+    "Symptom.schema.yaml": "44fdcf8a088a0399a13132d0b7b3f1517168820dcf1e1518dd6c6056a377e71f",
+    "_shared/vocab/axis_controller.yaml": "52a340fcec8efa151383c7537e3b6942826737e6a0bb3e595b37db31452a4a43",
+    "_shared/vocab/axis_emission.yaml": "9c2c5e7a885f6e5bf6085f3aeb3839d1546e06b685b744548c21c05fd4771cd7",
+    "_shared/vocab/axis_hardware_brand.yaml": "bd6ff4facce4dc48abe1307e9c5239cb299c46977a2fc1294f0dcf31f337621a",
+    "_shared/vocab/axis_tonnage.yaml": "b85b3907039ce15996d48f814b8260cdff55623b07db9dea7262c467f762ff5e",
+    "_shared/vocab/component_category.yaml": "7310e14f041da4f72278b8c03dde1716c56403c5674917fb2c5ba8dfd69d8cc6",
+    "_shared/vocab/fault_category.yaml": "af9c95eb3c72c03cb72565f413cd2c85dbe4e8a39d06be91bd1d3daa16c1a9ec",
+    "_shared/vocab/function_domain.yaml": "bdd300e24b1d4c06bb7984c15158ccde920f378921eb8c4fabbc59f0cf4a25ff",
+    "_shared/vocab/measure_term.yaml": "4d7846291f4d4ca47a7bf7b06018cf3e382df1bdd245ab91dc24d1ef88639eb8",
+    "_shared/vocab/procedure_type.yaml": "92a1e493cc782776b63379b0fc78bb4dbef4f86600ad5e2158a6b125566788d4",
+    "_shared.schema.yaml": "83bcebb321c8ebc556378e982d85113eed7ea33663fbc309deec59a515b42962"
+  },
+  "entities": {
+    "Component": {
+      "schema_file": "Component.schema.yaml",
+      "markdown_example": "Component.fewshot.md",
+      "path_pattern": "Component/<部件大类>/<规格名>.md；骨架核心链：Component/<部件大类>/index.md 与 Component/<部件大类>/profiles/<型号>.md",
+      "fields": [
+        {
+          "name": "spec",
+          "type": "string"
+        },
+        {
+          "name": "applicable_models",
+          "type": "list"
+        },
+        {
+          "name": "bom_path",
+          "type": "string"
+        },
+        {
+          "name": "configuration_bindings",
+          "type": "list"
+        },
+        {
+          "name": "bom_evidence",
+          "type": "list",
+          "ref_kind": "source"
+        },
+        {
+          "name": "related_faults",
+          "type": "list",
+          "ref_kind": "Fault"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "总成概览",
+          "工作机理"
+        ],
+        "notes": [
+          "工作机理口径：Component 只保留正向工作机理，不写失效机理正文 （机理归属红线：失效机理只写 Fault 页）。",
+          "「工作机理」兜底顺序（用户裁定 2026-09-17）：① 源有原理描述→逐字转抄+行内 引用；② 源没写原理但该部件是通用工程件（回转支承/液压泵/多路阀这类），其 工作方式属工程通识→直接用世界知识写清楚并标 inferred，这是常态通道不是 违规（例：回转支承承受轴向力/径向力/倾覆力矩、传递回转运动）；③ 连世界 知识也给不出通用原理时才写\"待补充\"+gap。禁编造只针对源特有事实——具体 数值、型号、间隙/公差标准值、结构形式编号：缺它们只挂 gap，绝不把整节 「工作机理」拖成待补充。"
+        ]
+      },
+      "rule_ids": [
+        "skeleton_index_profile_layout",
+        "bom_fields_manual_line_only",
+        "no_materialized_fault_reverse_index"
+      ]
+    },
+    "ConfigSpec": {
+      "schema_file": "ConfigSpec.schema.yaml",
+      "markdown_example": "ConfigSpec.fewshot.md",
+      "path_pattern": "ConfigSpec/<主体码>/index.md",
+      "fields": [
+        {
+          "name": "host_code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "device_refs",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Device"
+        },
+        {
+          "name": "axes",
+          "type": "dict"
+        },
+        {
+          "name": "bom_composition",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Component"
+        },
+        {
+          "name": "capabilities",
+          "type": "list"
+        },
+        {
+          "name": "open_gaps",
+          "type": "list"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "配置定义",
+          "BOM 组成",
+          "设计基准",
+          "配置能力声明",
+          "标准值参考",
+          "来源"
+        ],
+        "notes": [
+          "六节顺序固定。本页只承载与症状无关的配置级事实；症状相关的可能根因清单、 增量根因相关性、推荐诊断顺序属 Profile，一概不写（门 no_symptom_semantics）。",
+          "「来源」= 登记页锚 + 骨架期由代码从台账定出的那本手册挑出的**相关章族** （规格族/标准值族，一行一章 `[章节名](kb://chapters/<id>)`，同 URI 必须同时 登记在 sources）；整本章节目录不复制在本页，回指机型页「原文目录」。",
+          "「BOM 组成」表列固定三列：部件 | 规格 | 对应 Component（门 std_table_columns_fixed）。",
+          "「标准值参考」列序固定六列：测量项(term_id) | 正常值 | 单位 | 方法 | 适用条件 | 测点位置，MUST NOT 增删列；表过长时按系统域 ### 分节（### 是节内分节，不算新小节）。",
+          "「适用条件」列取值受控（引用 Component spec 或子配置标识），禁「看情况」 「部分机型」类自由文本（门 applicable_cond_controlled）；同一测量项同一配置出现 冲突数值 → 人工复核后方可入库，入库值必须带来源引用。",
+          "数值默认归本页（标准值表/设计基准）；「配置定义」散文：这个生产版本装了什么、 与同机型其他 hostcode 的差异点（机型归属读 device_refs，路径不再承载）。"
+        ]
+      },
+      "rule_ids": [
+        "host_code_identity",
+        "device_refs_authoritative",
+        "class_name_no_function_domain",
+        "std_table_columns_fixed",
+        "applicable_cond_controlled",
+        "no_symptom_semantics"
+      ]
+    },
+    "DTC": {
+      "schema_file": "DTC.schema.yaml",
+      "markdown_example": "DTC.fewshot.md",
+      "path_pattern": "DTC/<机型>_<hostcode>/<代码>.md",
+      "fields": [
+        {
+          "name": "code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "machine_model",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "controller_role",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "fault_level",
+          "type": "string"
+        },
+        {
+          "name": "related_symptoms",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Symptom"
+        },
+        {
+          "name": "related_faults",
+          "type": "list",
+          "ref_kind": "Fault"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "代码定义",
+          "设备表现",
+          "排查步骤",
+          "可能失效机理"
+        ],
+        "notes": [
+          "机理展开写在关联 Fault 页，本页只留一句概述 + wiki 引用。"
+        ]
+      },
+      "rule_ids": [
+        "identity_uniqueness",
+        "uri_no_translated_suffix",
+        "no_orphan",
+        "create_threshold",
+        "no_cross_model_merge"
+      ]
+    },
+    "Device": {
+      "schema_file": "Device.schema.yaml",
+      "markdown_example": "Device.fewshot.md",
+      "path_pattern": "Device/<系列>/<型号>/index.md",
+      "fields": [
+        {
+          "name": "series",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "config_specs",
+          "type": "list",
+          "required": true,
+          "ref_kind": "ConfigSpec"
+        },
+        {
+          "name": "raw_refs",
+          "type": "list",
+          "required": true,
+          "ref_kind": "source"
+        },
+        {
+          "name": "current_manual",
+          "type": "string",
+          "ref_kind": "source"
+        },
+        {
+          "name": "critical_components",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Component"
+        },
+        {
+          "name": "symptom_refs",
+          "type": "list",
+          "ref_kind": "Symptom"
+        }
+      ],
+      "shared_not_required": [
+        "sources"
+      ],
+      "body_sections": {
+        "required": [
+          "机型介绍",
+          "规格参数",
+          "hostcode 差异对照",
+          "常见的故障现象及故障机理",
+          "关重件 Component 清单",
+          "故障代码清单",
+          "故障案例"
+        ],
+        "optional": [
+          "原文目录"
+        ],
+        "allow_empty": [
+          "故障案例"
+        ],
+        "notes": [
+          "机型介绍为散文，禁首行硬挑。",
+          "规格参数逐条带行内引用。",
+          "「hostcode 差异对照」逐主体码一行：一行差异陈述 + 出处锚 + 配置档入口 `[<该主体码>](<完整配置档 URI>)`（链接文字写码本身，如 `[SSY100000402](viking://…/ConfigSpec/SSY100000402/index.md)`，禁写「配置档」 「实体名」这类泛称）；BOM 装配与标准值六列表归各主体码配置档，本页不复制。",
+          "故障现象/关重件/故障码三段只做清单 + 指向库内页面的 markdown 链接，不把机理抄进来 （机理归 Fault/Symptom 页，Device 只做导航层）。",
+          "「故障代码清单」= DTC 归属（machine_model + 目录段）的反向投影；未达建页门槛的 单行码只存在于该节。",
+          "「故障案例」为案例入库专用小节：每个来源一条摘要+行内引用；建页可留空 （占位节保留），案例入库时只对本节 append PATCH，不动其他节。",
+          "「原文目录」= 骨架构建期由代码从手册 toc 直取的整本章节目录（一行一章 `[章节名](kb://chapters/<id>)`，按编号层级缩进，见 manual_toc 模块）， 整本只挂这一份、各主体码配置档回指本页不复制；本节是导航清单，禁改写成散文， 也不据此删减——手册换版时随骨架重跑整节替换。"
+        ]
+      },
+      "rule_ids": [
+        "one_model_one_page",
+        "one_index_per_model",
+        "specs_index_alignment",
+        "single_raw_ref_version"
+      ]
+    },
+    "Fault": {
+      "schema_file": "Fault.schema.yaml",
+      "markdown_example": "Fault.fewshot.md",
+      "path_pattern": "Fault/<失效类>/<对象名>.md",
+      "fields": [
+        {
+          "name": "affected_components",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Component"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "失效描述",
+          "失效机理",
+          "配置差异化",
+          "常见原因",
+          "影响范围",
+          "关联故障现象",
+          "验证方法",
+          "修复方式"
+        ],
+        "notes": [
+          "失效机理写法：正常工作状态→失效演变过程→失效后的系统表现； 失效机理只能从工作机理推导得出（引用 Component 原理不复述正文）。",
+          "阈值/线号/针脚数值不抄，写\"按原始章节读取\"+行内引用指向源。",
+          "「配置差异化」必备：按「根因 × 配置档（配件组合）」分档逐行写剪除/适用 + 理由证据；配置档 = 源文中逐字出现的配件组合名（主阀/泵/控制器供应组、出口 配置档等），安装机型只作档内载体注记；禁按「大挖/中挖/小挖」族群立档。",
+          "「验证方法/修复方式」两节的 `[规程名](<Procedure URI>)` 是 Procedure.fault_refs 的 扇入投影（反向导航），不复述流程正文。"
+        ]
+      },
+      "rule_ids": [
+        "config_differentiation_required",
+        "affected_component_targets_exist"
+      ]
+    },
+    "Procedure": {
+      "schema_file": "Procedure.schema.yaml",
+      "markdown_example": "Procedure.fewshot.md",
+      "path_pattern": "Procedure/<大类五选一>/<对象名>.md",
+      "fields": [
+        {
+          "name": "fault_refs",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Fault"
+        },
+        {
+          "name": "procedure_scope",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_components",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Component"
+        },
+        {
+          "name": "applicable_configs",
+          "type": "list",
+          "ref_kind": "ConfigSpec"
+        },
+        {
+          "name": "applicable_conditions",
+          "type": "list"
+        },
+        {
+          "name": "specification_refs",
+          "type": "list",
+          "ref_kind": "source"
+        },
+        {
+          "name": "open_gaps",
+          "type": "list"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "操作目的",
+          "操作步骤",
+          "来源"
+        ],
+        "templates": [
+          {
+            "class_names": [
+              "inspection",
+              "test"
+            ],
+            "required": [
+              "操作目的",
+              "操作步骤",
+              "判定标准",
+              "后续处理",
+              "来源"
+            ]
+          },
+          {
+            "class_names": [
+              "replacement",
+              "repair",
+              "disassembly"
+            ],
+            "required": [
+              "操作目的",
+              "工具与耗材",
+              "安全注意",
+              "操作步骤",
+              "装配尺寸与力矩",
+              "回装验证",
+              "来源"
+            ]
+          }
+        ],
+        "notes": [
+          "composite 每步带稳定步骤号（「步骤1/步骤2…」，用户裁定 2026-09-17： 页面对人是中文，不用 step-N/on_normal 类英文标识）；控制流用独立子行 「前提：…」「分支：正常（判据）→ 步骤N；异常（判据）→ …」表达， 禁「无反应→查控制链路（步骤2）」式埋在正文里的散文箭头——OPL 规则级 修订依赖步骤号寻址。分支去向值用步骤号或 Fault URI。",
+          "判据三档取数：配置级标准值引用 ConfigSpec 标准值表、零件固有名义值引用 Component，均不复制数字；两者都无关的配置无关分界条件才可内联。",
+          "测量类步骤引用 term_id（受控词表，与 ConfigSpec 标准值表测量项列同名）， 禁写自由文本测量项名。",
+          "作业型「回装验证」必须链接对应验证/测试 Procedure 或判定步骤， 禁止「修完不复检」；力矩值引用 Component「装配尺寸与力矩」节。"
+        ]
+      },
+      "rule_ids": [
+        "fault_anchor_required",
+        "identity_triple",
+        "target_components_no_symptom",
+        "applicability_derived",
+        "criteria_reference_not_copy",
+        "step_addressable",
+        "work_type_verification_loop"
+      ]
+    },
+    "Profile": {
+      "schema_file": "Profile.schema.yaml",
+      "markdown_example": "Profile.fewshot.md",
+      "path_pattern": "Symptom/<功能域>/<现象名>/profiles/<配置名>.md",
+      "fields": [
+        {
+          "name": "parent_symptom",
+          "type": "string",
+          "required": true,
+          "ref_kind": "Symptom"
+        },
+        {
+          "name": "config_spec_uri",
+          "type": "string",
+          "ref_kind": "ConfigSpec"
+        },
+        {
+          "name": "device_uri",
+          "type": "string",
+          "ref_kind": "Device"
+        },
+        {
+          "name": "direct_component_uri",
+          "type": "string",
+          "required": true,
+          "ref_kind": "Component"
+        },
+        {
+          "name": "possible_faults",
+          "type": "list",
+          "required": true,
+          "ref_kind": "Fault"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "适用配置",
+          "本配置下的表现特征",
+          "与其他配置的差异",
+          "可能失效机理",
+          "推荐诊断流程",
+          "引用判据",
+          "来源"
+        ],
+        "notes": [
+          "七节顺序固定。「与其他配置的差异」必须有证据出处；写不出差异证据的 配置不建本页（规则 config_evidence_required）。",
+          "「适用配置」首行写清可确认的设备层级与父 Symptom 名：有主体码时从 config_spec_uri 读取主体码和型号；无主体码或主体码档不存在时从 device_uri 读取型号；不得补造缺失层级，并带 [原文: 源URI] 落款。",
+          "「可能失效机理」按 possible_faults 顺序逐条展开，每条带指向对应 Fault 页的 行内引用；机理正文本体在 Fault 页，此处写\"本配置下为何它更可能\"。该清单 覆盖本配置下有证据的所有相关机理，可涉及多个部件。部件归属由各 Fault 的 `affected_components` 表达，direct_component_uri 仍是主要诊断入口。",
+          "「推荐诊断流程」是配置化的检查顺序（先查什么后查什么），引用检查流程页 `[规程名](<Procedure URI>)` 不复述步骤；标准值以配置档标准值表为准不复制。",
+          "文件名用可读配置名（如 国四和新欧五_10寸触摸屏+空调控制盒.md，含集合外 字符先按 _shared uri_normalization 标准化）；同配置跨机型不复制页面。"
+        ]
+      },
+      "rule_ids": [
+        "config_evidence_required",
+        "no_device_refs",
+        "exactly_one_device_anchor",
+        "possible_faults_ordered"
+      ]
+    },
+    "Symptom": {
+      "schema_file": "Symptom.schema.yaml",
+      "markdown_example": "Symptom.fewshot.md",
+      "path_pattern": "Symptom/<功能域>/<现象名>/index.md",
+      "fields": [
+        {
+          "name": "open_gaps",
+          "type": "list"
+        },
+        {
+          "name": "asserted_faults",
+          "type": "list",
+          "ref_kind": "Fault"
+        }
+      ],
+      "shared_not_required": [],
+      "body_sections": {
+        "required": [
+          "现象定义",
+          "典型观察特征",
+          "相似现象区分",
+          "产品配置差异",
+          "Profile 索引",
+          "来源"
+        ],
+        "notes": [
+          "六节顺序固定。本页是规范现象薄索引：失效机理归 Fault、诊断流程归 Profile、配置参数标准值归 ConfigSpec，本页一概不展开。",
+          "零机型语义——机型经 Profile 的 config_spec_uri 间接表达，本页不写机型。",
+          "「产品配置差异」只写定性差异事实与出处（如\"带/不带自动怠速的机器该现象 出现频率不同\"），不抄参数标准值。",
+          "「Profile 索引」由 profiles/ 目录枚举派生：逐条列出 `viking://resources/<ns>/Symptom/<域>/<名>/profiles/<配置名>.md` 与一句话 适用配置；一个 Profile 都没有时写「未建（见 open_gaps）」，不许留空。",
+          "同一现象仅一张规范页：口语/简称进 aliases，不另立新页。",
+          "「相似现象区分」是同型辨析（现象↔现象）：本节出链只允许指向 Symptom 页。 相似现象尚无页面时二选一——同批 CREATE 其薄索引页（骨架优先），或辨析 文字 + open_gaps 挂账；严禁拿 Component/Fault 等其它实体页顶替出链 （部件页导航属别的语境，不放本节）。"
+        ]
+      },
+      "rule_ids": [
+        "no_legacy_relation_fields",
+        "profile_backing_required",
+        "asserted_fault_scope_required"
+      ]
+    }
+  },
+  "review_findings": [
+    {
+      "kind": "schema_drift",
+      "files": [
+        "Symptom.schema.yaml"
+      ],
+      "finding": "Bound schema allows source-asserted fault fallback when no configuration profile; global ban in old spec corrected"
+    },
+    {
+      "kind": "example_conflict",
+      "files": [
+        "Profile.schema.yaml",
+        "Profile.fewshot.md"
+      ],
+      "finding": "Schema allows multiple fault owner components; example erroneously restricts them to direct_component_uri; adapted default package still pending"
+    },
+    {
+      "kind": "source_field_exception",
+      "files": [
+        "Device.schema.yaml"
+      ],
+      "finding": "raw_refs is sole persisted provenance field; unified result may project sources"
+    },
+    {
+      "kind": "authoritative_edge",
+      "files": [
+        "Procedure.schema.yaml"
+      ],
+      "finding": "fault_refs required nonempty; reverse Fault procedure links are projections"
+    }
+  ],
+  "status": "OFFLINE_INVENTORY_AND_SPEC_REVIEW",
+  "runtime_acceptance": "NOT_RUN",
+  "reviewed_file_sha256": {
+    "docs/spec/openviking-enterprise-kb-implementation.md": "f0fa2296b63504e2db3c78195baf7e2d52621c0842a86243738061fa6998095d",
+    "docs/spec/README.md": "0920faea5b019a8b72bba49895eb0b4a1c8d40a0e1865dd1d804d196f8f1e2e6",
+    "docs/spec/openviking-enterprise-kb-review.md": "b60a4e91caa975be6972fb0fbd4d2ce9a523c545e453c440095c65a89783e0a2",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "4008719c0b7722e08984b7404d5b5d74522b7210b02ccabe4032c656bd965ba5",
+    "docs/spec/openviking-enterprise-kb-spec.md": "1cd5941b5bc55822ec593f03522b0cf24556081aa53466234a5e6705f289aa1d"
+  }
+}

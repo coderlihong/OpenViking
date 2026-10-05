@@ -1,0 +1,40 @@
+{
+  "run_id": "I023-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "status": "PASS",
+    "tests": 567,
+    "new_tests": 15,
+    "report": "tests-I023-regression.xml"
+  },
+  "verified": [
+    "Account-scoped schema/private package and collection metadata persistence",
+    "Immutable schema identity, concurrent recheck, fixed selection after new versions",
+    "Independent collection target/raw write roots and file-as-prefix rejection",
+    "Admin registration/read-write checks/pin post-read authorization calls",
+    "Corruption explicit failure and registered schema GC roots"
+  ],
+  "fixtures": [
+    "Actual SQLite/disk AGFS/VikingFS methods; ACL mocked",
+    "AGFS mount root initialized in fixture, service ensures first-schema account parent directories"
+  ],
+  "scope_exclusions": [
+    "HTTP/SDK/collection revision updates and namespace/member ACL registry",
+    "Persistent entity validation catalog/default 38 domain rules/WikiBuildPlan/W1/W2",
+    "Production encryption/export/transaction/quota/physical GC and schema retirement"
+  ],
+  "file_sha256": {
+    "openviking/wiki/catalog.py": "212f3b1a95cf5de13362f8dda1741751a3a89f967bc6d3094777f7b2b3a0d4c6",
+    "openviking/indexing/publication.py": "01cf86f910107cce79ce917ffeb1ef2dfc574aab1f2d80a188fb77b9141361a3",
+    "tests/enterprise_kb/test_wiki_catalog.py": "34f590ea8131122df426d33bb60bcf46dc3682cc5657fc34ae4ef542e0afb840",
+    "docs/spec/evidence/tests-I023-regression.xml": "950bdc5b825298b91373a335691eaf20b2dbe5a2cc10f9ce79771002c56a69e4",
+    "docs/spec/evidence/tests-I023-catalog.xml": "016be207246eb6bc4fbbc8687e4d7e746449d844b3da9bb4eb8364c018f474b9",
+    "docs/spec/evidence/tests-I023-catalog-initial.xml": "7b4e3e53eec62e5906a669b2e1d61ba4ac5bcb1e742dbd96a16b662f76051ac9",
+    "docs/spec/evidence/tests-I023-catalog-parent-initial.xml": "5c35a5ba2b5e95bf4085246bd9aeb41d7fda6461bb94f0295f7843719925af07",
+    "docs/spec/README.md": "aca39b22026aa796038f51985bd9c7e82ce3afe9b2f9dff43b63324afea9448a",
+    "docs/spec/openviking-enterprise-kb-spec.md": "6ecde3a3a13c4a2fcb6d94f1a9f742dec818f5b1a7529b12607ba51280ccc11a",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "a8b2e4b137dd942ba7b318f8b7b07f709b6eeed04f283805e12a27301b3eb6b4",
+    "docs/spec/openviking-enterprise-kb-review.md": "b3d1a0fd6d5789bffaaac03876afa55f4763ab478109ee1831200ffa2a3e913b",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "2c3bf7651b08ef5c94a39c20a46c3d4060115e0a4d1d525d2dfc8bbcd5286bc8"
+  }
+}

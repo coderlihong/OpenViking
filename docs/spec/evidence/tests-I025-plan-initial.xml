@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="24" time="5.009" timestamp="2026-10-04T15:36:22.177527+08:00" hostname="whdeMacBook-Pro.local"><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_upload_and_uri_share_source_schema_and_namespace_plan" time="0.114" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_saved_plan_reopens_with_immutable_body_and_gc_root" time="0.027" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_idempotency_same_sources_replays_and_changed_inputs_conflict" time="0.036" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_concurrent_duplicate_preparations_create_one_plan" time="0.025" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_directory_recursion_preserves_source_uris_and_ignores_control_assets" time="0.036" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_directory_membership_change_during_capture_rejects_plan" time="0.031" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_source_write_after_archive_is_rejected_at_save" time="0.025" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_inflight_or_uncertain_source_write_is_never_captured" time="0.023" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_source_revocation_before_save_rejects_without_creating_plan" time="0.022" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_plan_lookup_and_private_body_require_current_permissions" time="0.024" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_corrupt_immutable_body_or_manifest_has_no_live_fallback" time="0.025" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_invalid_or_self_ingesting_inputs_are_rejected[uris0-upload-materialized]" time="0.022" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_invalid_or_self_ingesting_inputs_are_rejected[uris1-uri-output tree]" time="0.020" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_invalid_or_self_ingesting_inputs_are_rejected[uris2-uri-output tree]" time="0.020"><failure message="AssertionError: Regex pattern did not match.&#10;  Expected regex: 'output tree'&#10;  Actual message: 'Reference must be a Viking URI'">prepared = (namespace(fs=&lt;openviking.storage.viking_fs.VikingFS object at 0x1224a2510&gt;, ctx=RequestContext(user=acct:user, role='...emas.TextEmbeddingHandler object at 0x1224a0ad0&gt;), &lt;openviking.wiki.build_plan.WikiBuildPlanner object at 0x1224d68f0&gt;)
+uris = ['viking://resources'], kind = 'uri', match = 'output tree'
+
+    @pytest.mark.parametrize('uris,kind,match', [
+        (['viking://resources/elsewhere.md'], 'upload', 'materialized'),
+        (['viking://resources/wiki/entity.md'], 'uri', 'output tree'),
+        (['viking://resources'], 'uri', 'output tree'),
+        ([], 'uri', 'nonempty'),
+        ([ONE + '#chunk'], 'uri', 'canonical'),
+    ])
+    async def test_invalid_or_self_ingesting_inputs_are_rejected(prepared, uris, kind, match):
+        e, p = prepared
+        with pytest.raises(SchemaError, match=match):
+&gt;           await prepare(p, e.ctx, uris, kind=kind)
+
+tests/enterprise_kb/test_wiki_build_plan.py:207: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/enterprise_kb/test_wiki_build_plan.py:49: in prepare
+    return await p.prepare_sources(ctx, 'manual-wiki', uris, input_kind=kind,
+openviking/wiki/build_plan.py:141: in prepare_sources
+    roots = tuple(sorted({source_uri(uri) for uri in source_uris}))
+                          ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+uri = 'viking://resources'
+
+    def source_uri(uri):
+        if not isinstance(uri, str) or not uri.startswith('viking://resources/') or any(ord(c) &lt; 32 for c in uri):
+&gt;           raise SchemaError('Reference must be a Viking URI')
+E           openviking.wiki.schema.SchemaError: Reference must be a Viking URI
+
+openviking/wiki/validation.py:54: SchemaError
+
+During handling of the above exception, another exception occurred:
+
+prepared = (namespace(fs=&lt;openviking.storage.viking_fs.VikingFS object at 0x1224a2510&gt;, ctx=RequestContext(user=acct:user, role='...emas.TextEmbeddingHandler object at 0x1224a0ad0&gt;), &lt;openviking.wiki.build_plan.WikiBuildPlanner object at 0x1224d68f0&gt;)
+uris = ['viking://resources'], kind = 'uri', match = 'output tree'
+
+    @pytest.mark.parametrize('uris,kind,match', [
+        (['viking://resources/elsewhere.md'], 'upload', 'materialized'),
+        (['viking://resources/wiki/entity.md'], 'uri', 'output tree'),
+        (['viking://resources'], 'uri', 'output tree'),
+        ([], 'uri', 'nonempty'),
+        ([ONE + '#chunk'], 'uri', 'canonical'),
+    ])
+    async def test_invalid_or_self_ingesting_inputs_are_rejected(prepared, uris, kind, match):
+        e, p = prepared
+&gt;       with pytest.raises(SchemaError, match=match):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'output tree'
+E         Actual message: 'Reference must be a Viking URI'
+
+tests/enterprise_kb/test_wiki_build_plan.py:206: AssertionError</failure></testcase><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_invalid_or_self_ingesting_inputs_are_rejected[uris3-uri-nonempty]" time="0.021" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_invalid_or_self_ingesting_inputs_are_rejected[uris4-uri-canonical]" time="0.020" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_empty_non_utf8_and_binary_markdown_are_rejected[]" time="0.022" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_empty_non_utf8_and_binary_markdown_are_rejected[\xff\xfe]" time="0.025" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_empty_non_utf8_and_binary_markdown_are_rejected[%PDF\x00binary]" time="0.022" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_capture_limits_explicitly_fail_instead_of_truncating[limit0-uris0]" time="0.020" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_capture_limits_explicitly_fail_instead_of_truncating[limit1-uris1]" time="0.021" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_capture_limits_explicitly_fail_instead_of_truncating[limit2-uris2]" time="0.023" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_capture_limits_explicitly_fail_instead_of_truncating[limit3-uris3]" time="0.022" /><testcase classname="tests.enterprise_kb.test_wiki_build_plan" name="test_capture_limits_explicitly_fail_instead_of_truncating[limit4-uris4]" time="0.025" /></testsuite></testsuites>

@@ -1,0 +1,259 @@
+{
+  "run_id": "I026-2026-10-04",
+  "status": "PARTIAL_IMPLEMENTATION",
+  "regression": {
+    "status": "PASS",
+    "tests": 647,
+    "new_tests": 47,
+    "report": "tests-I026-regression.xml",
+    "scope": "I025 suite + structural/domain-boundary/cache tests, not full repository"
+  },
+  "actual_schema_audit": {
+    "run_id": "I026-schema-adapter",
+    "status": "PARTIAL_IMPLEMENTATION",
+    "input_digest": "83816ecc46b394bd48b83e205498584d4e2acb8afa4995f251040f5bef6f7266",
+    "adapter_digest": "6a6f66c824681a465765afdc993a87388a125a259c2915f757c93d53c50e37c0",
+    "version": "2+openviking.1+structural.1",
+    "input_profile_direct_replay": {
+      "structure": "REJECTED",
+      "error": "Entity requires at least one declared source reference"
+    },
+    "zip_sha256": "c4eb70754e47b156cf0231d70634fbeb51b3f1cd6d6c082739c42d2210da7edf",
+    "entities": [
+      {
+        "kind": "Component",
+        "structure": "PASS",
+        "references": 3,
+        "explicit_gates": 0,
+        "pending_checks": [
+          "skeleton_index_profile_layout",
+          "bom_fields_manual_line_only",
+          "no_materialized_fault_reverse_index",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "ConfigSpec",
+        "structure": "PASS",
+        "references": 10,
+        "explicit_gates": 2,
+        "pending_checks": [
+          "host_code_identity",
+          "device_refs_authoritative",
+          "class_name_no_function_domain",
+          "std_table_columns_fixed",
+          "applicable_cond_controlled",
+          "no_symptom_semantics",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "DTC",
+        "structure": "REJECTED",
+        "error": "Reference must be a Viking URI",
+        "explicit_gates": 0,
+        "pending_checks": [
+          "identity_uniqueness",
+          "uri_no_translated_suffix",
+          "no_orphan",
+          "create_threshold",
+          "no_cross_model_merge",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "Device",
+        "structure": "PASS",
+        "references": 14,
+        "explicit_gates": 2,
+        "pending_checks": [
+          "one_model_one_page",
+          "one_index_per_model",
+          "specs_index_alignment",
+          "single_raw_ref_version",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "Fault",
+        "structure": "PASS",
+        "references": 13,
+        "explicit_gates": 2,
+        "pending_checks": [
+          "config_differentiation_required",
+          "affected_component_targets_exist",
+          "no_wire_number",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "Procedure",
+        "structure": "PASS",
+        "references": 9,
+        "explicit_gates": 4,
+        "pending_checks": [
+          "fault_anchor_required",
+          "identity_triple",
+          "target_components_no_symptom",
+          "applicability_derived",
+          "criteria_reference_not_copy",
+          "step_addressable",
+          "work_type_verification_loop",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 2
+      },
+      {
+        "kind": "Profile",
+        "structure": "PASS",
+        "references": 10,
+        "explicit_gates": 5,
+        "pending_checks": [
+          "config_evidence_required",
+          "no_device_refs",
+          "exactly_one_device_anchor",
+          "possible_faults_ordered",
+          "no_wire_number",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      },
+      {
+        "kind": "Symptom",
+        "structure": "PASS",
+        "references": 3,
+        "explicit_gates": 0,
+        "pending_checks": [
+          "no_legacy_relation_fields",
+          "profile_backing_required",
+          "asserted_fault_scope_required",
+          "no_wire_number",
+          "no_measured_value",
+          "shared:live_narration",
+          "shared:no_repeat_call",
+          "shared:no_skill_system",
+          "shared:gap_discipline",
+          "shared:read_truncation",
+          "shared:inline_citation",
+          "shared:uri_normalization",
+          "shared:ref_value_form",
+          "shared:ref_uri_provenance",
+          "schema:path_layout"
+        ],
+        "body_templates": 0
+      }
+    ],
+    "strict_compilation": "REJECTED: Schema rules or layout require executable adapters before strict registration",
+    "exclusions": [
+      "References only enumerated, not resolved to real production entities/sources",
+      "Path layouts, all prose policies, semantic evidence/identity/domain constraints not executed",
+      "No extraction, namespace/export authorization or publication"
+    ],
+    "dtc_blocker": "Upstream DTC fewshot source kb://chapters/813927429744789 is not a Viking URI; needs an explicit migration/mapping, not an invented source path"
+  },
+  "verified": [
+    "Explicit structural gates and class body templates",
+    "Typed URI object attributes and shared declared source adaptation",
+    "Shared rules/layout coverage tracked without executing prose",
+    "Coverage refreshed from verified private schema; stale optimistic cache rejected",
+    "Same-account namespace-bound reference contract",
+    "Malformed structural declaration is HTTP invalid argument, not internal error"
+  ],
+  "not_implemented": [
+    "Remaining entity/shared prose and path/identity/evidence/applicability policies",
+    "DTC legacy source mapping",
+    "Production namespace/export ACL and facts/reference commit transaction",
+    "Extraction/conservative merge/Wiki HTTP tasks/two complete FLOW",
+    "Compiler/extraction version-pinned durable execution and lifecycle/GC",
+    "Five SDK baseline compatibility failures"
+  ],
+  "file_sha256": {
+    "openviking/wiki/schema.py": "d1f78974bc5b8bf51c35c1b4b6f7b741c7e1dabc61c2d397a8f0fef316389fc5",
+    "openviking/wiki/validation.py": "ca9b51325470c9b3e52baa85ce75a50eb43462526358bf7a146bf5d1ecbb7e0a",
+    "openviking/wiki/catalog.py": "8d52c3172813b3a704f995ac0061593b774c265fdf1601dfa7d754019f006368",
+    "openviking/server/routers/wiki.py": "26d5e55fea3690374bded56d4c834d182bcba3a735ef9342bcdad6e008044fd3",
+    "tests/enterprise_kb/test_wiki_structural_gates.py": "8aa29220657b6f07de7190ccaed847747b71a12118b1dd4627b573ad0619f255",
+    "tests/enterprise_kb/test_wiki_validation.py": "729660a7b8c8a2b16d92e77b0faaca588b18b149008507a4103721c0f7d4c008",
+    "tests/enterprise_kb/test_wiki_catalog.py": "340c66f0598108100419d40c08b54b0e002b1341f205daf175422ff8be503650",
+    "tests/enterprise_kb/test_wiki_http_sdk.py": "49c00f9e3fff43d1e212a3a9eccb031e81f25b2926eecb0da91ce100ecff0eb1",
+    "docs/spec/tools/build_sany_structural_adapter.py": "7482cb73783415e6552588d182a8cbeac5cd89c817c7bfbf7cfb42a527433c72",
+    "docs/spec/evidence/tests-I026-regression.xml": "5ef4601ea1313e2c1ccea119e7f09e49a58ba0330091081087c1745a360d5368",
+    "docs/spec/evidence/tests-I026-structure-initial.xml": "d150a31bf6244a9d64a1e9f9fb74ae99f099607aa3a385d822090aca3cb0c914",
+    "docs/spec/evidence/tests-I026-account-contract-initial.xml": "f2db9dea508264e51aa8ef711ac35f483479fe4f6bd207fe14ca9ca6754c7c70",
+    "docs/spec/evidence/sany-schema-adapter-I026.zip": "c4eb70754e47b156cf0231d70634fbeb51b3f1cd6d6c082739c42d2210da7edf",
+    "docs/spec/evidence/wiki-schema-I026-2026-10-04.json": "18101f47bd6e0e673c07ca08fe75de0be7cfbfd34d431ddf2c836ac1ba89faa1",
+    "docs/spec/README.md": "76e0acf6eec97b7f05d5cd788554f6b1581a5747d90650c7dd2967b67b54f9b6",
+    "docs/spec/openviking-enterprise-kb-spec.md": "d8bdf64356cf9364e0959024f547b218b737f2eb195afa33b103eff54e6619b4",
+    "docs/spec/openviking-enterprise-kb-implementation.md": "89ee9d02b0f7ced95a7354b6f5840d746b717249dbf58b33ff3352835152efe0",
+    "docs/spec/openviking-enterprise-kb-review.md": "ea9927a98f8651ca820ff660e9bc52dcd59318f657489070e2c989a2069318b8",
+    "docs/spec/openviking-enterprise-kb-test-cases.md": "6030658de05b20fa98c5cc3e94b49c71b759c268e8b7029ec4c225e21f3168b8"
+  }
+}

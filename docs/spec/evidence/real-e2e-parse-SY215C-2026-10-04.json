@@ -1,0 +1,38 @@
+{
+  "evidence_id": "real-e2e-parse-SY215C-2026-10-04",
+  "date": "2026-10-04",
+  "objective": "item-1 PDF parse model routing end-to-end on the real SANY manual",
+  "source_pdf": "SY215C_SY021NCB62788_维修手册_zh.pdf",
+  "source_pages": 1072,
+  "source_toc_entries": 491,
+  "probe_slice": "pages 21-44 (前言/保养标准 chapters), 24 pages, /tmp/sy215c-probe/chapters-1.pdf",
+  "transport": "SSH tunnel 19101->teleocr, 19102->logics, 19103->mineru on 10.147.254.3",
+  "worker_capabilities": {
+    "teleocr": {"port": 19101, "modes": ["auto", "layout", "ocr"], "ready_for_jobs": true, "model_verified": true},
+    "logics": {"port": 19102, "modes": ["auto", "layout"], "ready_for_jobs": true, "model_verified": true},
+    "mineru": {"port": 19103, "modes": ["auto", "layout", "ocr", "text"], "ready_for_jobs": true, "model_verified": true}
+  },
+  "ov_conf_wiring": {
+    "file": "~/.openviking/ov.conf",
+    "section": "parsers.pdf",
+    "model_endpoints": {"teleocr": "http://127.0.0.1:19101", "logics": "http://127.0.0.1:19102", "mineru": "http://127.0.0.1:19103"},
+    "default_model_backend": "mineru",
+    "verified_loaded": true
+  },
+  "real_parse_results": {
+    "mineru": {"status": "OK", "wall_seconds": 55.2, "markdown_headings": 73,
+      "artifacts": {"chapter_md_files": 74, "images": 42, "toc_md": true, "_toc_json": true, "_manifest_json": true}},
+    "teleocr": {"status": "OK", "wall_seconds": 55.1, "note": "model call succeeded; tree assembly requires VikingFS init"},
+    "logics": {"status": "ADAPTATION_GAP", "wall_seconds": 553.2,
+      "error": "Missing or external parser image: imgs/img_in_image_box_328_184_402_240.jpg",
+      "note": "logics markdown references imgs/img_in_image_box_*.jpg not shipped in the artifact assets; validate_document rejects. Tracked as KB-009/011 fix."}
+  },
+  "chapter_tree_structure": {
+    "root_uri": "viking://temp/<scope>/chapters-1/",
+    "files_sample": ["1.6.1_概述.md", "1.5.3_螺栓紧固顺序.md", "1.4_管道接头.md", "液压与电气原理图.md", "toc.md", "_toc.json", "_manifest.json"],
+    "image_dir": "images/ (sibling of chapter .md files, 42 assets)",
+    "matches_requirement": true
+  },
+  "conclusion": "Objective item 1 core path proven on the real manual: model routing to remote Docker workers works, PDF TOC -> per-chapter directory tree with sibling images works, images persisted as sibling assets. logics backend needs image-ref adaptation (KB-009/011).",
+  "not_run": ["full 1072-page all-backend run", "reindex/vector/embedding after write", "namespace-targeted resource write via HTTP API"]
+}
