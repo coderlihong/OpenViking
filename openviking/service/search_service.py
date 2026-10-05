@@ -9,6 +9,7 @@ Provides semantic search operations: search, find.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openviking.server.identity import RequestContext
+from openviking.indexing.publication import query_snapshot
 from openviking.storage.viking_fs import VikingFS
 from openviking.utils.image_search import (
     image_bytes_to_data_uri,
@@ -88,6 +89,7 @@ class SearchService:
             "image_url must be a data:image base64 URI, http(s) URL, or viking:// URI."
         )
 
+    @query_snapshot
     async def search(
         self,
         query: str,
@@ -99,6 +101,8 @@ class SearchService:
         filter: Optional[Dict] = None,
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
+        meta_filters: Optional[List[Dict]] = None,
+        meta_hints: Optional[List[Dict]] = None,
     ) -> Any:
         """Complex search with session context.
 
@@ -117,6 +121,11 @@ class SearchService:
         resolved_image_url = await self._resolve_image_url(image_url, ctx)
         _ensure_non_empty_query(query, resolved_image_url)
         viking_fs = self._ensure_initialized()
+        metadata_trace = None
+        if meta_filters or meta_hints:
+            from openviking.retrieve.metadata_query import resolve_metadata
+            metadata_filter, metadata_trace = await resolve_metadata(viking_fs, ctx, target_uri, meta_filters or [], meta_hints or [])
+            filter = {"op": "and", "conds": [filter, metadata_filter]} if filter else metadata_filter
 
         session_info = None
         # Intent off: session_info is unused by VikingFS — skip the archive/message scan.
@@ -134,8 +143,12 @@ class SearchService:
             level=level,
             image_url=resolved_image_url,
         )
+        if metadata_trace is not None:
+            from openviking.retrieve.metadata_query import MetadataResult
+            return MetadataResult(result, metadata_trace)
         return result
 
+    @query_snapshot
     async def find(
         self,
         query: str,
@@ -146,6 +159,8 @@ class SearchService:
         filter: Optional[Dict] = None,
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
+        meta_filters: Optional[List[Dict]] = None,
+        meta_hints: Optional[List[Dict]] = None,
     ) -> Any:
         """Semantic search without session context.
 
@@ -161,8 +176,13 @@ class SearchService:
             FindResult
         """
         resolved_image_url = await self._resolve_image_url(image_url, ctx)
-        _ensure_non_empty_query(query, resolved_image_url, filter)
+        _ensure_non_empty_query(query, resolved_image_url, filter or meta_filters)
         viking_fs = self._ensure_initialized()
+        metadata_trace = None
+        if meta_filters or meta_hints:
+            from openviking.retrieve.metadata_query import resolve_metadata
+            metadata_filter, metadata_trace = await resolve_metadata(viking_fs, ctx, target_uri, meta_filters or [], meta_hints or [])
+            filter = {"op": "and", "conds": [filter, metadata_filter]} if filter else metadata_filter
         result = await viking_fs.find(
             query=query,
             ctx=ctx,
@@ -173,4 +193,7 @@ class SearchService:
             level=level,
             image_url=resolved_image_url,
         )
+        if metadata_trace is not None:
+            from openviking.retrieve.metadata_query import MetadataResult
+            return MetadataResult(result, metadata_trace)
         return result

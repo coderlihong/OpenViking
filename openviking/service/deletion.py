@@ -28,6 +28,8 @@ logger = get_logger(__name__)
 
 _CANCEL_WAIT_SECONDS = 10 * 60
 _SHARED_UPLOAD_ROOT = "viking://upload"
+_GC_GRACE_SECONDS = 3600
+_GC_RETENTION_SECONDS = 0
 _ACTIVE_TASK_STATUSES = (
     TaskStatus.PENDING,
     TaskStatus.RUNNING,
@@ -77,6 +79,8 @@ class DeletionService:
         self._oauth_store = oauth_store
         self._usage_audit_runtime = usage_audit_runtime
         self._request_lock = asyncio.Lock()
+        self._gc_grace_seconds = _GC_GRACE_SECONDS
+        self._gc_retention_seconds = _GC_RETENTION_SECONDS
 
     async def initialize(self) -> None:
         """Bind the queue consumer and reconcile persisted deletion fences."""
@@ -265,6 +269,11 @@ class DeletionService:
         )
         await tracker.start(task_id, **owner)
         try:
+            # Tombstone the deleted scope first so every recall and read-back
+            # refuses the content before any physical cleanup runs.
+            await run_to_completion(
+                lambda: self._tombstone_scope(account_id, user_id, ctx=ctx)
+            )
             # Settle each started operation before propagating cancellation;
             # the durable message can then resume cleanup after restart.
             scheduler = self._service.watch_scheduler
@@ -304,6 +313,10 @@ class DeletionService:
                     )
                 )
 
+            await run_to_completion(
+                lambda: self._collect_garbage(account_id, ctx=ctx)
+            )
+
             deleted = await run_to_completion(
                 lambda: self._manager.finish_deletion(account_id, user_id, task_id)
             )
@@ -316,6 +329,61 @@ class DeletionService:
             return error
         await tracker.complete(task_id, {"deleted": True}, **owner)
         return None
+
+    async def _tombstone_scope(
+        self, account_id: str, user_id: str | None, *, ctx: RequestContext
+    ) -> None:
+        """Mark every published source in scope as deleted, immediately."""
+        registry = self._registry()
+        if registry is None:
+            return
+        for uri in registry.sources(account_id):
+            if user_id is None or self._uri_belongs_to_user(uri, user_id, ctx=ctx):
+                registry.tombstone(account_id, uri)
+
+    async def _collect_garbage(self, account_id: str, *, ctx: RequestContext) -> None:
+        """Release blobs whose references and retention windows are satisfied."""
+        registry = self._registry()
+        if registry is None:
+            return
+        agfs = self._service.viking_fs._async_agfs
+
+        async def release(owner: str, sha: str) -> bool:
+            try:
+                await agfs.rm(self._blob_path(owner, sha))
+            except Exception as exc:
+                if is_not_found_error(exc):
+                    return True
+                raise
+            return True
+
+        registry.plan_gc(account_id, grace_seconds=self._gc_grace_seconds)
+        outcomes = await run_to_completion(
+            lambda: registry.reclaim(
+                account_id,
+                retention_seconds=self._gc_retention_seconds,
+                delete=release,
+            )
+        )
+        released = sum(1 for item in outcomes if item["released"])
+        if outcomes:
+            logger.info(
+                "GC for %s released %d/%d blobs", account_id, released, len(outcomes)
+            )
+
+    def _registry(self) -> Any:
+        from openviking.indexing.publication import configured_store
+
+        return configured_store()
+
+    @staticmethod
+    def _blob_path(account_id: str, sha: str) -> str:
+        return f"/local/{account_id}/_system/index_blobs/{sha}.bin"
+
+    @staticmethod
+    def _uri_belongs_to_user(uri: str, user_id: str, *, ctx: RequestContext) -> bool:
+        parts = [part for part in uri[len("viking://") :].strip("/").split("/") if part]
+        return len(parts) >= 2 and parts[0] == "user" and parts[1] == user_id
 
     async def _delete_account_files(self, account_id: str) -> None:
         agfs = self._service.viking_fs._async_agfs

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openviking.core.context import ContextLevel
 from openviking.core.namespace import context_type_for_uri
+from openviking.indexing.batch import text_publication_batch
 from openviking.parse.image_rewrite import rewrite_image_uris
 from openviking.parse.mode import ParseMode, normalize_parse_mode
 from openviking.parse.tree_builder import TreeBuilder
@@ -28,7 +29,10 @@ from openviking.server.identity import RequestContext
 from openviking.storage.acl import AclAction, CreatorAclGrant
 from openviking.storage.errors import LockAcquisitionError
 from openviking.storage.expr import And, Eq, PathScope
-from openviking.storage.internal_names import STORAGE_INTERNAL_ENTRY_NAMES
+from openviking.storage.internal_names import (
+    CHAPTER_METADATA_FILENAMES,
+    STORAGE_INTERNAL_ENTRY_NAMES,
+)
 from openviking.storage.queuefs.semantic_processor import SemanticProcessor
 from openviking.storage.viking_fs import LS_ALL_NODES, get_viking_fs
 from openviking.storage.vikingdb_manager import VikingDBManager
@@ -272,6 +276,24 @@ class ResourceProcessor:
                     )
                 result["source_path"] = parse_result.source_path or path
                 result["meta"] = parse_result.meta
+                if parse_result.meta.get("chapter_layout"):
+                    from openviking.service.task_tracker import get_task_tracker
+                    from openviking.service.task_work_index import get_task_context
+
+                    progress = {
+                        key: parse_result.meta[key]
+                        for key in ("info", "alignment_status", "structure_source")
+                    }
+                    result.update(progress)
+                    task_context = get_task_context()
+                    if task_context is not None:
+                        await get_task_tracker().update_stage(
+                            task_context.task_id,
+                            "persisting",
+                            task_context.account_id,
+                            task_context.user_id,
+                            meta=progress,
+                        )
 
                 # Only abort when no temp content was produced at all.
                 # For directory imports partial success (some files failed) is
@@ -754,6 +776,7 @@ class ResourceProcessor:
             if ids:
                 await self.vikingdb.delete(ids, ctx=ctx)
 
+    @text_publication_batch
     async def _vectorize_resource_files(
         self,
         root_uri: str,
@@ -775,7 +798,7 @@ class ResourceProcessor:
             if not entry_uri or entry.get("isDir"):
                 continue
             name = entry.get("name") or entry_uri.rsplit("/", 1)[-1]
-            if str(name).startswith("."):
+            if str(name).startswith(".") or name in CHAPTER_METADATA_FILENAMES:
                 continue
             parent = VikingURI(entry_uri).parent
             if parent is None:

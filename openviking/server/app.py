@@ -34,6 +34,10 @@ from openviking.server.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from openviking.server.routers import (
     acl_router,
     admin_router,
+    wiki_router,
+    namespaces_router,
+    kb_jobs_router,
+    write_recovery_router,
     agent_evolution_router,
     bot_router,
     compile_router,
@@ -390,7 +394,15 @@ def create_app(
         async with mcp_lifespan():
             if service is not None:
                 await _initialize_runtime_state(app, service, config)
-            yield
+            from openviking.service.kb_job_runtime import (
+                start_document_job_worker, stop_document_job_worker,
+            )
+
+            kb_job_task = start_document_job_worker(app, service, config)
+            try:
+                yield
+            finally:
+                await stop_document_job_worker(kb_job_task)
 
         # Cleanup
         from openviking.metrics.global_api import shutdown_metrics_async
@@ -645,6 +657,10 @@ def create_app(
     app.include_router(system_router)
     app.include_router(acl_router)
     app.include_router(admin_router)
+    app.include_router(wiki_router)
+    app.include_router(namespaces_router)
+    app.include_router(kb_jobs_router)
+    app.include_router(write_recovery_router)
     app.include_router(agent_evolution_router)
     app.include_router(compile_router)
     app.include_router(resources_router)

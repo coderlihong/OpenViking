@@ -158,6 +158,13 @@ class PDFConfig(ParserConfig):
     mineru_timeout: float = 300.0  # Request timeout in seconds (5 minutes)
     mineru_bodys: Optional[dict] = None  # Additional API multipart form fields
 
+    # Versioned Docker artifact protocol; separate from the legacy MinerU API.
+    model_endpoints: Optional[Dict[str, str]] = None
+    model_api_key: str = ""
+    default_model_backend: str = "mineru"
+    model_timeout: float = 7200.0
+    max_model_artifact_bytes: int = 10 * 1024**3
+
     # Heading detection configuration
     heading_detection: str = "auto"  # "bookmarks" | "font" | "auto" | "none"
     font_heading_min_delta: float = 1.5  # Minimum font size delta from body text (pt)
@@ -177,14 +184,29 @@ class PDFConfig(ParserConfig):
         super().validate()
 
         # Validate PDF-specific fields
-        if self.strategy not in ("local", "mineru", "auto"):
+        if self.strategy not in ("local", "mineru", "auto", "teleocr", "logics"):
             raise ValueError(
                 f"Invalid strategy '{self.strategy}'. Must be 'local', 'mineru', or 'auto'"
             )
 
-        if self.strategy == "mineru":
-            if not self.mineru_endpoint:
-                raise ValueError("mineru_endpoint is required when strategy='mineru'")
+        from urllib.parse import urlsplit
+
+        endpoints = self.model_endpoints or {}
+        for name, endpoint in endpoints.items():
+            if (
+                name not in {"mineru", "teleocr", "logics"}
+                or urlsplit(endpoint).scheme not in {"http", "https"}
+                or not urlsplit(endpoint).hostname
+            ):
+                raise ValueError("Invalid PDF model endpoint")
+        if endpoints and self.default_model_backend not in endpoints:
+            raise ValueError("default_model_backend must have a configured model endpoint")
+        if self.strategy in {"teleocr", "logics"} and self.strategy not in endpoints:
+            raise ValueError(f"model endpoint required for {self.strategy}")
+        if self.strategy == "mineru" and not self.mineru_endpoint and "mineru" not in endpoints:
+            raise ValueError("mineru_endpoint or model_endpoints.mineru is required")
+        if self.model_timeout <= 0 or self.max_model_artifact_bytes <= 0:
+            raise ValueError("PDF model timeout and artifact limit must be positive")
 
         if self.mineru_timeout <= 0:
             raise ValueError("mineru_timeout must be positive")

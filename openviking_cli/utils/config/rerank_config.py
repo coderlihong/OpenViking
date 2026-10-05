@@ -8,6 +8,11 @@ from pydantic import BaseModel, Field, model_validator
 class RerankConfig(BaseModel):
     """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, and LiteLLM providers."""
 
+    enabled: bool = Field(
+        default=True,
+        description="Master switch for rerank. When False the config is kept but retrieval skips reranking entirely.",
+    )
+
     provider: Optional[str] = Field(
         default=None,
         description="Rerank provider: 'vikingdb', 'cohere', 'openai', or 'litellm'. Auto-detected from config if omitted.",
@@ -26,7 +31,14 @@ class RerankConfig(BaseModel):
     api_key: Optional[str] = Field(
         default=None, description="API key (Cohere Bearer token or OpenAI-compatible providers)"
     )
-    api_base: Optional[str] = Field(default=None, description="Custom endpoint URL")
+    api_base: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base URL of the OpenAI-compatible rerank API, conventionally ending in "
+            "'/v1' (e.g. http://host:8029/v1). The '/rerank' operation path is appended "
+            "automatically; pass a full path only for non-standard endpoints."
+        ),
+    )
     model: Optional[str] = Field(
         default=None, description="Model name for OpenAI-compatible or LiteLLM providers"
     )
@@ -97,7 +109,9 @@ class RerankConfig(BaseModel):
         return self
 
     def is_available(self) -> bool:
-        """Check if rerank is configured."""
+        """Check if rerank is configured and enabled."""
+        if not self.enabled:
+            return False
         p = self._effective_provider()
         if p == "cohere":
             return self.api_key is not None

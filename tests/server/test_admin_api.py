@@ -30,6 +30,7 @@ from openviking.server.user_config import (
     read_user_config,
     user_config_backup_uri,
 )
+from openviking.session.memory.account_templates import EDITABLE_MEMORY_TEMPLATE_FIELDS
 from openviking.service.core import OpenVikingService
 from openviking.service.deletion import setup_deletion
 from openviking.service.task_store import (

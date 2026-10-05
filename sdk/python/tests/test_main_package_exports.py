@@ -10,16 +10,30 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-def _purge_openviking_modules() -> None:
-    for name in list(sys.modules):
-        if name == "openviking" or name.startswith("openviking."):
-            sys.modules.pop(name, None)
-        if name == "openviking_sdk" or name.startswith("openviking_sdk."):
-            sys.modules.pop(name, None)
+def _isolated_import_test(test):
+    """Import checks need a fresh interpreter without mutating the suite modules."""
+    import functools
+    import inspect
+    import subprocess
+    import textwrap
+
+    @functools.wraps(test)
+    def run():
+        source = textwrap.dedent(inspect.getsource(test))
+        source = source[source.index("def "):]
+        setup = ("import sys\nfrom pathlib import Path\n"
+                 f"SDK_ROOT = Path({str(SDK_ROOT)!r})\n"
+                 f"REPO_ROOT = Path({str(REPO_ROOT)!r})\n"
+                 "sys.path.insert(0, str(REPO_ROOT))\n"
+                 "sys.path.insert(0, str(SDK_ROOT))\n")
+        result = subprocess.run([sys.executable, "-c", setup + source + f"\n{test.__name__}()"],
+                                capture_output=True, text=True, cwd=REPO_ROOT)
+        assert result.returncode == 0, result.stdout + result.stderr
+    return run
 
 
+@_isolated_import_test
 def test_openviking_top_level_exports_http_clients():
-    _purge_openviking_modules()
     import openviking
     from openviking_cli.client.http import AsyncHTTPClient as LegacyAsyncHTTPClient
     from openviking_cli.client.sync_http import SyncHTTPClient as LegacySyncHTTPClient
@@ -31,8 +45,8 @@ def test_openviking_top_level_exports_http_clients():
     assert not hasattr(openviking, "OpenViking")
 
 
+@_isolated_import_test
 def test_openviking_client_module_exports_http_clients():
-    _purge_openviking_modules()
     import os
 
     from openviking_cli.client.http import AsyncHTTPClient as LegacyAsyncHTTPClient
@@ -45,8 +59,8 @@ def test_openviking_client_module_exports_http_clients():
     assert client_module.SyncHTTPClient is LegacySyncHTTPClient
 
 
+@_isolated_import_test
 def test_openviking_client_module_can_fallback_to_repo_local_sdk():
-    _purge_openviking_modules()
     original_sys_path = list(sys.path)
     try:
         sys.path[:] = [p for p in sys.path if p != str(SDK_ROOT)]
@@ -59,8 +73,8 @@ def test_openviking_client_module_can_fallback_to_repo_local_sdk():
         sys.path[:] = original_sys_path
 
 
+@_isolated_import_test
 def test_openviking_client_module_does_not_import_service_stack():
-    _purge_openviking_modules()
 
     import openviking.client as client_module
 
@@ -68,8 +82,8 @@ def test_openviking_client_module_does_not_import_service_stack():
     assert client_module.AsyncHTTPClient.__module__ == "openviking_cli.client._http_compat"
 
 
+@_isolated_import_test
 def test_openviking_http_client_preserves_legacy_exception_types():
-    _purge_openviking_modules()
     import openviking
     from openviking_cli.exceptions import ConflictError
 

@@ -63,8 +63,8 @@ async def test_watch_task_control_files_are_root_only(bare_viking_fs, root_ctx, 
 async def test_hidden_listing_filters_watch_task_control_files_for_non_root(
     bare_viking_fs, root_ctx, user_ctx
 ):
-    async def ls_entries(path, ctx=None):
-        return [
+    async def ls_entries(path, ctx=None, *, offset=0, limit=None, **kwargs):
+        entries = [
             {
                 "name": ".watch_tasks.json",
                 "isDir": False,
@@ -90,6 +90,8 @@ async def test_hidden_listing_filters_watch_task_control_files_for_non_root(
                 "modTime": "2026-01-01T00:00:00+00:00",
             },
         ]
+
+        return entries[offset:] if limit is None else entries[offset:offset + limit]
 
     bare_viking_fs._uri_to_path = lambda uri, ctx=None: "/fake/resources"
     bare_viking_fs._ctx_or_default = lambda ctx=None: ctx

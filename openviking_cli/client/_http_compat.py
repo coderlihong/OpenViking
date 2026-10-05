@@ -140,6 +140,75 @@ class AsyncHTTPClient(import_openviking_sdk().AsyncHTTPClient):
     def _raise_exception(self, error: Dict[str, Any]) -> None:
         _raise_legacy_exception(error)
 
+    @staticmethod
+    def _legacy_search_options(
+        options: Dict[str, Any] | None, fields: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        merged = dict(options or {})
+        duplicates = set(merged).intersection(fields)
+        if duplicates:
+            raise ValueError(f"Search options specified twice: {', '.join(sorted(duplicates))}")
+        merged.update(fields)
+        merged.setdefault("telemetry", False)
+        return merged
+
+    async def find(
+        self,
+        query: str = "",
+        target_uri: str | list[str] = "",
+        limit: int = 10,
+        image: Any = None,
+        options: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Accept the legacy keyword fields through the SDK's checked options."""
+        return await super().find(
+            query,
+            target_uri=target_uri,
+            limit=limit,
+            image=image,
+            options=self._legacy_search_options(options, kwargs),
+        )
+
+    async def search(
+        self,
+        query: str = "",
+        session_id: str | None = None,
+        target_uri: str | list[str] = "",
+        limit: int = 10,
+        image: Any = None,
+        options: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        return await super().search(
+            query,
+            session_id=session_id,
+            target_uri=target_uri,
+            limit=limit,
+            image=image,
+            options=self._legacy_search_options(options, kwargs),
+        )
+
+    async def add_resource(
+        self,
+        path: str,
+        to: Any = None,
+        parent: Any = None,
+        wait: bool = False,
+        timeout: Any = None,
+        options: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Accept legacy keyword fields (notably ``args``) through the SDK's options."""
+        return await super().add_resource(
+            path,
+            to=to,
+            parent=parent,
+            wait=wait,
+            timeout=timeout,
+            options=self._legacy_search_options(options, kwargs),
+        )
+
     async def update_session_config(
         self,
         session_id: str,
@@ -202,6 +271,43 @@ class SyncHTTPClient(import_openviking_sdk().SyncHTTPClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._async_client = AsyncHTTPClient(*args, **kwargs)
+
+    def find(
+        self,
+        query: str = "",
+        target_uri: str | list[str] = "",
+        limit: int = 10,
+        image: Any = None,
+        options: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        return run_async(
+            self._async_client.find(
+                query, target_uri=target_uri, limit=limit, image=image, options=options, **kwargs
+            )
+        )
+
+    def search(
+        self,
+        query: str = "",
+        session_id: str | None = None,
+        target_uri: str | list[str] = "",
+        limit: int = 10,
+        image: Any = None,
+        options: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        return run_async(
+            self._async_client.search(
+                query,
+                session_id=session_id,
+                target_uri=target_uri,
+                limit=limit,
+                image=image,
+                options=options,
+                **kwargs,
+            )
+        )
 
     def update_session_config(
         self,

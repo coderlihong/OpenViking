@@ -45,6 +45,9 @@ class EmbeddingModelConfig(BaseModel):
     dimension: Optional[int] = Field(default=None, description="Embedding dimension")
     batch_size: int = Field(default=32, description="Batch size for embedding generation")
     input: str = Field(default="multimodal", description="Input type: 'text' or 'multimodal'")
+    wire_format: Literal["input", "messages"] = Field(
+        default="input", description="OpenAI-compatible embedding wire protocol; messages for vLLM joint inputs"
+    )
     query_param: Optional[str] = Field(
         default=None,
         description=(
@@ -619,6 +622,48 @@ class EmbeddingCircuitBreakerConfig(BaseModel):
         return self
 
 
+class ResourceChunkingConfig(BaseModel):
+    enabled: bool = False
+    tokenizer_path: str = ""
+    publication_path: str = ""
+    publication_authority_socket: str = ""
+    publication_authority_token_file: str = ""
+    publish_content: bool = False
+    lexical_enabled: bool = False
+    require_joint_image_embedding: bool = True
+    tokenizer_sha256: str = ""
+    child_target_tokens: int = Field(default=512, ge=64)
+    child_max_tokens: int = Field(default=768, ge=64)
+    parent_max_tokens: int = Field(default=2048, ge=64, le=4096)
+    overlap_tokens: int = Field(default=64, ge=0)
+    special_token_reserve: int = Field(default=32, ge=0)
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_budgets(self):
+        if not self.child_target_tokens <= self.child_max_tokens <= self.parent_max_tokens:
+            raise ValueError("chunk budgets require target <= child max <= parent max")
+        if self.overlap_tokens + self.special_token_reserve >= self.child_target_tokens:
+            raise ValueError("chunk overlap/reserve must leave a positive source budget")
+        if bool(self.publication_authority_socket) != bool(self.publication_authority_token_file):
+            raise ValueError("authority socket and token file must be configured together")
+        if self.publication_authority_socket and self.publication_path:
+            raise ValueError("authority workers must not configure a local publication_path")
+        if self.publication_authority_socket and not self.enabled:
+            raise ValueError("publication authority requires enabled resource chunking")
+        if self.lexical_enabled and not self.publish_content:
+            raise ValueError("lexical_enabled requires verified content publication")
+        if self.publish_content and not (self.publication_path or self.publication_authority_socket):
+            raise ValueError("publish_content requires publication_path")
+        if self.publication_path and not self.enabled:
+            raise ValueError("publication_path requires enabled resource chunking")
+        if self.enabled and (not self.tokenizer_path or len(self.tokenizer_sha256) != 64):
+            raise ValueError(
+                "enabled resource chunking requires the exact model tokenizer path and SHA256"
+            )
+        return self
+
+
 class EmbeddingConfig(BaseModel):
     """
     Embedding configuration, supports OpenAI, VolcEngine, VikingDB, Jina, Gemini, Voyage, or LiteLLM APIs.
@@ -631,6 +676,7 @@ class EmbeddingConfig(BaseModel):
     Environment variables are mapped to these configurations.
     """
 
+    chunking: ResourceChunkingConfig = Field(default_factory=ResourceChunkingConfig)
     dense: Optional[EmbeddingModelConfig] = Field(default=None)
     sparse: Optional[EmbeddingModelConfig] = Field(default=None)
     hybrid: Optional[EmbeddingModelConfig] = Field(default=None)
@@ -695,6 +741,13 @@ class EmbeddingConfig(BaseModel):
             raise ValueError(
                 "At least one embedding configuration (dense, sparse, or hybrid) is required"
             )
+        if self.chunking.enabled:
+            if self.text_source != TEXT_SOURCE_CONTENT_ONLY:
+                raise ValueError("resource chunking requires text_source=content_only")
+            if self.chunking.child_max_tokens > self.max_input_tokens:
+                raise ValueError("chunk child max exceeds embedding max_input_tokens")
+            if not (self.hybrid or self.dense):
+                raise ValueError("resource chunking requires a dense or hybrid embedding model")
         if self.text_source not in TEXT_SOURCES:
             raise ValueError(
                 "embedding.text_source must be one of: summary_first, summary_only, content_only"
@@ -1006,6 +1059,10 @@ class EmbeddingConfig(BaseModel):
                 "google-genai is not installed. Install it with: pip install openviking[gemini]"
             )
         params = param_builder(config)
+        if config.wire_format != "input":
+            if embedder_class is not OpenAIDenseEmbedder:
+                raise ValueError("Messages embedding wire format requires an OpenAI-compatible dense provider")
+            params["wire_format"] = config.wire_format
         return embedder_class(**params)
 
     def get_embedder(self):

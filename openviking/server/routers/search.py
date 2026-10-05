@@ -130,6 +130,8 @@ class FindRequest(BaseModel):
     node_limit: Optional[int] = None
     score_threshold: Optional[float] = None
     filter: Optional[Dict[str, Any]] = None
+    meta_filters: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=16)
+    meta_hints: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=16)
     include_provenance: bool = False
     tags: Optional[List[str]] = None
     since: Optional[str] = None
@@ -191,6 +193,8 @@ class SearchRequest(BaseModel):
     node_limit: Optional[int] = None
     score_threshold: Optional[float] = None
     filter: Optional[Dict[str, Any]] = None
+    meta_filters: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=16)
+    meta_hints: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=16)
     include_provenance: bool = False
     tags: Optional[List[str]] = None
 
@@ -351,6 +355,7 @@ async def find(
             limit=actual_limit,
             score_threshold=request.score_threshold,
             filter=effective_filter,
+            **({"meta_filters": request.meta_filters, "meta_hints": request.meta_hints} if request.meta_filters or request.meta_hints else {}),
             level=_resolve_levels(request.level) or None,
             image_url=resolved_image_url,
         ),
@@ -441,6 +446,8 @@ async def search(
         request.tags,
     )
     if request.mode == "context":
+        if request.meta_filters or request.meta_hints:
+            raise InvalidArgumentError("Business metadata constraints currently require list mode")
         return await _search_context(
             service=service,
             ctx=_ctx,
@@ -465,6 +472,7 @@ async def search(
             limit=actual_limit,
             score_threshold=request.score_threshold,
             filter=effective_filter,
+            **({"meta_filters": request.meta_filters, "meta_hints": request.meta_hints} if request.meta_filters or request.meta_hints else {}),
             level=_resolve_levels(request.level) or None,
             image_url=resolved_image_url,
         )

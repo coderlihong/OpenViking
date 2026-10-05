@@ -193,6 +193,15 @@ class OpenVikingConfig(BaseModel):
         ),
     )
 
+    wiki: Optional[VLMConfig] = Field(
+        default=None,
+        description=(
+            "Optional model configuration for Wiki entity extraction. Point this at a "
+            "remote chat/completions endpoint to keep Wiki extraction off the local VLM "
+            "(which serves image summaries). Falls back to vlm when unset or empty."
+        ),
+    )
+
     rerank: RerankConfig = Field(default_factory=RerankConfig, description="Rerank configuration")
 
     retrieval: RetrievalConfig = Field(
@@ -579,6 +588,12 @@ class OpenVikingConfig(BaseModel):
         """Return the model config used for retrieval intent analysis and query planning."""
         if self.query_planner is not None and self.query_planner._has_any_config():
             return self.query_planner
+        return self.vlm
+
+    def get_wiki_model(self) -> VLMConfig:
+        """Return the model config used for Wiki entity extraction."""
+        if self.wiki is not None and self.wiki._has_any_config():
+            return self.wiki
         return self.vlm
 
 

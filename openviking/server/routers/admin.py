@@ -22,6 +22,7 @@ from openviking.server.auth import (
     get_request_context,
     require_auth_root,
     require_auth_root_or_admin,
+    require_role,
 )
 from openviking.server.config import ServerConfig, UserConfig
 from openviking.server.dependencies import get_service
@@ -64,6 +65,53 @@ from openviking_cli.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+class RuntimeModelConfigPatch(BaseModel):
+    """Partial update of the ov.conf model sections."""
+
+    model_config = {"extra": "forbid"}
+
+    vlm: Optional[dict] = None
+    embedding: Optional[dict] = None
+    rerank: Optional[dict] = None
+    query_planner: Optional[dict] = None
+
+
+@router.get("/model-config")
+async def get_runtime_model_config(
+    _ctx: RequestContext = require_role(Role.ROOT),
+):
+    """Return the live model sections (vlm/embedding/rerank/query_planner)."""
+    from openviking.server.runtime_config import read_runtime_model_config
+
+    return Response(status="ok", result=read_runtime_model_config())
+
+
+@router.put("/model-config")
+async def put_runtime_model_config(
+    body: RuntimeModelConfigPatch,
+    _ctx: RequestContext = require_role(Role.ROOT),
+):
+    """Validate, persist to ov.conf, and hot-reload the model sections.
+
+    ``vlm``/``rerank``/``query_planner`` take effect immediately; the running
+    embedder pins the vector collection dimension, so an ``embedding`` change
+    is persisted but needs a server restart.
+    """
+    from openviking.server.runtime_config import (
+        RuntimeConfigError,
+        apply_runtime_model_config,
+    )
+
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    try:
+        result = apply_runtime_model_config(patch)
+    except RuntimeConfigError as exc:
+        raise InvalidArgumentError(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise FailedPreconditionError(str(exc)) from exc
+    return Response(status="ok", result=result)
 
 
 class CreateAccountRequest(BaseModel):

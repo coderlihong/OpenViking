@@ -21,18 +21,27 @@ from openviking.core.namespace import (
     classify_uri,
     content_owner_context_for_uri,
     context_type_for_uri,
+    is_hidden_by_actor_peer_view,
     is_session_uri,
+    may_include_hidden_actor_peers,
     owner_fields_for_uri,
     owner_space_for_uri,
+    resolve_uri,
+    uri_parts,
 )
+from openviking.indexing.batch import text_publication_batch
+from openviking.indexing.content import draft_source_job
+from openviking.indexing.publication import configured_store
 from openviking.server.dependencies import get_service
-from openviking.server.identity import RequestContext
+from openviking.server.identity import RequestContext, Role
 from openviking.service.task_tracker import get_task_tracker
 from openviking.service.task_work_index import bind_task_context
 from openviking.session.memory.utils.memory_file_utils import MemoryFileUtils
 from openviking.storage.abstract_overview import body_for_preview, embedding_text_for_body
 from openviking.storage.expr import And, Eq, Or, PathScope
+from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
 from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConverter
+from openviking.storage.queuefs.process_result import ProcessOutcome
 from openviking.storage.queuefs.semantic_msg import SemanticMsg
 from openviking.storage.queuefs.semantic_processor import SemanticProcessor
 from openviking.storage.viking_fs import get_viking_fs
@@ -46,7 +55,13 @@ from openviking.utils.embedding_utils import (
 )
 from openviking.utils.ingest_options import IngestOptions
 from openviking.utils.skill_processor import SkillProcessor
-from openviking_cli.exceptions import InvalidArgumentError, NotFoundError, OpenVikingError
+from openviking.utils.tags import merge_search_tags
+from openviking_cli.exceptions import (
+    InvalidArgumentError,
+    NotFoundError,
+    OpenVikingError,
+    PermissionDeniedError,
+)
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils import VikingURI, get_logger
 from openviking_cli.utils.config import get_openviking_config
@@ -58,6 +73,15 @@ REINDEX_TASK_TYPE = "admin_reindex"
 PRUNE_ORPHAN_CANDIDATE_LIMIT = 100000
 PRUNE_OUTPUT_FIELDS = ["id", "uri", "level", "context_type", "account_id", "owner_user_id"]
 _MAX_FILE_VECTORIZATION_CONCURRENCY = 64
+
+# The two enterprise build modes share one IndexPlan with D1 ingestion. They are
+# the only modes that may take a dry_run preview (``prune_orphans`` keeps its own
+# legacy preview). ``vectors_only`` never rewrites L0/L1; ``semantic_and_vectors``
+# regenerates image summaries and directory L0/L1 before the vector phase.
+ENTERPRISE_REINDEX_MODES = frozenset({"vectors_only", "semantic_and_vectors"})
+DRY_RUN_MODES = ENTERPRISE_REINDEX_MODES | {"prune_orphans"}
+# Business code returned when a joint image record has no current valid summary.
+SEMANTICS_REQUIRED_CODE = "SEMANTICS_REQUIRED"
 
 
 # Trailing markers VikingFS appends when a directory has no generated .abstract.md/.overview.md
@@ -102,6 +126,10 @@ class _ReindexCounters:
     would_delete_records: int = 0
     unsupported_records: int = 0
     failed_records: int = 0
+    # A joint image record with no current valid summary is not a generic
+    # failure: the caller must choose semantic mode. Counted separately so the
+    # result can surface the SEMANTICS_REQUIRED business code.
+    semantics_required_records: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def merge_from(self, other: "_ReindexCounters") -> None:
@@ -111,7 +139,53 @@ class _ReindexCounters:
         self.would_delete_records += other.would_delete_records
         self.unsupported_records += other.unsupported_records
         self.failed_records += other.failed_records
+        self.semantics_required_records += other.semantics_required_records
         self.warnings.extend(other.warnings)
+
+
+@dataclass(frozen=True)
+class _EffectiveModeConfig:
+    """Resolved behavior of the two enterprise build modes.
+
+    The mode is the only switch that decides whether directory L0/L1 and image
+    summaries are regenerated. Neither mode may silently degrade a joint image
+    record to a text-only summary vector.
+    """
+
+    mode: str
+    writes_vectors: bool
+    writes_semantics: bool
+    write_directory_levels: bool
+    regenerate_image_summaries: bool
+    # Both enterprise modes require a current valid image summary for a joint
+    # image record; a missing one is SEMANTICS_REQUIRED, never a text fallback.
+    requires_image_semantics: bool = True
+
+
+@dataclass
+class _ReindexPlanPreview:
+    """Zero-write preview produced by a dry_run enterprise reindex."""
+
+    uri: str
+    mode: str
+    recursive: bool
+    planned_chunks: int = 0
+    planned_semantic_levels: int = 0
+    ancestor_directories: list[str] = field(default_factory=list)
+    unsupported_records: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "uri": self.uri,
+            "mode": self.mode,
+            "recursive": self.recursive,
+            "planned_chunks": self.planned_chunks,
+            "planned_semantic_levels": self.planned_semantic_levels,
+            "ancestor_directories": list(self.ancestor_directories),
+            "unsupported_records": self.unsupported_records,
+            "warnings": list(self.warnings),
+        }
 
 
 @dataclass
@@ -174,6 +248,84 @@ class ReindexExecutor:
         """
         return content_owner_context_for_uri(uri, ctx)
 
+    @staticmethod
+    def effective_mode_config(mode: str) -> _EffectiveModeConfig:
+        """Resolve the effective behavior of an enterprise build mode.
+
+        Both modes reuse the shared IndexPlan and rebuild the same vector
+        records. Only ``semantic_and_vectors`` regenerates directory L0/L1 and
+        image summaries. Neither mode may degrade a joint image record to a
+        text-only summary vector, so both require a current valid image summary.
+        """
+        if mode == "vectors_only":
+            return _EffectiveModeConfig(
+                mode=mode,
+                writes_vectors=True,
+                writes_semantics=False,
+                write_directory_levels=False,
+                regenerate_image_summaries=False,
+            )
+        if mode == "semantic_and_vectors":
+            return _EffectiveModeConfig(
+                mode=mode,
+                writes_vectors=True,
+                writes_semantics=True,
+                write_directory_levels=True,
+                regenerate_image_summaries=True,
+            )
+        raise InvalidArgumentError(f"Mode {mode} has no enterprise effective configuration")
+
+    @staticmethod
+    def _authorize_reindex_target(uri: str, ctx: RequestContext) -> None:
+        """Extend reindex authorization to authorized business writers.
+
+        The historical rule only let a ``USER`` reindex their own private user
+        namespace. An authorized enterprise writer/admin may reindex a resource
+        domain it can already write, without disguising itself as ROOT. A
+        ``USER`` still may not reach another tenant's private space, hidden
+        actor-peer views, or another account's root.
+        """
+        role = getattr(ctx.role, "value", ctx.role)
+        if role == Role.ROOT:
+            return
+        try:
+            target = resolve_uri(uri)
+        except Exception as exc:  # NamespaceShapeError / ValueError
+            raise InvalidArgumentError(f"Unsupported reindex URI: {uri}") from exc
+
+        if is_hidden_by_actor_peer_view(uri, ctx) or may_include_hidden_actor_peers(uri, ctx):
+            raise PermissionDeniedError(
+                "Reindex cannot target a hidden actor peer view.",
+                resource=uri,
+            )
+
+        if target.scope == "user":
+            if role == Role.USER and (
+                not target.owner_user_id or target.owner_user_id != ctx.user.user_id
+            ):
+                raise PermissionDeniedError(
+                    "USER can only reindex their own user namespace.",
+                    resource=uri,
+                )
+            return
+
+        # Enterprise resource domains (and other shared scopes) are writable by
+        # an authorized writer/admin. A plain USER is limited to the private
+        # user namespace above and cannot rebuild a shared knowledge domain.
+        if role == Role.USER:
+            raise PermissionDeniedError(
+                "USER can only reindex their own user namespace.",
+                resource=uri,
+            )
+        if role in {Role.ADMIN, "admin"}:
+            return
+        if role == Role.ROOT:
+            return
+        raise PermissionDeniedError(
+            "Reindex requires an authorized writer for the target domain.",
+            resource=uri,
+        )
+
     async def execute(
         self,
         *,
@@ -184,12 +336,17 @@ class ReindexExecutor:
         recursive: bool = True,
         tags: list[str] | None = None,
         tag_mode: str = "replace",
+        index_profile: str | None = None,
         ctx: RequestContext,
     ) -> dict[str, Any]:
         object_type = self._infer_target_type(uri)
         self._validate_mode(object_type, mode)
-        if dry_run and mode != "prune_orphans":
-            raise InvalidArgumentError("dry_run is only supported for prune_orphans reindex mode.")
+        if dry_run and mode not in DRY_RUN_MODES:
+            raise InvalidArgumentError(
+                "dry_run is only supported for prune_orphans and enterprise "
+                "vectors_only/semantic_and_vectors reindex modes."
+            )
+        self._authorize_reindex_target(uri, ctx)
         ingest_options = self._resolve_ingest_options(
             mode=mode,
             tags=tags,
@@ -216,6 +373,7 @@ class ReindexExecutor:
                 dry_run=dry_run,
                 recursive=recursive,
                 ingest_options=ingest_options,
+                index_profile=index_profile,
                 ctx=ctx,
             )
 
@@ -241,6 +399,7 @@ class ReindexExecutor:
                 dry_run=dry_run,
                 recursive=recursive,
                 ingest_options=ingest_options,
+                index_profile=index_profile,
                 ctx=ctx,
             )
         )
@@ -358,9 +517,10 @@ class ReindexExecutor:
         directories: list[str],
         files: list[str],
         run: _ReindexRunContext,
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], dict]:
         counters = run.counters
         ctx = run.ctx
+        image_summaries: dict = {}
         prefix = self._child_prefix(target_root)
         semantic_roots = sorted(
             {
@@ -393,13 +553,15 @@ class ReindexExecutor:
                 f"Skipped {file_uri}: namespace semantic_and_vectors only refreshes resource directories"
             )
         for semantic_root in semantic_roots:
-            await self._run_semantic_processor(
+            semantic_value = await self._run_semantic_processor(
                 uri=semantic_root,
                 context_type="resource",
                 ctx=ctx,
                 lock=run.lock,
             )
-        return filtered_directories, filtered_files
+            if isinstance(semantic_value, dict) and semantic_value.get("image_summaries"):
+                image_summaries.update(semantic_value["image_summaries"])
+        return filtered_directories, filtered_files, image_summaries
 
     @staticmethod
     def _child_prefix(root: str) -> str:
@@ -488,16 +650,34 @@ class ReindexExecutor:
         dry_run: bool = False,
         recursive: bool = True,
         ingest_options: IngestOptions | None = None,
+        index_profile: str | None = None,
         ctx: RequestContext,
     ) -> dict[str, Any]:
         service = get_service()
         if service.viking_fs is None or service.vikingdb_manager is None:
             raise RuntimeError("OpenVikingService not initialized")
-        if mode != "prune_orphans" and not service.vikingdb_manager.has_queue_manager:
+        # An enterprise dry_run returns the plan and estimated counts with ZERO
+        # writes. It never touches the embedding queue, so a missing queue must
+        # not fail the preview.
+        enterprise_dry_run = dry_run and mode in ENTERPRISE_REINDEX_MODES
+        if (
+            not dry_run
+            and mode != "prune_orphans"
+            and not service.vikingdb_manager.has_queue_manager
+        ):
             raise OpenVikingError(
                 "Reindex requires embedding queue",
                 code="FAILED_PRECONDITION",
                 details={"uri": uri},
+            )
+
+        if enterprise_dry_run:
+            return await self._preview_enterprise_reindex(
+                uri=uri,
+                object_type=object_type,
+                mode=mode,
+                recursive=recursive,
+                ctx=ctx,
             )
 
         path = service.viking_fs._uri_to_path(uri, ctx=ctx)
@@ -581,7 +761,7 @@ class ReindexExecutor:
             if telemetry_id:
                 wait_tracker.cleanup(telemetry_id)
 
-        return {
+        result = {
             "status": "completed",
             "uri": uri,
             "object_type": object_type,
@@ -592,9 +772,116 @@ class ReindexExecutor:
             "would_delete_records": counters.would_delete_records,
             "unsupported_records": counters.unsupported_records,
             "failed_records": counters.failed_records,
+            "semantics_required_records": counters.semantics_required_records,
             "duration_ms": int((time.perf_counter() - started_at) * 1000),
             "warnings": counters.warnings,
         }
+        if index_profile is not None:
+            result["index_profile"] = index_profile
+        if counters.semantics_required_records:
+            result["code"] = SEMANTICS_REQUIRED_CODE
+        return result
+
+    async def _preview_enterprise_reindex(
+        self,
+        *,
+        uri: str,
+        object_type: str,
+        mode: str,
+        recursive: bool,
+        ctx: RequestContext,
+    ) -> dict[str, Any]:
+        """Compute an enterprise reindex preview with ZERO writes.
+
+        Reuses the shared IndexPlan for every Markdown/Text file so the preview
+        counts match the real build, without enqueuing any embedding message,
+        rewriting the original source, calling a parser, or re-splitting
+        chapters from ``_toc.json``.
+        """
+        viking_fs = get_viking_fs()
+        config = self.effective_mode_config(mode)
+        preview = _ReindexPlanPreview(uri=uri, mode=mode, recursive=recursive)
+        try:
+            stat = await viking_fs.stat(uri, ctx=ctx, skip_count=True)
+            is_dir = bool(stat.get("isDir", stat.get("is_dir")))
+        except Exception as exc:
+            raise NotFoundError(uri, "resource") from exc
+
+        files: list[str] = []
+        directories: list[str] = []
+        if is_dir:
+            directories.append(uri)
+            if recursive:
+                try:
+                    entries = await self._tree_all(
+                        viking_fs, uri, show_all_hidden=True, ctx=ctx
+                    )
+                except Exception as exc:
+                    raise NotFoundError(uri, "resource") from exc
+                for entry in entries:
+                    entry_uri = entry.get("uri")
+                    if not entry_uri:
+                        continue
+                    if entry.get("isDir"):
+                        directories.append(entry_uri)
+                    elif not self._is_hidden_meta_file(entry_uri):
+                        files.append(entry_uri)
+        elif not self._is_hidden_meta_file(uri):
+            files.append(uri)
+
+        if config.write_directory_levels:
+            preview.planned_semantic_levels = 2 * len(
+                [d for d in dict.fromkeys(directories) if d != "viking://"]
+            )
+
+        for file_uri in dict.fromkeys(files):
+            try:
+                content = await viking_fs.read_file(file_uri, ctx=ctx)
+            except Exception as exc:
+                preview.unsupported_records += 1
+                preview.warnings.append(f"Preview could not read {file_uri}: {exc}")
+                continue
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", errors="replace")
+            content_type = get_resource_content_type(file_uri.rsplit("/", 1)[-1])
+            if content_type == ResourceContentType.IMAGE:
+                # A joint image record without a current valid summary requires
+                # semantic mode; the preview reports it without writing.
+                preview.warnings.append(
+                    f"{SEMANTICS_REQUIRED_CODE}: image {file_uri} needs semantic mode for a "
+                    "current summary"
+                )
+                continue
+            preview.planned_chunks += self._preview_chunk_count(file_uri, content)
+
+        result = {
+            "status": "preview",
+            "dry_run": True,
+            "uri": uri,
+            "object_type": object_type,
+            "mode": mode,
+            "effective_config": {
+                "mode": config.mode,
+                "writes_vectors": config.writes_vectors,
+                "writes_semantics": config.writes_semantics,
+                "write_directory_levels": config.write_directory_levels,
+                "regenerate_image_summaries": config.regenerate_image_summaries,
+            },
+            "duration_ms": 0,
+        }
+        result.update(preview.to_dict())
+        return result
+
+    def _preview_chunk_count(self, file_uri: str, content: str) -> int:
+        """Plan the chunk count without enqueuing or persisting anything."""
+        from openviking.indexing.plan import plan_resource
+
+        embedding = get_openviking_config().embedding
+        chunking = getattr(embedding, "chunking", None)
+        if not (chunking and chunking.enabled and content):
+            return 1
+        plan = plan_resource(content, file_uri, "preview", embedding)
+        return len(plan.chunks)
 
     async def _run_tracked(
         self,
@@ -606,6 +893,7 @@ class ReindexExecutor:
         dry_run: bool = False,
         recursive: bool = True,
         ingest_options: IngestOptions | None = None,
+        index_profile: str | None = None,
         ctx: RequestContext,
     ) -> None:
         tracker = get_task_tracker()
@@ -620,6 +908,7 @@ class ReindexExecutor:
                     dry_run=dry_run,
                     recursive=recursive,
                     ingest_options=ingest_options,
+                    index_profile=index_profile,
                     ctx=ctx,
                 )
             await tracker.complete(
@@ -952,7 +1241,14 @@ class ReindexExecutor:
     ) -> None:
         counters = run.counters
         ctx = run.ctx
-        if mode == "semantic_and_vectors":
+        config = self.effective_mode_config(mode)
+        vector_kwargs = {"uri": uri, "counters": counters, "ctx": ctx}
+        if not recursive:
+            vector_kwargs["recursive"] = False
+        if config.write_directory_levels:
+            # semantic_and_vectors regenerates directory L0/L1 (and image
+            # summaries) before the shared vector phase; vectors_only keeps the
+            # published L0/L1 untouched.
             semantic_kwargs = {
                 "uri": uri,
                 "context_type": "resource",
@@ -961,20 +1257,17 @@ class ReindexExecutor:
             }
             if not recursive:
                 semantic_kwargs["recursive"] = False
-            await self._run_semantic_processor(**semantic_kwargs)
-            vector_kwargs = {"uri": uri, "counters": counters, "ctx": ctx}
+            semantic_value = await self._run_semantic_processor(**semantic_kwargs)
+            if isinstance(semantic_value, dict) and semantic_value.get("image_summaries"):
+                vector_kwargs["image_summaries"] = semantic_value["image_summaries"]
             if not recursive:
-                vector_kwargs["recursive"] = False
-            await self._reindex_resource_vectors(
-                **self._with_ingest_options(
-                    vector_kwargs,
-                    run.ingest_options,
-                )
-            )
-            return
+                # A non-recursive rebuild does not let the semantic processor
+                # walk upward, so refresh the affected ancestors explicitly to
+                # keep their L0/L1 consistent with the changed leaf.
+                await self._refresh_ancestor_semantics(uri=uri, run=run)
         await self._reindex_resource_vectors(
             **self._with_ingest_options(
-                {"uri": uri, "counters": counters, "ctx": ctx},
+                vector_kwargs,
                 run.ingest_options,
             )
         )
@@ -1052,7 +1345,8 @@ class ReindexExecutor:
         ctx: RequestContext,
         lock: dict | None = None,
         recursive: bool = True,
-    ) -> None:
+        propagate_to_parent: bool | None = None,
+    ) -> dict | None:
         processor = SemanticProcessor(
             max_concurrent_llm=get_openviking_config().vlm.max_concurrent,
         )
@@ -1068,9 +1362,97 @@ class ReindexExecutor:
             skip_vectorization=True,
             generation_trigger="reindex",
             use_hierarchical_aggregation=context_type == "memory",
-            propagate_to_parent=recursive,
+            propagate_to_parent=(
+                recursive if propagate_to_parent is None else propagate_to_parent
+            ),
         )
-        await processor.on_dequeue({"data": msg.to_json()}, lock=lock)
+        result = await processor.on_dequeue({"data": msg.to_json()}, lock=lock)
+        if result.outcome is not ProcessOutcome.SUCCESS:
+            # Spec gate (TC-13.x): a requeued message has no synchronous
+            # consumer inside the reindex run — continuing would rebuild
+            # vectors over unregenerated L0/L1.
+            raise OpenVikingError(
+                result.error or f"Semantic generation did not complete: {result.outcome.value}",
+                code="PROCESSING_ERROR",
+                details={"uri": uri},
+            )
+        return result.value
+
+    @staticmethod
+    def _ancestor_directories(uri: str, *, namespace_root: str | None = None) -> list[str]:
+        """Ancestor directories of *uri* that stay inside the same domain.
+
+        A leaf change propagates upward to the directories whose L0/L1 depend on
+        it, but never across the domain boundary (``viking://resources`` for a
+        resource, the user root for a private namespace). ``viking://`` and the
+        bare scope containers are never rebuilt as an ancestor.
+        """
+        parts = uri_parts(uri)
+        if not parts:
+            return []
+        if namespace_root is not None:
+            root_parts = uri_parts(namespace_root)
+            if not root_parts or parts[:len(root_parts)] != root_parts:
+                raise InvalidArgumentError("Ancestor namespace root must contain the target URI")
+            # The registered knowledge root has its own L0/L1. Refresh it, but
+            # never its parent, whose children may belong to another domain.
+            return ["viking://" + "/".join(parts[:depth])
+                    for depth in range(len(parts) - 1, len(root_parts) - 1, -1)]
+        # Determine the domain boundary depth: resources/user/<uid>/... domains
+        # stop at their registered root, not at the account root.
+        boundary: int
+        if parts[0] == "resources":
+            boundary = 1
+        elif parts[0] == "user" and len(parts) >= 2:
+            boundary = 2
+        elif parts[0] == "agent" and len(parts) >= 2:
+            boundary = 2
+        else:
+            boundary = 1
+        ancestors: list[str] = []
+        # Strictly above the domain root: the domain container itself is not a
+        # knowledge document and must never be rebuilt as an ancestor.
+        for depth in range(len(parts) - 1, boundary, -1):
+            ancestors.append("viking://" + "/".join(parts[:depth]))
+        return ancestors
+
+    async def _refresh_ancestor_semantics(
+        self,
+        *,
+        uri: str,
+        run: _ReindexRunContext,
+    ) -> None:
+        """Bottom-up L0/L1 refresh of a target's ancestor directories.
+
+        A leaf change must be reflected in the L0/L1 of the directories that
+        depend on it (TC-9.4 / TC-11.6). Ancestors are refreshed deepest-first
+        and never beyond the target's domain root.
+        """
+        ctx = run.ctx
+        registry = configured_store()
+        namespace_root = None
+        if registry is not None:
+            namespaces = await asyncio.to_thread(registry.namespace_list, ctx.account_id)
+            roots = [row["root_uri"] for row in namespaces
+                     if uri == row["root_uri"] or uri.startswith(row["root_uri"] + "/")]
+            if len(roots) > 1:
+                raise InvalidArgumentError("Target belongs to overlapping registered knowledge roots")
+            namespace_root = roots[0] if roots else None
+        for ancestor in self._ancestor_directories(uri, namespace_root=namespace_root):
+            try:
+                stat = await get_viking_fs().stat(ancestor, ctx=ctx, skip_count=True)
+            except Exception:
+                continue
+            if not stat.get("isDir", stat.get("is_dir")):
+                continue
+            await self._run_semantic_processor(
+                uri=ancestor,
+                context_type="resource",
+                ctx=ctx,
+                lock=run.lock,
+                recursive=False,
+                propagate_to_parent=False,
+            )
 
     async def _reindex_resource_vectors(
         self,
@@ -1080,6 +1462,7 @@ class ReindexExecutor:
         ctx: RequestContext,
         recursive: bool = True,
         ingest_options: IngestOptions | None = None,
+        image_summaries: dict | None = None,
     ) -> None:
         viking_fs = get_viking_fs()
         try:
@@ -1107,7 +1490,7 @@ class ReindexExecutor:
                     files.append(entry_uri)
         else:
             directories = []
-            files = [uri]
+            files = [] if self._is_hidden_meta_file(uri) else [uri]
 
         await self._reindex_resource_vectors_from_entries(
             **self._with_ingest_options(
@@ -1117,11 +1500,14 @@ class ReindexExecutor:
                     "files": files,
                     "counters": counters,
                     "ctx": ctx,
+                    **({"image_summaries": image_summaries} if image_summaries else {}),
                 },
                 ingest_options,
             )
         )
 
+    @draft_source_job
+    @text_publication_batch
     async def _reindex_resource_vectors_from_entries(
         self,
         *,
@@ -1131,6 +1517,7 @@ class ReindexExecutor:
         counters: _ReindexCounters,
         ctx: RequestContext,
         ingest_options: IngestOptions | None = None,
+        image_summaries: dict | None = None,
     ) -> None:
         deduped_directories = []
         seen_directories = set()
@@ -1152,6 +1539,35 @@ class ReindexExecutor:
             counters.scanned_records += 1
             abstract = await self._read_directory_abstract(directory_uri, ctx=ctx)
             overview = await self._read_directory_overview(directory_uri, ctx=ctx)
+            from openviking.indexing.publication import configured_store
+
+            if configured_store() is not None and context_type_for_uri(directory_uri) == "resource":
+                # Managed store archives the on-disk sidecars verbatim, so a
+                # missing .overview.md must not be fabricated from the L0
+                # body; include flags must reflect real sidecar existence.
+                if not abstract and not overview:
+                    counters.unsupported_records += 1
+                    counters.warnings.append(f"No semantic source found for {directory_uri}")
+                    continue
+                from openviking.utils.embedding_utils import vectorize_directory_meta
+
+                try:
+                    await vectorize_directory_meta(
+                        directory_uri,
+                        abstract,
+                        overview,
+                        ctx=self._content_owner_ctx(directory_uri, ctx),
+                        include_abstract=bool(abstract),
+                        include_overview=bool(overview),
+                        ingest_options=ingest_options,
+                    )
+                    counters.rebuilt_records += int(bool(abstract)) + int(bool(overview))
+                except Exception as exc:
+                    counters.failed_records += 1
+                    counters.warnings.append(
+                        f"Failed directory generation for {directory_uri}: {exc}"
+                    )
+                continue
             if not overview:
                 overview = abstract
             if not abstract and not overview:
@@ -1198,10 +1614,99 @@ class ReindexExecutor:
                     counters.failed_records += 1
                     counters.warnings.append(f"Failed to reindex {directory_uri} L1 vector: {exc}")
 
+        vlm = getattr(get_openviking_config(), "vlm", None)
+        image_llm_sem = asyncio.Semaphore(max(1, getattr(vlm, "max_concurrent", None) or 1))
+
         async def process_file(file_uri: str) -> _ReindexCounters:
             file_counters = _ReindexCounters(scanned_records=1)
             parent_uri = VikingURI(file_uri).parent.uri
             summary = await self._best_file_summary(file_uri, ctx=ctx)
+            embedding = get_openviking_config().embedding
+            chunking = getattr(embedding, "chunking", None)
+            if (
+                chunking
+                and chunking.enabled
+                and get_resource_content_type(file_uri.rsplit("/", 1)[-1])
+                in (ResourceContentType.TEXT, ResourceContentType.IMAGE)
+            ):
+                from openviking.utils.embedding_utils import vectorize_file
+
+                is_image = (
+                    get_resource_content_type(file_uri.rsplit("/", 1)[-1])
+                    == ResourceContentType.IMAGE
+                )
+
+                def _static_image_summary() -> dict:
+                    return {"name": file_uri.rsplit("/", 1)[-1], "summary": summary}
+
+                summary_dict: dict | None = (image_summaries or {}).get(file_uri)
+                stale_joint_input = False
+                if is_image and summary_dict is None:
+                    # A joint image record must keep its joint input. The fresh
+                    # semantic result (if any) is authoritative; a published
+                    # occurrence cache may be reused. A previously published
+                    # joint image whose cache is missing/invalid is regenerated
+                    # here instead of being degraded to a text-only summary
+                    # vector. An image never published as joint returns None
+                    # and rebuilds from its summary.
+                    try:
+                        from openviking.indexing.image_cache import load_image_semantics
+
+                        summary_dict = await load_image_semantics(
+                            get_viking_fs(), file_uri, ctx
+                        )
+                    except Exception as exc:
+                        if SEMANTICS_REQUIRED_CODE not in str(exc):
+                            raise
+                        logger.info(
+                            "Regenerating image semantics for reindex: %s (%s)",
+                            file_uri,
+                            exc,
+                        )
+                        summary_dict = await self._regenerate_image_summary(
+                            file_uri, ctx=ctx, llm_sem=image_llm_sem
+                        )
+                        if summary_dict is None:
+                            # Regeneration failed: the stored abstract is stale
+                            # joint input and must not be re-published.
+                            stale_joint_input = True
+                if summary_dict is None and not stale_joint_input:
+                    summary_dict = _static_image_summary()
+                if summary_dict is None:
+                    # Regeneration failed and a stale joint input must not be
+                    # re-published; settle the record as semantics-required so
+                    # one bad image cannot abort the whole reindex run.
+                    file_counters.semantics_required_records += 1
+                    file_counters.warnings.append(
+                        "Failed chunk reindex for "
+                        f"{file_uri}: SEMANTICS_REQUIRED: image summary regeneration failed"
+                    )
+                    return file_counters
+                try:
+                    chunk_options = await self._chunk_reindex_ingest_options(
+                        file_uri, ctx=ctx, incoming=ingest_options
+                    )
+                    enqueued = await vectorize_file(
+                        file_uri,
+                        summary_dict,
+                        parent_uri,
+                        ctx=self._content_owner_ctx(file_uri, ctx),
+                        preserve_existing_created_at=True,
+                        ingest_options=chunk_options,
+                    )
+                    if enqueued:
+                        file_counters.rebuilt_records += (
+                            1  # existing counter counts sources, not children
+                        )
+                    else:
+                        file_counters.unsupported_records += 1
+                except Exception as exc:
+                    if SEMANTICS_REQUIRED_CODE in str(exc):
+                        file_counters.semantics_required_records += 1
+                    else:
+                        file_counters.failed_records += 1
+                    file_counters.warnings.append(f"Failed chunk reindex for {file_uri}: {exc}")
+                return file_counters
             vector_text = await self._best_resource_file_vector_text(file_uri, summary, ctx=ctx)
             if not vector_text:
                 file_counters.unsupported_records += 1
@@ -1241,6 +1746,30 @@ class ReindexExecutor:
             counters=counters,
         )
 
+    async def _chunk_reindex_ingest_options(
+        self, uri: str, *, ctx: RequestContext, incoming: IngestOptions | None
+    ) -> IngestOptions:
+        """Explicitly carry source tags to every new revision's chunk record.
+
+        A new chunk ID has no prior row for the writer's append/preserve rules.
+        Source metadata must eventually come from a document manifest; until
+        that registry exists, use the existing authorized source vector row.
+        """
+        options = IngestOptions.from_value(incoming)
+        if options.search_tags is not None and options.search_tag_mode == "replace":
+            return options
+        service = get_service()
+        if service.vikingdb_manager is None:
+            raise RuntimeError("Chunk reindex cannot preserve source tags without vector storage")
+        existing = await service.vikingdb_manager.fetch_by_uri(
+            uri, ctx=self._content_owner_ctx(uri, ctx)
+        )
+        tags = list((existing or {}).get("search_tags") or [])
+        if options.search_tags is not None:
+            tags = merge_search_tags(tags, options.search_tags)
+        return IngestOptions.from_search_tags(tags, mode="replace")
+
+    @draft_source_job
     async def reindex_directory_marker(
         self, *, dir_uri: str, level: ContextLevel, ctx: RequestContext
     ) -> None:
@@ -1261,6 +1790,27 @@ class ReindexExecutor:
         lock_path = viking_fs._uri_to_path(f"{dir_uri}/{marker_name}", ctx=ctx)
         lease = await viking_fs._async_agfs.pathlock_acquire_exact(lock_path)
         try:
+            from openviking.indexing.publication import configured_store
+
+            if configured_store() is not None and context_type_for_uri(dir_uri) == "resource":
+                from openviking.utils.embedding_utils import vectorize_directory_meta
+
+                abstract = await self._read_directory_abstract(dir_uri, ctx=ctx)
+                overview = await self._read_directory_overview(dir_uri, ctx=ctx)
+                if not abstract and not overview:
+                    raise OpenVikingError(
+                        "Empty semantic generation requires explicit clear lifecycle",
+                        code="FAILED_PRECONDITION",
+                    )
+                await vectorize_directory_meta(
+                    dir_uri,
+                    abstract,
+                    overview,
+                    ctx=self._content_owner_ctx(dir_uri, ctx),
+                    include_abstract=bool(abstract),
+                    include_overview=bool(overview),
+                )
+                return
             abstract = await self._read_directory_abstract(dir_uri, ctx=ctx)
             if level == ContextLevel.ABSTRACT:
                 vector_text = abstract
@@ -1297,16 +1847,22 @@ class ReindexExecutor:
         """
         service = get_service()
         assert service.vikingdb_manager is not None
-        records = await service.vikingdb_manager.get_context_by_uri(
-            uri=uri,
-            level=int(level),
-            limit=100,
-            ctx=ctx,
-        )
-        ids = [str(rec["id"]) for rec in records if rec.get("id")]
-        if not ids:
-            return 0
-        return await service.vikingdb_manager.delete(ids, ctx=ctx)
+        total = 0
+        previous_ids = set()
+        while True:
+            records = await service.vikingdb_manager.get_context_by_uri(
+                uri=uri, level=int(level), limit=100, ctx=ctx
+            )
+            ids = [str(rec["id"]) for rec in records if rec.get("id")]
+            if not ids:
+                return total
+            if set(ids) & previous_ids:
+                raise RuntimeError("Vector deletion did not remove all URI/level records")
+            deleted = await service.vikingdb_manager.delete(ids, ctx=ctx)
+            if int(deleted or 0) != len(ids):
+                raise RuntimeError("Partial vector deletion; URI cleanup is incomplete")
+            total += int(deleted)
+            previous_ids.update(ids)
 
     async def _reindex_user_namespace(
         self,
@@ -1387,10 +1943,12 @@ class ReindexExecutor:
                 run=run,
             )
 
+        image_summaries: dict = {}
         if mode == "semantic_and_vectors":
             (
                 resource_directories,
                 resource_files,
+                image_summaries,
             ) = await self._refresh_namespace_resource_semantics(
                 target_root=target_root,
                 directories=resource_directories,
@@ -1406,6 +1964,7 @@ class ReindexExecutor:
                     "files": resource_files,
                     "counters": counters,
                     "ctx": ctx,
+                    "image_summaries": image_summaries,
                 },
                 run.ingest_options,
             )
@@ -1458,10 +2017,12 @@ class ReindexExecutor:
                 run=run,
             )
 
+        image_summaries: dict = {}
         if mode == "semantic_and_vectors":
             (
                 resource_directories,
                 resource_files,
+                image_summaries,
             ) = await self._refresh_namespace_resource_semantics(
                 target_root=target_root,
                 directories=resource_directories,
@@ -1477,6 +2038,7 @@ class ReindexExecutor:
                     "files": resource_files,
                     "counters": counters,
                     "ctx": ctx,
+                    "image_summaries": image_summaries,
                 },
                 run.ingest_options,
             )
@@ -1802,6 +2364,44 @@ class ReindexExecutor:
             return ""
         return "" if _is_not_ready_sentinel(value, _OVERVIEW_NOT_READY_SUFFIX) else value
 
+    async def _regenerate_image_summary(
+        self,
+        file_uri: str,
+        *,
+        ctx: RequestContext,
+        llm_sem: asyncio.Semaphore | None = None,
+    ) -> dict | None:
+        """Regenerate VLM image semantics for one joint image during reindex.
+
+        Called only when the published occurrence cache is missing or invalid
+        (SEMANTICS_REQUIRED); a fresh failure must not mask the original gate
+        reason, so the outcome is logged and propagated.
+        """
+        from openviking.indexing.image_context import collect_image_contexts
+        from openviking.parse.parsers.media.utils import generate_image_summary
+
+        viking_fs = get_viking_fs()
+        chunking = getattr(get_openviking_config().embedding, "chunking", None)
+        strict = bool(chunking and chunking.enabled)
+        try:
+            contexts = await collect_image_contexts(viking_fs, file_uri, ctx)
+            summary_dict = await generate_image_summary(
+                file_uri,
+                file_uri.rsplit("/", 1)[-1],
+                llm_sem=llm_sem,
+                ctx=ctx,
+                contexts=contexts,
+                strict=strict,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Image semantics regeneration failed for %s: %s", file_uri, exc
+            )
+            return None
+        if not (summary_dict.get("summary") or "").strip():
+            return None
+        return summary_dict
+
     async def _best_file_summary(self, uri: str, *, ctx: RequestContext) -> str:
         parent_uri = VikingURI(uri).parent.uri
         file_name = uri.rsplit("/", 1)[-1]
@@ -1933,7 +2533,11 @@ class ReindexExecutor:
         return str(record.get("abstract") or "")
 
     def _is_hidden_meta_file(self, uri: str) -> bool:
-        return uri.endswith("/.abstract.md") or uri.endswith("/.overview.md")
+        return (
+            uri.rsplit("/", 1)[-1] in CHAPTER_METADATA_FILENAMES
+            or uri.endswith("/.abstract.md")
+            or uri.endswith("/.overview.md")
+        )
 
     async def _safe_read_text(self, uri: str, *, ctx: RequestContext) -> str:
         viking_fs = get_viking_fs()

@@ -94,7 +94,13 @@ class TaskRecord:
 
     def to_dict(self, *, include_events: bool = False) -> Dict[str, Any]:
         """Serialize for JSON response."""
+        chapter_progress = {
+            key: _sanitize_task_result(deepcopy(self.meta[key]))
+            for key in ("info", "alignment_status", "structure_source")
+            if key in self.meta
+        }
         return {
+            **chapter_progress,
             **({"execution_events": deepcopy(self.execution_events)} if include_events else {}),
             "task_id": self.task_id,
             "task_type": self.task_type,

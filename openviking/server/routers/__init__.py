@@ -12,6 +12,8 @@ from openviking.server.routers.content import router as content_router
 from openviking.server.routers.debug import router as debug_router
 from openviking.server.routers.filesystem import router as filesystem_router
 from openviking.server.routers.metrics import router as metrics_router
+from openviking.server.routers.namespaces import router as namespaces_router
+from openviking.server.routers.kb_jobs import router as kb_jobs_router
 from openviking.server.routers.observer import router as observer_router
 from openviking.server.routers.openviking_assets import router as openviking_assets_router
 from openviking.server.routers.pack import router as pack_router
@@ -27,6 +29,8 @@ from openviking.server.routers.tasks import router as tasks_router
 from openviking.server.routers.user_settings import router as user_settings_router
 from openviking.server.routers.watches import router as watches_router
 from openviking.server.routers.webdav import router as webdav_router
+from openviking.server.routers.wiki import router as wiki_router
+from openviking.server.routers.write_recovery import router as write_recovery_router
 
 __all__ = [
     "acl_router",
@@ -48,10 +52,14 @@ __all__ = [
     "privacy_configs_router",
     "debug_router",
     "metrics_router",
+    "namespaces_router",
+    "kb_jobs_router",
     "observer_router",
     "openviking_assets_router",
     "tasks_router",
     "user_settings_router",
     "watches_router",
     "webdav_router",
+    "wiki_router",
+    "write_recovery_router",
 ]

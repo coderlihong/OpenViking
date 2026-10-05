@@ -2,10 +2,31 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Tests for OpenAIRerankClient configurable HTTP timeout support."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 from openviking.models.rerank.openai_rerank import OpenAIRerankClient
 from openviking_cli.utils.config.rerank_config import RerankConfig
+
+
+def _mock_sdk(json_payload, capture=None):
+    """Patch openai.OpenAI; capture the constructor kwargs when given a dict."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = json_payload
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.post.return_value = mock_response
+
+    def _factory(**kwargs):
+        if capture is not None:
+            capture.update(kwargs)
+        return mock_client
+
+    return patch(
+        "openviking.models.rerank.openai_rerank.openai.OpenAI", side_effect=_factory
+    )
 
 
 def test_openai_rerank_client_default_timeout():
@@ -69,16 +90,8 @@ def test_openai_rerank_from_config_default_timeout():
     assert client.timeout == 30.0
 
 
-@patch("openviking.models.rerank.openai_rerank.requests.post")
-def test_rerank_batch_uses_configured_timeout(mock_post):
-    """rerank_batch passes the configured timeout to requests.post."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "results": [{"index": 0, "relevance_score": 0.9}, {"index": 1, "relevance_score": 0.8}]
-    }
-    mock_post.return_value = mock_response
-
+def test_rerank_batch_uses_configured_timeout():
+    """rerank_batch passes the configured timeout to the OpenAI SDK client."""
     client = OpenAIRerankClient(
         api_key="test-key",
         api_base="https://api.example.com/v1",
@@ -86,25 +99,24 @@ def test_rerank_batch_uses_configured_timeout(mock_post):
         timeout=120.0,
     )
 
-    client.rerank_batch(query="test query", documents=["doc1", "doc2"])
+    capture: dict = {}
+    with _mock_sdk(
+        {"results": [{"index": 0, "relevance_score": 0.9}, {"index": 1, "relevance_score": 0.8}]},
+        capture=capture,
+    ):
+        client.rerank_batch(query="test query", documents=["doc1", "doc2"])
 
-    assert mock_post.called
-    assert mock_post.call_args.kwargs["timeout"] == 120.0
+    assert capture["timeout"] == 120.0
 
 
-@patch("openviking.models.rerank.openai_rerank.requests.post")
-def test_rerank_batch_uses_default_timeout(mock_post):
+def test_rerank_batch_uses_default_timeout():
     """rerank_batch falls back to the 30s default when no timeout is configured."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"results": [{"index": 0, "relevance_score": 0.9}]}
-    mock_post.return_value = mock_response
-
     client = OpenAIRerankClient(
         api_key="test-key", api_base="https://api.example.com/v1", model_name="qwen3-rerank"
     )
 
-    client.rerank_batch(query="test query", documents=["doc1"])
+    capture: dict = {}
+    with _mock_sdk({"results": [{"index": 0, "relevance_score": 0.9}]}, capture=capture):
+        client.rerank_batch(query="test query", documents=["doc1"])
 
-    assert mock_post.called
-    assert mock_post.call_args.kwargs["timeout"] == 30.0
+    assert capture["timeout"] == 30.0

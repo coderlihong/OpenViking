@@ -53,8 +53,10 @@ def test_async_http_client_loads_missing_fields_from_ovcli_config(tmp_path, monk
 
     assert client._url == "http://explicit-host:1933"
     assert client._api_key == "config-key"
-    assert client._gateway_token == "gateway-secret"
-    assert client._extra_headers["X-Gateway-Token"] == "gateway-secret"
+    # A configured gateway credential belongs to its configured URL. An
+    # explicit URL override must not send it to a different server.
+    assert client._gateway_token is None
+    assert "X-Gateway-Token" not in client._extra_headers
     assert client._account == "config-account"
     assert client._user_id == "config-user"
     assert client._actor_peer_id == "config-actor"

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from openviking.core.path_variables import resolve_path_variables
 from openviking.core.uri_validation import validate_request_viking_uri
 from openviking.pyagfs.exceptions import AGFSInvalidOperationError, AGFSNotSupportedError
+from openviking_cli.exceptions import FailedPreconditionError, InvalidArgumentError
 from openviking.server.auth import get_request_context, require_role
 from openviking.server.dependencies import get_service
 from openviking.server.identity import AuthMode, RequestContext, Role

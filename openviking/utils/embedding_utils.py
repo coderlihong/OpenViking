@@ -19,6 +19,8 @@ from openviking.core.namespace import (
     is_session_uri,
     owner_space_for_uri,
 )
+from openviking.indexing.batch import text_publication_batch
+from openviking.indexing.content import draft_source_job
 from openviking.parse.parsers.media.utils import (
     MPEG_TS_PROBE_BYTES,
     is_mpeg_ts,
@@ -271,6 +273,7 @@ async def _build_image_data_uri(
     file_name: str,
     viking_fs,
     ctx: Optional[RequestContext],
+    raw: Optional[bytes] = None,
 ) -> Optional[str]:
     """Read an image file and encode it as a base64 ``data:`` URI.
 
@@ -279,7 +282,7 @@ async def _build_image_data_uri(
     Returns None if the image cannot be read.
     """
     try:
-        content = await viking_fs.read_file_bytes(file_path, ctx=ctx)
+        content = raw if raw is not None else await viking_fs.read_file_bytes(file_path, ctx=ctx)
         image_config = getattr(get_openviking_config(), "image", None)
         return image_bytes_to_model_data_uri(content, file_name, config=image_config)
     except Exception as e:
@@ -371,130 +374,95 @@ async def vectorize_directory_meta(
 
     Creates Context objects for abstract and overview and enqueues them.
     """
-    # Callers may provide either freshly generated bodies or raw sidecar bytes
-    # read during reindex/import. Normalize at this shared boundary so protected
-    # operational metadata never leaks into vector text or rerank scalars.
     abstract = body_for_preview(abstract)
     overview = body_for_preview(overview)
-    first_enqueue_error: Optional[Exception] = None
-    try:
-        if not ctx:
-            logger.warning("No context provided for vectorization")
-            return
+    if not ctx:
+        logger.warning("No context provided for vectorization")
+        return
+    from openviking.indexing.publication import configured_store
 
-        queue_manager = get_queue_manager()
-        embedding_queue = queue_manager.get_queue(queue_manager.EMBEDDING)
+    managed = context_type == "resource" and configured_store() is not None
+    embedding = get_openviking_config().embedding if managed else None
+    # Partial semantic writes must retain the other existing level. A complete
+    # directory generation replaces all of its levels in the active manifest.
+    if managed and (not include_abstract or not include_overview):
+        from openviking.indexing.content import draft_sources
 
-        parent_uri = VikingURI(uri).parent.uri
-        owner_space = owner_space_for_uri(uri)
+        fs = get_viking_fs()
+        with draft_sources():
+            if not include_abstract and await fs.exists(f"{uri}/.abstract.md", ctx=ctx):
+                abstract = body_for_preview(await fs.read_file(f"{uri}/.abstract.md", ctx=ctx))
+                include_abstract = True
+            if not include_overview and await fs.exists(f"{uri}/.overview.md", ctx=ctx):
+                overview = body_for_preview(await fs.read_file(f"{uri}/.overview.md", ctx=ctx))
+                include_overview = True
+    semantic_refs = None
+    if managed and embedding.chunking.publish_content:
+        from openviking.indexing.content import archive_source
 
-        created_at, updated_at = await _resolve_context_timestamps(uri, ctx)
-        # Cap the abstract scalar below the bytes_row 65535-byte limit. #2774
-        # added this for the memory path; the resource indexing paths (here and
-        # index_resource, which feeds this function) were missed, so an
-        # .abstract.md / overview > 65535 UTF-8 bytes still fails embedding enqueue.
-        abstract = _truncate_abstract_bytes(abstract)
-
-        if include_abstract:
-            # Vectorize L0: .abstract.md (abstract)
-            context_abstract = Context(
-                uri=uri,
-                parent_uri=parent_uri,
-                is_leaf=False,
-                abstract=abstract,
-                context_type=context_type,
-                level=ContextLevel.ABSTRACT,
-                created_at=created_at,
-                updated_at=updated_at,
-                user=ctx.user,
-                account_id=ctx.account_id,
-                owner_space=owner_space,
-            )
-            context_abstract.set_vectorize(
-                Vectorize(text=embedding_text_for_body(ContextLevel.ABSTRACT, uri, abstract))
-            )
-            msg_abstract = EmbeddingMsgConverter.from_context(
-                context_abstract, creator_acl_grant
-            )
-            _apply_scalar_overrides(
-                msg_abstract,
-                (scalar_overrides or {}).get(int(ContextLevel.ABSTRACT.value)),
-            )
-            _apply_ingest_options(msg_abstract, ingest_options)
-            if msg_abstract:
-                try:
-                    enqueued = await _enqueue_embedding_message(
-                        embedding_queue,
-                        msg_abstract,
-                        failure_message=f"Failed to enqueue directory L0 vector for {uri}",
-                    )
-                    if enqueued:
-                        logger.debug(f"Enqueued directory L0 (abstract) for vectorization: {uri}")
-                except TaskWorkRejected:
-                    logger.debug("Skipped directory vectorization for cancelling task: %s", uri)
-                    return
-                except Exception as e:
-                    logger.error(
-                        f"Failed to enqueue directory L0 (abstract) for vectorization: {uri}: {e}",
-                        exc_info=True,
-                    )
-                    first_enqueue_error = e
-
-        if include_overview:
-            # Vectorize L1: .overview.md (overview)
-            # Store the overview itself in the abstract scalar so Rerank sees
-            # L1 text instead of the L0 abstract (see 03-context-layers.md).
-            context_overview = Context(
-                uri=uri,
-                parent_uri=parent_uri,
-                is_leaf=False,
-                abstract=_truncate_abstract_bytes(overview),
-                context_type=context_type,
-                level=ContextLevel.OVERVIEW,
-                created_at=created_at,
-                updated_at=updated_at,
-                user=ctx.user,
-                account_id=ctx.account_id,
-                owner_space=owner_space,
-            )
-            context_overview.set_vectorize(
-                Vectorize(text=embedding_text_for_body(ContextLevel.OVERVIEW, uri, overview))
-            )
-            msg_overview = EmbeddingMsgConverter.from_context(
-                context_overview, creator_acl_grant
-            )
-            _apply_scalar_overrides(
-                msg_overview,
-                (scalar_overrides or {}).get(int(ContextLevel.OVERVIEW.value)),
-            )
-            _apply_ingest_options(msg_overview, ingest_options)
-            if msg_overview:
-                try:
-                    enqueued = await _enqueue_embedding_message(
-                        embedding_queue,
-                        msg_overview,
-                        failure_message=f"Failed to enqueue directory L1 vector for {uri}",
-                    )
-                    if enqueued:
-                        logger.debug(f"Enqueued directory L1 (overview) for vectorization: {uri}")
-                except TaskWorkRejected:
-                    logger.debug("Skipped directory vectorization for cancelling task: %s", uri)
-                    return
-                except Exception as e:
-                    logger.error(
-                        f"Failed to enqueue directory L1 (overview) for vectorization: {uri}: {e}",
-                        exc_info=True,
-                    )
-                    if first_enqueue_error is None:
-                        first_enqueue_error = e
-        if first_enqueue_error is not None:
-            raise first_enqueue_error
-    except Exception as e:
-        logger.error(
-            f"Failed to vectorize directory metadata for {uri}: {e}",
-            exc_info=True,
+        semantic_refs = {}
+        fs = get_viking_fs()
+        for level, body, include, suffix in (
+            ("0", abstract, include_abstract, ".abstract.md"),
+            ("1", overview, include_overview, ".overview.md"),
+        ):
+            if include:
+                reference, raw = await archive_source(fs, f"{uri}/{suffix}", ctx)
+                if body_for_preview(fs._decode_bytes(raw)) != body:
+                    raise RuntimeError("Semantic source body does not match vector plan")
+                semantic_refs[level] = reference
+    queue_manager = get_queue_manager()
+    queue = queue_manager.get_queue(queue_manager.EMBEDDING)
+    created_at, updated_at = await _resolve_context_timestamps(uri, ctx)
+    messages = []
+    for level, body, include in (
+        (ContextLevel.ABSTRACT, abstract, include_abstract),
+        (ContextLevel.OVERVIEW, overview, include_overview),
+    ):
+        if not include:
+            continue
+        context = Context(
+            uri=uri,
+            parent_uri=VikingURI(uri).parent.uri,
+            is_leaf=False,
+            abstract=_truncate_abstract_bytes(body),
+            context_type=context_type,
+            level=level,
+            created_at=created_at,
+            updated_at=updated_at,
+            user=ctx.user,
+            account_id=ctx.account_id,
+            owner_space=owner_space_for_uri(uri),
         )
-        raise
+        context.set_vectorize(Vectorize(text=embedding_text_for_body(level, uri, body)))
+        message = EmbeddingMsgConverter.from_context(context, creator_acl_grant)
+        _apply_scalar_overrides(message, (scalar_overrides or {}).get(int(level.value)))
+        _apply_ingest_options(message, ingest_options)
+        if message:
+            messages.append(message)
+    if managed and messages:
+        from openviking.indexing.semantic import enqueue_semantic_plan
+        from openviking.indexing.metadata_integration import load_business_meta
+
+        metadata_input = await load_business_meta(get_viking_fs(), uri, ctx, is_directory=True)
+        for message in messages:
+            message.context_data["_business_meta_input"] = metadata_input
+
+        await enqueue_semantic_plan(messages, embedding, queue, semantic_refs=semantic_refs)
+        return
+    first_error = None
+    for message in messages:
+        try:
+            await _enqueue_embedding_message(
+                queue, message, failure_message=f"Failed to enqueue directory vector for {uri}"
+            )
+        except TaskWorkRejected:
+            logger.debug("Skipped directory vectorization for cancelling task: %s", uri)
+            return
+        except Exception as exc:
+            first_error = first_error or exc
+    if first_error is not None:
+        raise first_error
 
 
 async def vectorize_file(
@@ -555,6 +523,48 @@ async def vectorize_file(
         effective_text_source = TEXT_SOURCE_SUMMARY_ONLY if use_summary else configured_text_source
         embed_summary = bool(summary and effective_text_source in SUMMARY_TEXT_SOURCES)
 
+        chunking = getattr(embedding_cfg, "chunking", None)
+        if (
+            chunking
+            and chunking.enabled
+            and context_type == "resource"
+            and (
+                content_type == ResourceContentType.TEXT
+                or (content_type is None and is_text_file(file_name))
+            )
+        ):
+            from openviking.indexing.enqueue import enqueue_text_plan
+
+            source_snapshot = None
+            if chunking.publish_content:
+                from openviking.indexing.content import archive_source
+
+                source_snapshot, raw = await archive_source(viking_fs, file_path, ctx)
+                content = _coerce_text_file_content(raw)
+                import hashlib
+
+                source_snapshot["text_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+            else:
+                from openviking.indexing.content import draft_sources
+
+                with draft_sources():
+                    content = _coerce_text_file_content(
+                        await viking_fs.read_file(file_path, ctx=ctx)
+                    )
+            context.set_vectorize(Vectorize(text=content or " "))
+            base = EmbeddingMsgConverter.from_context(context, creator_acl_grant)
+            if source_snapshot:
+                base.context_data["_source_snapshot"] = source_snapshot
+            if chunking.publish_content:
+                from openviking.indexing.metadata_integration import load_business_meta
+
+                base.context_data["_business_meta_input"] = await load_business_meta(viking_fs, file_path, ctx)
+            _apply_scalar_overrides(base, scalar_override)
+            _apply_ingest_options(base, ingest_options)
+            count = await enqueue_text_plan(base, content, embedding_cfg, embedding_queue)
+            return count > 0
+
+        image_snapshot = None
         if content_type in (ResourceContentType.AUDIO, ResourceContentType.VIDEO):
             effective_text = summary or file_name
             context.abstract = effective_text
@@ -605,10 +615,33 @@ async def vectorize_file(
                     del content
                     context.set_vectorize(Vectorize(text=embedding_text))
         elif content_type == ResourceContentType.IMAGE:
+            strict_image = bool(chunking and chunking.enabled and context_type == "resource")
+            if strict_image:
+                if not chunking.require_joint_image_embedding:
+                    raise ValueError(
+                        "Degraded image indexing is not implemented; joint embedding is required"
+                    )
+                if not summary.strip():
+                    raise ValueError(
+                        "SEMANTICS_REQUIRED: image indexing requires a current image summary"
+                    )
+                if not getattr(embedding_cfg.get_embedder(), "supports_multimodal", False):
+                    raise ValueError(
+                        "Configured embedding model does not support joint image and text input"
+                    )
             # Multimodal embedders consume both parts; text-only embedders fall back to summary.
-            image_uri = await _build_image_data_uri(file_path, file_name, viking_fs, ctx)
+            image_raw = None
+            if strict_image and chunking.publish_content:
+                from openviking.indexing.content import archive_source
+
+                image_snapshot, image_raw = await archive_source(viking_fs, file_path, ctx)
+            image_uri = await _build_image_data_uri(
+                file_path, file_name, viking_fs, ctx, raw=image_raw
+            )
             if image_uri:
                 context.set_vectorize(Vectorize(text=summary, images=[image_uri]))
+            elif strict_image:
+                raise ValueError("Image bytes are required for joint embedding")
             elif summary:
                 context.set_vectorize(Vectorize(text=summary))
             else:
@@ -627,8 +660,27 @@ async def vectorize_file(
         if not embedding_msg:
             return False
 
+        if (
+            content_type == ResourceContentType.IMAGE
+            and chunking
+            and chunking.enabled
+            and context_type == "resource"
+        ):
+            embedding_msg.context_data["_require_joint_image_embedding"] = True
         _apply_scalar_overrides(embedding_msg, scalar_override)
         _apply_ingest_options(embedding_msg, ingest_options)
+        if embedding_msg.context_data.get("_require_joint_image_embedding"):
+            from openviking.indexing.image import enqueue_image_plan
+            from openviking.indexing.metadata_integration import load_business_meta
+
+            embedding_msg.context_data["_business_meta_input"] = await load_business_meta(viking_fs, file_path, ctx)
+
+            return bool(
+                await enqueue_image_plan(
+                    embedding_msg, embedding_cfg, embedding_queue, source_ref=image_snapshot,
+                    occurrences=summary_dict.get("image_occurrences"), fs=viking_fs, ctx=ctx
+                )
+            )
         enqueued = await _enqueue_embedding_message(
             embedding_queue,
             embedding_msg,
@@ -647,6 +699,8 @@ async def vectorize_file(
     return True
 
 
+@draft_source_job
+@text_publication_batch
 async def index_resource(
     uri: str,
     ctx: RequestContext,

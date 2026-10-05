@@ -15,6 +15,7 @@ from urllib.parse import quote
 import httpx
 
 from ._utils import run_async
+from .kb import AsyncKBNamespace, SyncKBNamespace
 from .actor_peer import _request_actor_peer_headers
 from .config import resolve_client_config
 from .errors import (
@@ -357,6 +358,7 @@ class AsyncHTTPClient:
         self._http: Optional[httpx.AsyncClient] = None
         self._observer: Optional[_HTTPObserver] = None
         self._snapshot: Optional["AsyncHTTPSnapshotNamespace"] = None
+        self._kb: Optional[AsyncKBNamespace] = None
 
     async def initialize(self) -> None:
         headers: Dict[str, str] = {}
@@ -2189,6 +2191,13 @@ class AsyncHTTPClient:
         self._handle_response(response)
 
     @property
+    def kb(self) -> AsyncKBNamespace:
+        """Experimental knowledge-base configuration namespace."""
+        if self._kb is None:
+            self._kb = AsyncKBNamespace(self)
+        return self._kb
+
+    @property
     def snapshot(self) -> "AsyncHTTPSnapshotNamespace":
         """Snapshot version control namespace (async HTTP)."""
         if self._snapshot is None:
@@ -2203,6 +2212,7 @@ class SyncHTTPClient:
         self._async_client = AsyncHTTPClient(*args, **kwargs)
         self._initialized = False
         self._snapshot: Optional["SyncHTTPSnapshotNamespace"] = None
+        self._kb: Optional[SyncKBNamespace] = None
 
     def initialize(self) -> None:
         run_async(self._async_client.initialize())
@@ -2972,6 +2982,13 @@ class SyncHTTPClient:
     @property
     def observer(self) -> _HTTPObserver:
         return self._async_client.observer
+
+    @property
+    def kb(self) -> SyncKBNamespace:
+        """Experimental knowledge-base configuration namespace."""
+        if self._kb is None:
+            self._kb = SyncKBNamespace(self)
+        return self._kb
 
     @property
     def snapshot(self) -> "SyncHTTPSnapshotNamespace":

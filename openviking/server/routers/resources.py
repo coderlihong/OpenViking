@@ -106,6 +106,25 @@ class AddResourceRequest(BaseModel):
     processing_mode: ProcessingMode = DEFAULT_PROCESSING_MODE
     tags: Optional[list[str]] = None
     tag_mode: str = "replace"
+    structure_policy: Optional[Literal["bookmarks_preferred"]] = None
+    parse_backend: Optional[Literal["local", "mineru", "auto", "teleocr", "logics"]] = None
+    model_mode: Optional[Literal["auto", "text", "ocr", "layout"]] = None
+    backend_options: Optional[Dict[str, Any]] = None
+    section_target_tokens: Optional[int] = Field(default=None, ge=1, le=100000, strict=True)
+
+    @model_validator(mode="after")
+    def check_chapter_options(self):
+        for name in (
+            "structure_policy",
+            "parse_backend",
+            "section_target_tokens",
+            "model_mode",
+            "backend_options",
+        ):
+            value = getattr(self, name)
+            if value is not None and name in self.args:
+                raise ValueError(f"{name} cannot be provided both at top-level and in args")
+        return self
 
     @model_validator(mode="after")
     def check_path_or_temp_file_id(self):
@@ -241,6 +260,17 @@ async def add_resource(
     until that import records its result.
     """
     service = get_service()
+    ingest_args = dict(request.args)
+    for name in (
+        "structure_policy",
+        "parse_backend",
+        "section_target_tokens",
+        "model_mode",
+        "backend_options",
+    ):
+        value = getattr(request, name)
+        if value is not None:
+            ingest_args[name] = value
     to_uri = resolve_path_variables(request.to).strip() if request.to else ""
     if to_uri:
         to_uri = validate_content_target_uri(to_uri, _ctx, kind="resource", field_name="to")
@@ -320,7 +350,7 @@ async def add_resource(
                 enforce_public_remote_targets=True,
                 internal_task=request.internal_task,
                 is_active=request.is_active,
-                args=request.args,
+                args=ingest_args,
                 **kwargs,
             )
         except Exception:

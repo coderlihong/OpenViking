@@ -9,7 +9,7 @@ import pytest
 
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.viking_fs import VikingFS
-from openviking_cli.exceptions import NotFoundError
+from openviking_cli.exceptions import NotFoundError, PermissionDeniedError
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -73,6 +73,21 @@ class FakeAGFS:
             return {"name": path.rsplit("/", 1)[-1], "isDir": False, "size": len(self.files[path])}
         raise FileNotFoundError(path)
 
+    def tree_directory(self, path, *, show_hidden=False, node_limit=None,
+                       level_limit=None, offset=0, sort_by=None, sort_order=None):
+        entries = []
+        def visit(directory, depth):
+            for entry in self.ls(directory):
+                if not show_hidden and entry["name"].startswith("."):
+                    continue
+                child = directory.rstrip("/") + "/" + entry["name"]
+                entries.append({"info": {"mode": "0755" if entry["isDir"] else "0644", **entry},
+                                "path": child, "rel_path": child[len(path.rstrip("/")) + 1:]})
+                if entry["isDir"] and (level_limit is None or depth < level_limit):
+                    visit(child, depth + 1)
+        visit(path, 1)
+        return entries[offset:] if node_limit is None else entries[offset:offset + node_limit]
+
     def ls(self, path):
         if path not in self.dirs:
             raise FileNotFoundError(path)
@@ -132,10 +147,10 @@ async def test_temp_scope_isolated_between_users_in_same_account(viking_fs):
 
     assert (await viking_fs.read(secret_uri, ctx=owner_ctx)).decode("utf-8") == "owner secret"
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.read(secret_uri, ctx=other_ctx)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.write(secret_uri, "tampered", ctx=other_ctx)
 
 
@@ -157,7 +172,7 @@ async def test_temp_scope_user_id_matching_legacy_pattern_stays_isolated(viking_
     await viking_fs.write(secret_uri, "owner secret", ctx=owner_ctx)
 
     assert temp_uri.startswith("viking://temp/04011234_abcdef/")
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.read(secret_uri, ctx=other_ctx)
 
 
@@ -201,10 +216,10 @@ async def test_temp_root_destructive_operations_are_blocked_for_non_root_users(v
         role=Role.USER,
     )
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.rm("viking://temp", recursive=True, ctx=alice_ctx)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.delete_temp("viking://temp", ctx=alice_ctx)
 
 
@@ -308,7 +323,7 @@ async def test_non_root_cannot_delete_temp_root_recursively(viking_fs):
     await viking_fs.mkdir(bob_temp_uri, exist_ok=True, ctx=bob_ctx)
     await viking_fs.write(bob_secret_uri, "bob secret", ctx=bob_ctx)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionDeniedError):
         await viking_fs.rm("viking://temp", recursive=True, ctx=alice_ctx)
 
     assert (await viking_fs.read(bob_secret_uri, ctx=bob_ctx)).decode("utf-8") == "bob secret"

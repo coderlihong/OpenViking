@@ -465,6 +465,37 @@ class ResourceService:
             parse_mode = normalize_parse_mode(raw_parse_mode)
         except InvalidArgumentError as exc:
             raise InvalidArgumentError(str(exc).replace("parse_mode", "args.parse_mode")) from exc
+        policy = normalized.get("structure_policy")
+        backend = normalized.get("parse_backend")
+        if policy not in (None, "bookmarks_preferred"):
+            raise InvalidArgumentError("args.structure_policy must be bookmarks_preferred")
+        if backend not in (None, "local", "mineru", "auto", "teleocr", "logics"):
+            raise InvalidArgumentError(
+                "args.parse_backend must be local, mineru, auto, teleocr or logics"
+            )
+        model_mode = normalized.get("model_mode", "auto")
+        backend_options = normalized.get("backend_options", {})
+        if model_mode not in {"auto", "text", "ocr", "layout"}:
+            raise InvalidArgumentError("Invalid model_mode")
+        if not isinstance(backend_options, dict):
+            raise InvalidArgumentError("backend_options must be an object")
+        if backend in {"mineru", "teleocr", "logics"}:
+            from openviking.parse.model_artifact import validate_options
+
+            try:
+                validate_options(backend, model_mode, backend_options)
+            except ValueError as exc:
+                raise InvalidArgumentError(str(exc)) from exc
+        if policy and parse_mode is ParseMode.NO_SPLIT:
+            raise InvalidArgumentError("bookmarks_preferred cannot be combined with no_split")
+        if "section_target_tokens" in normalized:
+            size = normalized["section_target_tokens"]
+            if isinstance(size, bool) or not isinstance(size, int) or not 1 <= size <= 100000:
+                raise InvalidArgumentError(
+                    "args.section_target_tokens must be an integer in [1, 100000]"
+                )
+            if not policy:
+                raise InvalidArgumentError("section_target_tokens requires structure_policy")
         token = normalized.get(FEISHU_ACCESS_TOKEN_ARG)
         refresh_token = normalized.pop(FEISHU_REFRESH_TOKEN_ARG, None)
         app_id = normalized.pop(FEISHU_APP_ID_ARG, None)
@@ -1036,6 +1067,10 @@ class ResourceService:
                         queued_args["resolved_extension"] = resolved_extension
                     if (
                         mode is ParseMode.DEFAULT
+                        and not processor_kwargs.get("structure_policy")
+                        and not processor_kwargs.get("parse_backend")
+                        and not processor_kwargs.get("model_mode")
+                        and not processor_kwargs.get("backend_options")
                         and self._resource_processor.should_use_understanding_api(prepared)
                     ):
                         if processor_kwargs.get("temp_file_id"):

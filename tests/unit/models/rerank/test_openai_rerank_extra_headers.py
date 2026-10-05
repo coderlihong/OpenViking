@@ -2,10 +2,31 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Tests for OpenAIRerankClient extra_headers support."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 from openviking.models.rerank.openai_rerank import OpenAIRerankClient
 from openviking_cli.utils.config.rerank_config import RerankConfig
+
+
+def _mock_sdk(json_payload, capture=None):
+    """Patch openai.OpenAI; capture the constructor kwargs when given a dict."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = json_payload
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.post.return_value = mock_response
+
+    def _factory(**kwargs):
+        if capture is not None:
+            capture.update(kwargs)
+        return mock_client
+
+    return patch(
+        "openviking.models.rerank.openai_rerank.openai.OpenAI", side_effect=_factory
+    )
 
 
 def test_openai_rerank_client_init_with_extra_headers():
@@ -55,18 +76,8 @@ def test_openai_rerank_from_config_without_extra_headers():
     assert client.extra_headers == {}
 
 
-@patch("openviking.models.rerank.openai_rerank.requests.post")
-def test_rerank_batch_includes_extra_headers(mock_post):
-    """Test that rerank_batch includes extra_headers in the API request."""
-    # Setup mock response
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "results": [{"index": 0, "relevance_score": 0.9}, {"index": 1, "relevance_score": 0.8}]
-    }
-    mock_post.return_value = mock_response
-
-    # Create client with extra_headers
+def test_rerank_batch_includes_extra_headers():
+    """Test that rerank_batch passes extra_headers as SDK default_headers."""
     client = OpenAIRerankClient(
         api_key="test-key",
         api_base="https://api.example.com/v1",
@@ -74,56 +85,38 @@ def test_rerank_batch_includes_extra_headers(mock_post):
         extra_headers={"x-gw-apikey": "Bearer real-key", "X-Custom-Header": "custom-value"},
     )
 
-    # Call rerank_batch
-    client.rerank_batch(query="test query", documents=["doc1", "doc2"])
+    capture: dict = {}
+    with _mock_sdk(
+        {"results": [{"index": 0, "relevance_score": 0.9}, {"index": 1, "relevance_score": 0.8}]},
+        capture=capture,
+    ):
+        client.rerank_batch(query="test query", documents=["doc1", "doc2"])
 
-    # Verify the request included extra_headers
-    assert mock_post.called
-    call_kwargs = mock_post.call_args.kwargs
-    headers = call_kwargs["headers"]
-
-    # Check default headers
-    assert headers["Authorization"] == "Bearer test-key"
-    assert headers["Content-Type"] == "application/json"
-
-    # Check extra headers are merged
-    assert headers["x-gw-apikey"] == "Bearer real-key"
-    assert headers["X-Custom-Header"] == "custom-value"
+    # The SDK receives extra_headers verbatim as default_headers; it merges the
+    # Authorization header itself from api_key.
+    assert capture["default_headers"] == {
+        "x-gw-apikey": "Bearer real-key",
+        "X-Custom-Header": "custom-value",
+    }
+    assert capture["api_key"] == "test-key"
 
 
-@patch("openviking.models.rerank.openai_rerank.requests.post")
-def test_rerank_batch_without_extra_headers(mock_post):
-    """Test that rerank_batch works correctly when no extra_headers provided."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"results": [{"index": 0, "relevance_score": 0.9}]}
-    mock_post.return_value = mock_response
-
+def test_rerank_batch_without_extra_headers():
+    """Test that no default_headers kwarg is sent when extra_headers is empty."""
     client = OpenAIRerankClient(
         api_key="test-key", api_base="https://api.example.com/v1", model_name="gpt-4"
     )
 
-    client.rerank_batch(query="test query", documents=["doc1"])
+    capture: dict = {}
+    with _mock_sdk({"results": [{"index": 0, "relevance_score": 0.9}]}, capture=capture):
+        client.rerank_batch(query="test query", documents=["doc1"])
 
-    assert mock_post.called
-    call_kwargs = mock_post.call_args.kwargs
-    headers = call_kwargs["headers"]
-
-    # Should only have default headers
-    assert headers["Authorization"] == "Bearer test-key"
-    assert headers["Content-Type"] == "application/json"
-    # No extra headers
-    assert "x-gw-apikey" not in headers
+    assert "default_headers" not in capture
+    assert capture["api_key"] == "test-key"
 
 
-@patch("openviking.models.rerank.openai_rerank.requests.post")
-def test_extra_headers_can_override_defaults(mock_post):
-    """Test that extra_headers can override default headers if needed."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"results": []}
-    mock_post.return_value = mock_response
-
+def test_extra_headers_can_override_defaults():
+    """Test that extra_headers can carry a custom Content-Type through the SDK."""
     client = OpenAIRerankClient(
         api_key="test-key",
         api_base="https://api.example.com/v1",
@@ -131,10 +124,8 @@ def test_extra_headers_can_override_defaults(mock_post):
         extra_headers={"Content-Type": "application/json; charset=utf-8"},
     )
 
-    client.rerank_batch(query="test", documents=["doc"])
+    capture: dict = {}
+    with _mock_sdk({"results": []}, capture=capture):
+        client.rerank_batch(query="test", documents=["doc"])
 
-    call_kwargs = mock_post.call_args.kwargs
-    headers = call_kwargs["headers"]
-
-    # Extra header overrides default
-    assert headers["Content-Type"] == "application/json; charset=utf-8"
+    assert capture["default_headers"]["Content-Type"] == "application/json; charset=utf-8"

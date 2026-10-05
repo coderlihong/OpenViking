@@ -18,6 +18,8 @@ class FindOptions(_ExtraOptions, total=False):
     node_limit: int
     score_threshold: float
     filter: Dict[str, Any]
+    meta_filters: List[Dict[str, Any]]
+    meta_hints: List[Dict[str, Any]]
     context_type: Any
     include_provenance: bool
     tags: List[str]
@@ -59,6 +61,11 @@ class SearchContextOptions(_ExtraOptions, total=False):
 
 
 class AddResourceOptions(_ExtraOptions, total=False):
+    structure_policy: Literal["bookmarks_preferred"]
+    parse_backend: Literal["local", "mineru", "auto", "teleocr", "logics"]
+    model_mode: Literal["auto", "text", "ocr", "layout"]
+    backend_options: Dict[str, Any]
+    section_target_tokens: int
     reason: str
     instruction: str
     create_parent: bool

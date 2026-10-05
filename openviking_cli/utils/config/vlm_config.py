@@ -10,6 +10,15 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, model_validator
 
 
+class VLMContextTokenizer(BaseModel):
+    """Pinned text tokenizer for a VLM used to summarize image occurrences."""
+
+    model: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_config = {"extra": "forbid"}
+
+
 def _load_codex_auth_module():
     importlib.import_module("openviking.models.vlm")
     return importlib.import_module("openviking.models.vlm.backends.codex_auth")
@@ -153,6 +162,13 @@ class VLMConfig(BaseModel):
     max_tokens: Optional[int] = Field(
         default=None,
         description="Maximum tokens for VLM completion output (None = provider default)",
+    )
+
+    context_tokenizers: List[VLMContextTokenizer] = Field(
+        default_factory=list,
+        description=("Pinned tokenizers for every VLM model used for image context, "
+                     "including failover models. Context fits the largest token count; "
+                     "embedding tokenizers are never used for this budget."),
     )
 
     thinking: bool = Field(default=False, description="Enable thinking mode for VolcEngine models")

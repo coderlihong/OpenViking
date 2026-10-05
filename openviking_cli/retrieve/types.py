@@ -287,6 +287,7 @@ class MatchedContext:
     match_reason: str = ""
 
     search_tags: List[str] = field(default_factory=list)
+    matches: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -380,6 +381,7 @@ class FindResult:
             "score": ctx.score,
             "abstract": ctx.abstract,
             "tags": normalize_search_tags(ctx.search_tags, discard_invalid=True),
+            **({"matches": ctx.matches} if ctx.matches else {}),
         }
 
     def _query_to_dict(self, q: TypedQuery) -> Dict[str, Any]:
