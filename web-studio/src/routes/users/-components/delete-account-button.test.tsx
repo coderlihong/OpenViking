@@ -108,7 +108,9 @@ describe('DeleteAccountButton', () => {
     expect(connectionMocks.switchManagementAccount).toHaveBeenCalledWith(
       'account-b',
     )
-    expect(toastMocks.success).toHaveBeenCalledWith('toast.accountDeletionStarted')
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      'toast.accountDeletionStarted',
+    )
   })
 
   it('clears the deleted identity and opens settings when no account remains', async () => {

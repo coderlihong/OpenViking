@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteAdminAccountByAccountIdData, DeleteAdminAccountByAccountIdErrors, DeleteAdminAccountByAccountIdResponses, DeleteAdminAccountIdUserByUserIdData, DeleteAdminAccountIdUserByUserIdErrors, DeleteAdminAccountIdUserByUserIdResponses, DeleteFsData, DeleteFsErrors, DeleteFsResponses, DeleteSessionBySessionIdData, DeleteSessionBySessionIdErrors, DeleteSessionBySessionIdResponses, DeleteWebdavResourceByResourcePathData, DeleteWebdavResourceByResourcePathErrors, DeleteWebdavResourceByResourcePathResponses, DeleteWebdavResourcesData, DeleteWebdavResourcesErrors, DeleteWebdavResourcesResponsess, GetAdminAccountIdUsersData, GetAdminAccountIdUsersErrors, GetAdminAccountIdUsersResponses, GetAdminAccountsData, GetAdminAccountsErrors, GetAdminAccountsResponses, GetBotV1HealthData, GetBotV1HealthResponses, GetConsoleAuditData, GetConsoleAuditErrors, GetConsoleAuditResponses, GetConsoleContextCommitsData, GetConsoleContextCommitsErrors, GetConsoleContextCommitsResponses, GetConsoleDashboardSummaryData, GetConsoleDashboardSummaryErrors, GetConsoleDashboardSummaryResponses, GetConsoleTokensData, GetConsoleTokensErrors, GetConsoleTokensResponses, GetContentAbstractData, GetContentAbstractErrors, GetContentAbstractResponses, GetContentDownloadData, GetContentDownloadErrors, GetContentDownloadResponses, GetContentOverviewData, GetContentOverviewErrors, GetContentOverviewResponses, GetContentReadData, GetContentReadErrors, GetContentReadResponses, GetDebugHealthData, GetDebugHealthErrors, GetDebugHealthResponses, GetDebugVectorCountData, GetDebugVectorCountErrors, GetDebugVectorCountResponses, GetDebugVectorScrollData, GetDebugVectorScrollErrors, GetDebugVectorScrollResponses, GetFsLsData, GetFsLsErrors, GetFsLsResponses, GetFsStatData, GetFsStatErrors, GetFsStatResponses, GetFsTreeData, GetFsTreeErrors, GetFsTreeResponses, GetHealthData, GetHealthResponses, GetMetricsData, GetMetricsResponses, GetObserverFilesystemData, GetObserverFilesystemErrors, GetObserverFilesystemResponses, GetObserverLockData, GetObserverLockErrors, GetObserverLockResponses, GetObserverModelsData, GetObserverModelsErrors, GetObserverModelsResponses, GetObserverQueueData, GetObserverQueueErrors, GetObserverQueueResponses, GetObserverRetrievalData, GetObserverRetrievalErrors, GetObserverRetrievalResponses, GetObserverSystemData, GetObserverSystemErrors, GetObserverSystemResponses, GetObserverVikingdbData, GetObserverVikingdbErrors, GetObserverVikingdbResponses, GetPrivacyConfigsByCategoryAndTargetKeyData, GetPrivacyConfigsByCategoryAndTargetKeyErrors, GetPrivacyConfigsByCategoryAndTargetKeyResponses, GetPrivacyConfigsByCategoryData, GetPrivacyConfigsByCategoryErrors, GetPrivacyConfigsByCategoryResponses, GetPrivacyConfigsData, GetPrivacyConfigsErrors, GetPrivacyConfigsResponses, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionData, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionErrors, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionResponses, GetPrivacyConfigsVersionsByCategoryAndTargetKeyData, GetPrivacyConfigsVersionsByCategoryAndTargetKeyErrors, GetPrivacyConfigsVersionsByCategoryAndTargetKeyResponses, GetReadyData, GetReadyResponses, GetSessionBySessionIdData, GetSessionBySessionIdErrors, GetSessionBySessionIdResponses, GetSessionIdArchiveByArchiveIdData, GetSessionIdArchiveByArchiveIdErrors, GetSessionIdArchiveByArchiveIdResponses, GetSessionIdContextData, GetSessionIdContextErrors, GetSessionIdContextResponses, GetSessionsData, GetSessionsErrors, GetSessionsResponses, GetStatsMemoriesData, GetStatsMemoriesErrors, GetStatsMemoriesResponses, GetStatsSessionBySessionIdData, GetStatsSessionBySessionIdErrors, GetStatsSessionBySessionIdResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskByTaskIdData, GetTaskByTaskIdErrors, GetTaskByTaskIdResponses, GetTasksData, GetTasksErrors, GetTasksResponses, GetWebdavResourceByResourcePathData, GetWebdavResourceByResourcePathErrors, GetWebdavResourceByResourcePathResponses, GetWebdavResourcesData, GetWebdavResourcesErrors, GetWebdavResourcesResponses, HeadWebdavResourceByResourcePathData, HeadWebdavResourceByResourcePathErrors, HeadWebdavResourceByResourcePathResponses, HeadWebdavResourcesData, HeadWebdavResourcesErrors, HeadWebdavResourcesResponses, OptionsWebdavResourceByResourcePathData, OptionsWebdavResourceByResourcePathErrors, OptionsWebdavResourceByResourcePathResponses, OptionsWebdavResourcesData, OptionsWebdavResourcesErrors, OptionsWebdavResourcesResponses, PostAdminAccountIdUserIdKeyData, PostAdminAccountIdUserIdKeyErrors, PostAdminAccountIdUserIdKeyResponses, PostAdminAccountIdUsersData, PostAdminAccountIdUsersErrors, PostAdminAccountIdUsersResponses, PostAdminAccountsData, PostAdminAccountsErrors, PostAdminAccountsResponses, PostBotV1ChatData, PostBotV1ChatErrors, PostBotV1ChatResponses, PostBotV1ChatStreamData, PostBotV1ChatStreamErrors, PostBotV1ChatStreamResponses, PostBotV1FeedbackData, PostBotV1FeedbackErrors, PostBotV1FeedbackResponses, PostContentReindexData, PostContentReindexErrors, PostContentReindexResponses, PostContentWriteData, PostContentWriteErrors, PostContentWriteResponses, PostFsMkdirData, PostFsMkdirErrors, PostFsMkdirResponses, PostFsMvData, PostFsMvErrors, PostFsMvResponses, PostPackBackupData, PostPackBackupErrors, PostPackBackupResponses, PostPackExportData, PostPackExportErrors, PostPackExportResponses, PostPackImportData, PostPackImportErrors, PostPackImportResponses, PostPackRestoreData, PostPackRestoreErrors, PostPackRestoreResponses, PostPrivacyConfigsActivateByCategoryAndTargetKeyData, PostPrivacyConfigsActivateByCategoryAndTargetKeyErrors, PostPrivacyConfigsActivateByCategoryAndTargetKeyResponses, PostPrivacyConfigsByCategoryAndTargetKeyData, PostPrivacyConfigsByCategoryAndTargetKeyErrors, PostPrivacyConfigsByCategoryAndTargetKeyResponses, PostResourcesData, PostResourcesErrors, PostResourcesResponses, PostResourcesTempUploadData, PostResourcesTempUploadErrors, PostResourcesTempUploadResponses, PostSearchFindData, PostSearchFindErrors, PostSearchFindResponses, PostSearchGlobData, PostSearchGlobErrors, PostSearchGlobResponses, PostSearchGrepData, PostSearchGrepErrors, PostSearchGrepResponses, PostSearchSearchData, PostSearchSearchErrors, PostSearchSearchResponses, PostSessionIdCommitData, PostSessionIdCommitErrors, PostSessionIdCommitResponses, PostSessionIdExtractData, PostSessionIdExtractErrors, PostSessionIdExtractResponses, PostSessionIdMessagesData, PostSessionIdMessagesErrors, PostSessionIdMessagesResponses, PostSessionIdUsedData, PostSessionIdUsedErrors, PostSessionIdUsedResponses, PostSessionsData, PostSessionsErrors, PostSessionsResponses, PostSkillsData, PostSkillsErrors, PostSkillsResponses, PostSystemConsistencyData, PostSystemConsistencyErrors, PostSystemConsistencyResponses, PostSystemWaitData, PostSystemWaitErrors, PostSystemWaitResponses, PutAdminAccountIdUserIdRoleData, PutAdminAccountIdUserIdRoleErrors, PutAdminAccountIdUserIdRoleResponses, PutWebdavResourceByResourcePathData, PutWebdavResourceByResourcePathErrors, PutWebdavResourceByResourcePathResponses, PutWebdavResourcesData, PutWebdavResourcesErrors, PutWebdavResourcesResponses } from './types.gen';
+import type { DeleteAclData, DeleteAclErrors, DeleteAclResponses, DeleteAdminAccountByAccountIdData, DeleteAdminAccountByAccountIdErrors, DeleteAdminAccountByAccountIdResponses, DeleteAdminAccountIdGroupByGroupIdData, DeleteAdminAccountIdGroupByGroupIdErrors, DeleteAdminAccountIdGroupByGroupIdResponses, DeleteAdminAccountIdGroupIdMembersByUserIdData, DeleteAdminAccountIdGroupIdMembersByUserIdErrors, DeleteAdminAccountIdGroupIdMembersByUserIdResponses, DeleteAdminAccountIdMemoryTemplatesByMemoryTypeData, DeleteAdminAccountIdMemoryTemplatesByMemoryTypeErrors, DeleteAdminAccountIdMemoryTemplatesByMemoryTypeResponses, DeleteAdminAccountIdUserByUserIdData, DeleteAdminAccountIdUserByUserIdErrors, DeleteAdminAccountIdUserByUserIdResponses, DeleteFsData, DeleteFsErrors, DeleteFsResponses, DeleteSessionBySessionIdData, DeleteSessionBySessionIdErrors, DeleteSessionBySessionIdResponses, DeleteSkillBySkillNameData, DeleteSkillBySkillNameErrors, DeleteSkillBySkillNameResponses, DeleteSnapshotIgnoreData, DeleteSnapshotIgnoreErrors, DeleteSnapshotIgnoreResponses, DeleteUserSettingsAddLocationsData, DeleteUserSettingsAddLocationsErrors, DeleteUserSettingsAddLocationsResponses, DeleteWatchesByTaskIdData, DeleteWatchesByTaskIdErrors, DeleteWatchesByTaskIdResponses, DeleteWatchesData, DeleteWatchesErrors, DeleteWatchesResponses, DeleteWebdavResourceByResourcePathData, DeleteWebdavResourceByResourcePathErrors, DeleteWebdavResourceByResourcePathResponses, DeleteWebdavResourcesData, DeleteWebdavResourcesErrors, DeleteWebdavResourcesResponses, GetAclData, GetAclErrors, GetAclResponses, GetAdminAccountIdGroupIdMembersData, GetAdminAccountIdGroupIdMembersErrors, GetAdminAccountIdGroupIdMembersResponses, GetAdminAccountIdGroupsData, GetAdminAccountIdGroupsErrors, GetAdminAccountIdGroupsResponses, GetAdminAccountIdMemoryTemplatesByMemoryTypeData, GetAdminAccountIdMemoryTemplatesByMemoryTypeErrors, GetAdminAccountIdMemoryTemplatesByMemoryTypeResponses, GetAdminAccountIdMemoryTemplatesData, GetAdminAccountIdMemoryTemplatesErrors, GetAdminAccountIdMemoryTemplatesResponses, GetAdminAccountIdSettingsData, GetAdminAccountIdSettingsErrors, GetAdminAccountIdSettingsResponses, GetAdminAccountIdUserIdSettingsData, GetAdminAccountIdUserIdSettingsErrors, GetAdminAccountIdUserIdSettingsResponses, GetAdminAccountIdUsersData, GetAdminAccountIdUsersErrors, GetAdminAccountIdUsersResponses, GetAdminAccountsData, GetAdminAccountsErrors, GetAdminAccountsResponses, GetAdminAgentEvolutionData, GetAdminAgentEvolutionErrors, GetAdminAgentEvolutionResponses, GetAdminModelConfigData, GetAdminModelConfigErrors, GetAdminModelConfigResponses, GetAgentEvolutionExperiencesOutcomesData, GetAgentEvolutionExperiencesOutcomesErrors, GetAgentEvolutionExperiencesOutcomesResponses, GetAgentEvolutionExperiencesTrajectoriesData, GetAgentEvolutionExperiencesTrajectoriesErrors, GetAgentEvolutionExperiencesTrajectoriesResponses, GetBotV1CompileByTaskIdData, GetBotV1CompileByTaskIdErrors, GetBotV1CompileByTaskIdResponses, GetBotV1HealthData, GetBotV1HealthResponses, GetConsoleAuditData, GetConsoleAuditErrors, GetConsoleAuditResponses, GetConsoleContextCommitsData, GetConsoleContextCommitsErrors, GetConsoleContextCommitsResponses, GetConsoleDashboardSummaryData, GetConsoleDashboardSummaryErrors, GetConsoleDashboardSummaryResponses, GetConsoleTokensData, GetConsoleTokensErrors, GetConsoleTokensResponses, GetContentAbstractData, GetContentAbstractErrors, GetContentAbstractResponses, GetContentDownloadData, GetContentDownloadErrors, GetContentDownloadResponses, GetContentOverviewData, GetContentOverviewErrors, GetContentOverviewResponses, GetContentReadData, GetContentReadErrors, GetContentReadResponses, GetDebugHealthData, GetDebugHealthErrors, GetDebugHealthResponses, GetDebugVectorCountData, GetDebugVectorCountErrors, GetDebugVectorCountResponses, GetDebugVectorScrollData, GetDebugVectorScrollErrors, GetDebugVectorScrollResponses, GetFsAttrsData, GetFsAttrsErrors, GetFsAttrsResponses, GetFsLsData, GetFsLsErrors, GetFsLsResponses, GetFsStatData, GetFsStatErrors, GetFsStatResponses, GetFsTreeData, GetFsTreeErrors, GetFsTreeResponses, GetHealthData, GetHealthResponses, GetKbJobByJobIdData, GetKbJobByJobIdErrors, GetKbJobByJobIdResponses, GetKbJobsData, GetKbJobsErrors, GetKbJobsResponses, GetKbNamespaceByNamespaceIdData, GetKbNamespaceByNamespaceIdErrors, GetKbNamespaceByNamespaceIdResponses, GetKbWikiBuildByBuildIdData, GetKbWikiBuildByBuildIdErrors, GetKbWikiBuildByBuildIdResponses, GetKbWikiCollectionByCollectionIdData, GetKbWikiCollectionByCollectionIdErrors, GetKbWikiCollectionByCollectionIdResponses, GetKbWikiCollectionIdMigrationInspectionData, GetKbWikiCollectionIdMigrationInspectionErrors, GetKbWikiCollectionIdMigrationInspectionResponses, GetKbWikiSchemaIdByVersionData, GetKbWikiSchemaIdByVersionErrors, GetKbWikiSchemaIdByVersionResponses, GetKbWriteRecoveryRecoveryByRecoveryIdData, GetKbWriteRecoveryRecoveryByRecoveryIdErrors, GetKbWriteRecoveryRecoveryByRecoveryIdResponses, GetMetricsData, GetMetricsResponses, GetObserverFilesystemData, GetObserverFilesystemErrors, GetObserverFilesystemResponses, GetObserverLockData, GetObserverLockErrors, GetObserverLockResponses, GetObserverModelsData, GetObserverModelsErrors, GetObserverModelsResponses, GetObserverQueueData, GetObserverQueueErrors, GetObserverQueueResponses, GetObserverRetrievalData, GetObserverRetrievalErrors, GetObserverRetrievalResponses, GetObserverSystemData, GetObserverSystemErrors, GetObserverSystemResponses, GetObserverVikingdbData, GetObserverVikingdbErrors, GetObserverVikingdbResponses, GetPrivacyConfigsByCategoryAndTargetKeyData, GetPrivacyConfigsByCategoryAndTargetKeyErrors, GetPrivacyConfigsByCategoryAndTargetKeyResponses, GetPrivacyConfigsByCategoryData, GetPrivacyConfigsByCategoryErrors, GetPrivacyConfigsByCategoryResponses, GetPrivacyConfigsData, GetPrivacyConfigsErrors, GetPrivacyConfigsResponses, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionData, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionErrors, GetPrivacyConfigsVersionByCategoryAndTargetKeyAndVersionResponses, GetPrivacyConfigsVersionsByCategoryAndTargetKeyData, GetPrivacyConfigsVersionsByCategoryAndTargetKeyErrors, GetPrivacyConfigsVersionsByCategoryAndTargetKeyResponses, GetReadyData, GetReadyResponses, GetSessionBySessionIdData, GetSessionBySessionIdErrors, GetSessionBySessionIdResponses, GetSessionIdArchiveByArchiveIdData, GetSessionIdArchiveByArchiveIdErrors, GetSessionIdArchiveByArchiveIdResponses, GetSessionIdContextData, GetSessionIdContextErrors, GetSessionIdContextResponses, GetSessionIdToolResultByToolResultIdData, GetSessionIdToolResultByToolResultIdErrors, GetSessionIdToolResultByToolResultIdResponses, GetSessionIdToolResultIdSearchData, GetSessionIdToolResultIdSearchErrors, GetSessionIdToolResultIdSearchResponses, GetSessionIdToolResultsData, GetSessionIdToolResultsErrors, GetSessionIdToolResultsResponses, GetSessionsData, GetSessionsErrors, GetSessionsResponses, GetSkillBySkillNameData, GetSkillBySkillNameErrors, GetSkillBySkillNameResponses, GetSkillsData, GetSkillsErrors, GetSkillsResponses, GetSnapshotDiffData, GetSnapshotDiffErrors, GetSnapshotDiffResponses, GetSnapshotIgnoreData, GetSnapshotIgnoreErrors, GetSnapshotIgnoreResponses, GetSnapshotLogData, GetSnapshotLogErrors, GetSnapshotLogResponses, GetSnapshotShowData, GetSnapshotShowErrors, GetSnapshotShowResponses, GetStatsMemoriesData, GetStatsMemoriesErrors, GetStatsMemoriesResponses, GetStatsSessionBySessionIdData, GetStatsSessionBySessionIdErrors, GetStatsSessionBySessionIdResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetSystemSyncBySyncPathData, GetSystemSyncBySyncPathErrors, GetSystemSyncBySyncPathResponses, GetTaskByTaskIdData, GetTaskByTaskIdErrors, GetTaskByTaskIdResponses, GetTasksData, GetTasksErrors, GetTasksResponses, GetUserSettingsAddLocationsData, GetUserSettingsAddLocationsErrors, GetUserSettingsAddLocationsResponses, GetWatchesByTaskIdData, GetWatchesByTaskIdErrors, GetWatchesByTaskIdResponses, GetWatchesData, GetWatchesErrors, GetWatchesResponses, GetWebdavResourceByResourcePathData, GetWebdavResourceByResourcePathErrors, GetWebdavResourceByResourcePathResponses, GetWebdavResourcesData, GetWebdavResourcesErrors, GetWebdavResourcesResponses, HeadWebdavResourceByResourcePathData, HeadWebdavResourceByResourcePathErrors, HeadWebdavResourceByResourcePathResponses, HeadWebdavResourcesData, HeadWebdavResourcesErrors, HeadWebdavResourcesResponses, OptionsWebdavResourceByResourcePathData, OptionsWebdavResourceByResourcePathErrors, OptionsWebdavResourceByResourcePathResponses, OptionsWebdavResourcesData, OptionsWebdavResourcesErrors, OptionsWebdavResourcesResponses, PatchAdminAccountIdSettingsData, PatchAdminAccountIdSettingsErrors, PatchAdminAccountIdSettingsResponses, PatchAdminAccountIdUserIdSettingsData, PatchAdminAccountIdUserIdSettingsErrors, PatchAdminAccountIdUserIdSettingsResponses, PatchSessionIdConfigData, PatchSessionIdConfigErrors, PatchSessionIdConfigResponses, PatchUserSettingsAddLocationsData, PatchUserSettingsAddLocationsErrors, PatchUserSettingsAddLocationsResponses, PatchWatchesByTaskIdData, PatchWatchesByTaskIdErrors, PatchWatchesByTaskIdResponses, PatchWatchesData, PatchWatchesErrors, PatchWatchesResponses, PostAclGrantData, PostAclGrantErrors, PostAclGrantResponses, PostAclRevokeData, PostAclRevokeErrors, PostAclRevokeResponses, PostAdminAccountIdGroupsData, PostAdminAccountIdGroupsErrors, PostAdminAccountIdGroupsResponses, PostAdminAccountIdUserIdKeyData, PostAdminAccountIdUserIdKeyErrors, PostAdminAccountIdUserIdKeyResponses, PostAdminAccountIdUsersData, PostAdminAccountIdUsersErrors, PostAdminAccountIdUsersResponses, PostAdminAccountsData, PostAdminAccountsErrors, PostAdminAccountsResponses, PostAdminMigrateData, PostAdminMigrateErrors, PostAdminMigrateResponses, PostBotV1ChatData, PostBotV1ChatErrors, PostBotV1ChatResponses, PostBotV1ChatStreamData, PostBotV1ChatStreamErrors, PostBotV1ChatStreamResponses, PostBotV1CompileCancelByTaskIdData, PostBotV1CompileCancelByTaskIdErrors, PostBotV1CompileCancelByTaskIdResponses, PostBotV1CompileData, PostBotV1CompileErrors, PostBotV1CompileResponses, PostBotV1FeedbackData, PostBotV1FeedbackErrors, PostBotV1FeedbackResponses, PostCompileData, PostCompileErrors, PostCompileResponses, PostContentBatchWriteData, PostContentBatchWriteErrors, PostContentBatchWriteResponses, PostContentReindexData, PostContentReindexErrors, PostContentReindexResponses, PostContentSetTagsData, PostContentSetTagsErrors, PostContentSetTagsResponses, PostContentWriteData, PostContentWriteErrors, PostContentWriteResponses, PostFsAttrsSetTagsData, PostFsAttrsSetTagsErrors, PostFsAttrsSetTagsResponses, PostFsCpData, PostFsCpErrors, PostFsCpResponses, PostFsMkdirData, PostFsMkdirErrors, PostFsMkdirResponses, PostFsMvData, PostFsMvErrors, PostFsMvResponses, PostKbIngestionJobsData, PostKbIngestionJobsErrors, PostKbIngestionJobsResponses, PostKbJobIdCancelData, PostKbJobIdCancelErrors, PostKbJobIdCancelResponses, PostKbNamespacesData, PostKbNamespacesErrors, PostKbNamespacesExportsBySourceNamespaceData, PostKbNamespacesExportsBySourceNamespaceErrors, PostKbNamespacesExportsBySourceNamespaceResponses, PostKbNamespacesResponses, PostKbWikiBuildsData, PostKbWikiBuildsErrors, PostKbWikiBuildsResponses, PostKbWikiCollectionIdMigrateDomainsData, PostKbWikiCollectionIdMigrateDomainsErrors, PostKbWikiCollectionIdMigrateDomainsResponses, PostKbWikiCollectionsData, PostKbWikiCollectionsErrors, PostKbWikiCollectionsResponses, PostKbWikiIngestionsData, PostKbWikiIngestionsErrors, PostKbWikiIngestionsResponses, PostKbWikiSchemasData, PostKbWikiSchemasErrors, PostKbWikiSchemasResponses, PostKbWriteRecoveryDiagnosticsData, PostKbWriteRecoveryDiagnosticsErrors, PostKbWriteRecoveryDiagnosticsResponses, PostKbWriteRecoveryRecoveriesData, PostKbWriteRecoveryRecoveriesErrors, PostKbWriteRecoveryRecoveriesResponses, PostOpenvikingAssetsPreflightData, PostOpenvikingAssetsPreflightErrors, PostOpenvikingAssetsPreflightResponses, PostOpenvikingAssetsResolveData, PostOpenvikingAssetsResolveErrors, PostOpenvikingAssetsResolveResponses, PostPackBackupData, PostPackBackupErrors, PostPackBackupResponses, PostPackExportData, PostPackExportErrors, PostPackExportResponses, PostPackImportData, PostPackImportErrors, PostPackImportResponses, PostPackRestoreData, PostPackRestoreErrors, PostPackRestoreResponses, PostPrivacyConfigsActivateByCategoryAndTargetKeyData, PostPrivacyConfigsActivateByCategoryAndTargetKeyErrors, PostPrivacyConfigsActivateByCategoryAndTargetKeyResponses, PostPrivacyConfigsByCategoryAndTargetKeyData, PostPrivacyConfigsByCategoryAndTargetKeyErrors, PostPrivacyConfigsByCategoryAndTargetKeyResponses, PostResourcesData, PostResourcesErrors, PostResourcesResponses, PostResourcesTempUploadData, PostResourcesTempUploadErrors, PostResourcesTempUploadResponses, PostSearchFindData, PostSearchFindErrors, PostSearchFindResponses, PostSearchGlobData, PostSearchGlobErrors, PostSearchGlobResponses, PostSearchGrepData, PostSearchGrepErrors, PostSearchGrepResponses, PostSearchRecallData, PostSearchRecallErrors, PostSearchRecallResponses, PostSearchSearchData, PostSearchSearchErrors, PostSearchSearchResponses, PostSessionIdCommitData, PostSessionIdCommitErrors, PostSessionIdCommitResponses, PostSessionIdExtractData, PostSessionIdExtractErrors, PostSessionIdExtractResponses, PostSessionIdMessagesBatchData, PostSessionIdMessagesBatchErrors, PostSessionIdMessagesBatchResponses, PostSessionIdMessagesData, PostSessionIdMessagesErrors, PostSessionIdMessagesResponses, PostSessionIdUsedData, PostSessionIdUsedErrors, PostSessionIdUsedResponses, PostSessionsData, PostSessionsErrors, PostSessionsResponses, PostSkillsData, PostSkillsErrors, PostSkillsFindData, PostSkillsFindErrors, PostSkillsFindResponses, PostSkillsResponses, PostSkillsValidateData, PostSkillsValidateErrors, PostSkillsValidateResponses, PostSnapshotCommitData, PostSnapshotCommitErrors, PostSnapshotCommitResponses, PostSnapshotRestoreData, PostSnapshotRestoreErrors, PostSnapshotRestoreResponses, PostSystemBackendSyncRetryData, PostSystemBackendSyncRetryErrors, PostSystemBackendSyncRetryResponses, PostSystemBackendSyncStatusData, PostSystemBackendSyncStatusErrors, PostSystemBackendSyncStatusResponses, PostSystemConsistencyData, PostSystemConsistencyErrors, PostSystemConsistencyResponses, PostSystemSyncPathRetryData, PostSystemSyncPathRetryErrors, PostSystemSyncPathRetryResponses, PostSystemWaitData, PostSystemWaitErrors, PostSystemWaitResponses, PostTaskIdCancelData, PostTaskIdCancelErrors, PostTaskIdCancelResponses, PostWatchesTriggerByTaskIdData, PostWatchesTriggerByTaskIdErrors, PostWatchesTriggerByTaskIdResponses, PostWatchesTriggerData, PostWatchesTriggerErrors, PostWatchesTriggerResponses, PutAclData, PutAclErrors, PutAclResponses, PutAdminAccountIdGroupIdMembersByUserIdData, PutAdminAccountIdGroupIdMembersByUserIdErrors, PutAdminAccountIdGroupIdMembersByUserIdResponses, PutAdminAccountIdMemoryTemplatesByMemoryTypeData, PutAdminAccountIdMemoryTemplatesByMemoryTypeErrors, PutAdminAccountIdMemoryTemplatesByMemoryTypeResponses, PutAdminAccountIdUserIdRoleData, PutAdminAccountIdUserIdRoleErrors, PutAdminAccountIdUserIdRoleResponses, PutAdminAgentEvolutionData, PutAdminAgentEvolutionErrors, PutAdminAgentEvolutionResponses, PutAdminModelConfigData, PutAdminModelConfigErrors, PutAdminModelConfigResponses, PutSkillBySkillNameData, PutSkillBySkillNameErrors, PutSkillBySkillNameResponses, PutSnapshotIgnoreData, PutSnapshotIgnoreErrors, PutSnapshotIgnoreResponses, PutWebdavResourceByResourcePathData, PutWebdavResourceByResourcePathErrors, PutWebdavResourceByResourcePathResponses, PutWebdavResourcesData, PutWebdavResourcesErrors, PutWebdavResourcesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -89,9 +89,174 @@ export const postSystemConsistency = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
+ * Backend Sync Status
+ *
+ * Return multi-write backend sync status for a Viking URI subtree.
+ */
+export const postSystemBackendSyncStatus = <ThrowOnError extends boolean = false>(options: Options<PostSystemBackendSyncStatusData, ThrowOnError>) => (options.client ?? client).post<PostSystemBackendSyncStatusResponses, PostSystemBackendSyncStatusErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/system/backend/sync-status',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Backend Sync Retry
+ *
+ * Retry pending multi-write backend sync work for a Viking URI subtree.
+ */
+export const postSystemBackendSyncRetry = <ThrowOnError extends boolean = false>(options: Options<PostSystemBackendSyncRetryData, ThrowOnError>) => (options.client ?? client).post<PostSystemBackendSyncRetryResponses, PostSystemBackendSyncRetryErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/system/backend/sync-retry',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Admin Sync Status
+ *
+ * Return multi-write backend sync status for one URI subtree through the admin API.
+ */
+export const getSystemSyncBySyncPath = <ThrowOnError extends boolean = false>(options: Options<GetSystemSyncBySyncPathData, ThrowOnError>) => (options.client ?? client).get<GetSystemSyncBySyncPathResponses, GetSystemSyncBySyncPathErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/system/sync/{sync_path}',
+    ...options
+});
+
+/**
+ * Admin Sync Retry
+ *
+ * Retry pending multi-write backend sync work for one URI subtree through the admin API.
+ */
+export const postSystemSyncPathRetry = <ThrowOnError extends boolean = false>(options: Options<PostSystemSyncPathRetryData, ThrowOnError>) => (options.client ?? client).post<PostSystemSyncPathRetryResponses, PostSystemSyncPathRetryErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/system/sync/{sync_path}/retry',
+    ...options
+});
+
+/**
+ * Delete Acl
+ */
+export const deleteAcl = <ThrowOnError extends boolean = false>(options: Options<DeleteAclData, ThrowOnError>) => (options.client ?? client).delete<DeleteAclResponses, DeleteAclErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/acl',
+    ...options
+});
+
+/**
+ * Get Acl
+ */
+export const getAcl = <ThrowOnError extends boolean = false>(options: Options<GetAclData, ThrowOnError>) => (options.client ?? client).get<GetAclResponses, GetAclErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/acl',
+    ...options
+});
+
+/**
+ * Set Acl
+ */
+export const putAcl = <ThrowOnError extends boolean = false>(options: Options<PutAclData, ThrowOnError>) => (options.client ?? client).put<PutAclResponses, PutAclErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/acl',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Grant Acl
+ */
+export const postAclGrant = <ThrowOnError extends boolean = false>(options: Options<PostAclGrantData, ThrowOnError>) => (options.client ?? client).post<PostAclGrantResponses, PostAclGrantErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/acl/grant',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Revoke Acl
+ */
+export const postAclRevoke = <ThrowOnError extends boolean = false>(options: Options<PostAclRevokeData, ThrowOnError>) => (options.client ?? client).post<PostAclRevokeResponses, PostAclRevokeErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/acl/revoke',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Runtime Model Config
+ *
+ * Return the live model sections (vlm/embedding/rerank/query_planner).
+ */
+export const getAdminModelConfig = <ThrowOnError extends boolean = false>(options?: Options<GetAdminModelConfigData, ThrowOnError>) => (options?.client ?? client).get<GetAdminModelConfigResponses, GetAdminModelConfigErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/model-config',
+    ...options
+});
+
+/**
+ * Put Runtime Model Config
+ *
+ * Validate, persist to ov.conf, and hot-reload the model sections.
+ *
+ * ``vlm``/``rerank``/``query_planner`` take effect immediately; the running
+ * embedder pins the vector collection dimension, so an ``embedding`` change
+ * is persisted but needs a server restart.
+ */
+export const putAdminModelConfig = <ThrowOnError extends boolean = false>(options: Options<PutAdminModelConfigData, ThrowOnError>) => (options.client ?? client).put<PutAdminModelConfigResponses, PutAdminModelConfigErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/model-config',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Agent Evolution Status
+ *
+ * Return the effective Agent Evolution switch for the caller's account.
+ */
+export const getAdminAgentEvolution = <ThrowOnError extends boolean = false>(options?: Options<GetAdminAgentEvolutionData, ThrowOnError>) => (options?.client ?? client).get<GetAdminAgentEvolutionResponses, GetAdminAgentEvolutionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/agent-evolution',
+    ...options
+});
+
+/**
+ * Set Agent Evolution Status
+ *
+ * Persist and hot-reload Agent Evolution for the caller's account.
+ */
+export const putAdminAgentEvolution = <ThrowOnError extends boolean = false>(options: Options<PutAdminAgentEvolutionData, ThrowOnError>) => (options.client ?? client).put<PutAdminAgentEvolutionResponses, PutAdminAgentEvolutionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/agent-evolution',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List Accounts
  *
- * List all accounts.
+ * List accounts in creation order. `name` supports wildcard (* and ?) matching.
  */
 export const getAdminAccounts = <ThrowOnError extends boolean = false>(options?: Options<GetAdminAccountsData, ThrowOnError>) => (options?.client ?? client).get<GetAdminAccountsResponses, GetAdminAccountsErrors, ThrowOnError>({
     responseType: 'json',
@@ -115,6 +280,21 @@ export const postAdminAccounts = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
+ * Migrate Legacy Data
+ *
+ * Preflight and enqueue legacy agent/session data migration or cleanup.
+ */
+export const postAdminMigrate = <ThrowOnError extends boolean = false>(options?: Options<PostAdminMigrateData, ThrowOnError>) => (options?.client ?? client).post<PostAdminMigrateResponses, PostAdminMigrateErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/migrate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
+
+/**
  * Delete Account
  *
  * Revoke an account and submit durable cleanup of its data.
@@ -126,9 +306,83 @@ export const deleteAdminAccountByAccountId = <ThrowOnError extends boolean = fal
 });
 
 /**
+ * Get Account Settings
+ *
+ * Return effective and explicitly overridden settings for one account.
+ */
+export const getAdminAccountIdSettings = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdSettingsData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdSettingsResponses, GetAdminAccountIdSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/settings',
+    ...options
+});
+
+/**
+ * Patch Account Settings
+ *
+ * Update allowlisted hot-reloadable settings for one account.
+ */
+export const patchAdminAccountIdSettings = <ThrowOnError extends boolean = false>(options: Options<PatchAdminAccountIdSettingsData, ThrowOnError>) => (options.client ?? client).patch<PatchAdminAccountIdSettingsResponses, PatchAdminAccountIdSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/settings',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Memory Templates
+ *
+ * List full defaults and account overrides for the six editable memory templates.
+ */
+export const getAdminAccountIdMemoryTemplates = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdMemoryTemplatesData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdMemoryTemplatesResponses, GetAdminAccountIdMemoryTemplatesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/memory-templates',
+    ...options
+});
+
+/**
+ * Reset Memory Template
+ *
+ * Remove one template override without rewriting existing memories.
+ */
+export const deleteAdminAccountIdMemoryTemplatesByMemoryType = <ThrowOnError extends boolean = false>(options: Options<DeleteAdminAccountIdMemoryTemplatesByMemoryTypeData, ThrowOnError>) => (options.client ?? client).delete<DeleteAdminAccountIdMemoryTemplatesByMemoryTypeResponses, DeleteAdminAccountIdMemoryTemplatesByMemoryTypeErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/memory-templates/{memory_type}',
+    ...options
+});
+
+/**
+ * Get Memory Template
+ *
+ * Read one template's full defaults and effective account configuration.
+ */
+export const getAdminAccountIdMemoryTemplatesByMemoryType = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdMemoryTemplatesByMemoryTypeData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdMemoryTemplatesByMemoryTypeResponses, GetAdminAccountIdMemoryTemplatesByMemoryTypeErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/memory-templates/{memory_type}',
+    ...options
+});
+
+/**
+ * Put Memory Template
+ *
+ * Fill omitted values from deployment defaults and publish a complete YAML template.
+ */
+export const putAdminAccountIdMemoryTemplatesByMemoryType = <ThrowOnError extends boolean = false>(options: Options<PutAdminAccountIdMemoryTemplatesByMemoryTypeData, ThrowOnError>) => (options.client ?? client).put<PutAdminAccountIdMemoryTemplatesByMemoryTypeResponses, PutAdminAccountIdMemoryTemplatesByMemoryTypeErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/memory-templates/{memory_type}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List Users
  *
- * List all users in an account.
+ * List users in an account, in creation order. `name` supports wildcard (* and ?) matching.
  */
 export const getAdminAccountIdUsers = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdUsersData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdUsersResponses, GetAdminAccountIdUsersErrors, ThrowOnError>({
     responseType: 'json',
@@ -152,9 +406,35 @@ export const postAdminAccountIdUsers = <ThrowOnError extends boolean = false>(op
 });
 
 /**
+ * Get User Settings
+ *
+ * Return the configured and effective memory policy for one User.
+ */
+export const getAdminAccountIdUserIdSettings = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdUserIdSettingsData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdUserIdSettingsResponses, GetAdminAccountIdUserIdSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/users/{user_id}/settings',
+    ...options
+});
+
+/**
+ * Patch User Settings
+ *
+ * Update or clear the allowlisted User memory policy without restarting.
+ */
+export const patchAdminAccountIdUserIdSettings = <ThrowOnError extends boolean = false>(options: Options<PatchAdminAccountIdUserIdSettingsData, ThrowOnError>) => (options.client ?? client).patch<PatchAdminAccountIdUserIdSettingsResponses, PatchAdminAccountIdUserIdSettingsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/users/{user_id}/settings',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Remove User
  *
- * Remove a user from an account.
+ * Revoke a user and start durable cleanup of their owned data.
  */
 export const deleteAdminAccountIdUserByUserId = <ThrowOnError extends boolean = false>(options: Options<DeleteAdminAccountIdUserByUserIdData, ThrowOnError>) => (options.client ?? client).delete<DeleteAdminAccountIdUserByUserIdResponses, DeleteAdminAccountIdUserByUserIdErrors, ThrowOnError>({
     responseType: 'json',
@@ -165,7 +445,7 @@ export const deleteAdminAccountIdUserByUserId = <ThrowOnError extends boolean = 
 /**
  * Set User Role
  *
- * Change a user's role (ROOT only).
+ * Promote an account user to ADMIN.
  */
 export const putAdminAccountIdUserIdRole = <ThrowOnError extends boolean = false>(options: Options<PutAdminAccountIdUserIdRoleData, ThrowOnError>) => (options.client ?? client).put<PutAdminAccountIdUserIdRoleResponses, PutAdminAccountIdUserIdRoleErrors, ThrowOnError>({
     responseType: 'json',
@@ -185,13 +465,335 @@ export const putAdminAccountIdUserIdRole = <ThrowOnError extends boolean = false
 export const postAdminAccountIdUserIdKey = <ThrowOnError extends boolean = false>(options: Options<PostAdminAccountIdUserIdKeyData, ThrowOnError>) => (options.client ?? client).post<PostAdminAccountIdUserIdKeyResponses, PostAdminAccountIdUserIdKeyErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/admin/accounts/{account_id}/users/{user_id}/key',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Groups
+ */
+export const getAdminAccountIdGroups = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdGroupsData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdGroupsResponses, GetAdminAccountIdGroupsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups',
     ...options
+});
+
+/**
+ * Create Group
+ */
+export const postAdminAccountIdGroups = <ThrowOnError extends boolean = false>(options: Options<PostAdminAccountIdGroupsData, ThrowOnError>) => (options.client ?? client).post<PostAdminAccountIdGroupsResponses, PostAdminAccountIdGroupsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Group
+ */
+export const deleteAdminAccountIdGroupByGroupId = <ThrowOnError extends boolean = false>(options: Options<DeleteAdminAccountIdGroupByGroupIdData, ThrowOnError>) => (options.client ?? client).delete<DeleteAdminAccountIdGroupByGroupIdResponses, DeleteAdminAccountIdGroupByGroupIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups/{group_id}',
+    ...options
+});
+
+/**
+ * List Group Members
+ */
+export const getAdminAccountIdGroupIdMembers = <ThrowOnError extends boolean = false>(options: Options<GetAdminAccountIdGroupIdMembersData, ThrowOnError>) => (options.client ?? client).get<GetAdminAccountIdGroupIdMembersResponses, GetAdminAccountIdGroupIdMembersErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups/{group_id}/members',
+    ...options
+});
+
+/**
+ * Remove Group Member
+ */
+export const deleteAdminAccountIdGroupIdMembersByUserId = <ThrowOnError extends boolean = false>(options: Options<DeleteAdminAccountIdGroupIdMembersByUserIdData, ThrowOnError>) => (options.client ?? client).delete<DeleteAdminAccountIdGroupIdMembersByUserIdResponses, DeleteAdminAccountIdGroupIdMembersByUserIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups/{group_id}/members/{user_id}',
+    ...options
+});
+
+/**
+ * Add Group Member
+ */
+export const putAdminAccountIdGroupIdMembersByUserId = <ThrowOnError extends boolean = false>(options: Options<PutAdminAccountIdGroupIdMembersByUserIdData, ThrowOnError>) => (options.client ?? client).put<PutAdminAccountIdGroupIdMembersByUserIdResponses, PutAdminAccountIdGroupIdMembersByUserIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/admin/accounts/{account_id}/groups/{group_id}/members/{user_id}',
+    ...options
+});
+
+/**
+ * Register Schema
+ */
+export const postKbWikiSchemas = <ThrowOnError extends boolean = false>(options: Options<PostKbWikiSchemasData, ThrowOnError>) => (options.client ?? client).post<PostKbWikiSchemasResponses, PostKbWikiSchemasErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/schemas',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Schema
+ */
+export const getKbWikiSchemaIdByVersion = <ThrowOnError extends boolean = false>(options: Options<GetKbWikiSchemaIdByVersionData, ThrowOnError>) => (options.client ?? client).get<GetKbWikiSchemaIdByVersionResponses, GetKbWikiSchemaIdByVersionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/schemas/{schema_id}/{version}',
+    ...options
+});
+
+/**
+ * Register Collection
+ */
+export const postKbWikiCollections = <ThrowOnError extends boolean = false>(options: Options<PostKbWikiCollectionsData, ThrowOnError>) => (options.client ?? client).post<PostKbWikiCollectionsResponses, PostKbWikiCollectionsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/collections',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Collection
+ */
+export const getKbWikiCollectionByCollectionId = <ThrowOnError extends boolean = false>(options: Options<GetKbWikiCollectionByCollectionIdData, ThrowOnError>) => (options.client ?? client).get<GetKbWikiCollectionByCollectionIdResponses, GetKbWikiCollectionByCollectionIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/collections/{collection_id}',
+    ...options
+});
+
+/**
+ * Inspect Collection Migration
+ */
+export const getKbWikiCollectionIdMigrationInspection = <ThrowOnError extends boolean = false>(options: Options<GetKbWikiCollectionIdMigrationInspectionData, ThrowOnError>) => (options.client ?? client).get<GetKbWikiCollectionIdMigrationInspectionResponses, GetKbWikiCollectionIdMigrationInspectionErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/collections/{collection_id}/migration-inspection',
+    ...options
+});
+
+/**
+ * Migrate Collection Domains
+ */
+export const postKbWikiCollectionIdMigrateDomains = <ThrowOnError extends boolean = false>(options: Options<PostKbWikiCollectionIdMigrateDomainsData, ThrowOnError>) => (options.client ?? client).post<PostKbWikiCollectionIdMigrateDomainsResponses, PostKbWikiCollectionIdMigrateDomainsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/collections/{collection_id}/migrate-domains',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Prepare Build
+ */
+export const postKbWikiBuilds = <ThrowOnError extends boolean = false>(options: Options<PostKbWikiBuildsData, ThrowOnError>) => (options.client ?? client).post<PostKbWikiBuildsResponses, PostKbWikiBuildsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/builds',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Prepare Ingestion
+ */
+export const postKbWikiIngestions = <ThrowOnError extends boolean = false>(options: Options<PostKbWikiIngestionsData, ThrowOnError>) => (options.client ?? client).post<PostKbWikiIngestionsResponses, PostKbWikiIngestionsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/ingestions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Build
+ *
+ * Read a stored preparation plan under current collection/source ACLs.
+ *
+ * This is not a job status endpoint or an export authorization receipt.
+ */
+export const getKbWikiBuildByBuildId = <ThrowOnError extends boolean = false>(options: Options<GetKbWikiBuildByBuildIdData, ThrowOnError>) => (options.client ?? client).get<GetKbWikiBuildByBuildIdResponses, GetKbWikiBuildByBuildIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/wiki/builds/{build_id}',
+    ...options
+});
+
+/**
+ * Register Namespace
+ */
+export const postKbNamespaces = <ThrowOnError extends boolean = false>(options: Options<PostKbNamespacesData, ThrowOnError>) => (options.client ?? client).post<PostKbNamespacesResponses, PostKbNamespacesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/namespaces',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Namespace
+ */
+export const getKbNamespaceByNamespaceId = <ThrowOnError extends boolean = false>(options: Options<GetKbNamespaceByNamespaceIdData, ThrowOnError>) => (options.client ?? client).get<GetKbNamespaceByNamespaceIdResponses, GetKbNamespaceByNamespaceIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/namespaces/{namespace_id}',
+    ...options
+});
+
+/**
+ * Set Export
+ */
+export const postKbNamespacesExportsBySourceNamespace = <ThrowOnError extends boolean = false>(options: Options<PostKbNamespacesExportsBySourceNamespaceData, ThrowOnError>) => (options.client ?? client).post<PostKbNamespacesExportsBySourceNamespaceResponses, PostKbNamespacesExportsBySourceNamespaceErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/namespaces/{source_namespace}/exports',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Create Job
+ */
+export const postKbIngestionJobs = <ThrowOnError extends boolean = false>(options: Options<PostKbIngestionJobsData, ThrowOnError>) => (options.client ?? client).post<PostKbIngestionJobsResponses, PostKbIngestionJobsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/ingestion-jobs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Jobs
+ *
+ * List durable jobs with durable queue positions for the tasks/monitoring UI.
+ */
+export const getKbJobs = <ThrowOnError extends boolean = false>(options?: Options<GetKbJobsData, ThrowOnError>) => (options?.client ?? client).get<GetKbJobsResponses, GetKbJobsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/jobs',
+    ...options
+});
+
+/**
+ * Get Job
+ */
+export const getKbJobByJobId = <ThrowOnError extends boolean = false>(options: Options<GetKbJobByJobIdData, ThrowOnError>) => (options.client ?? client).get<GetKbJobByJobIdResponses, GetKbJobByJobIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/jobs/{job_id}',
+    ...options
+});
+
+/**
+ * Cancel Job
+ */
+export const postKbJobIdCancel = <ThrowOnError extends boolean = false>(options: Options<PostKbJobIdCancelData, ThrowOnError>) => (options.client ?? client).post<PostKbJobIdCancelResponses, PostKbJobIdCancelErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/jobs/{job_id}/cancel',
+    ...options
+});
+
+/**
+ * Diagnose
+ */
+export const postKbWriteRecoveryDiagnostics = <ThrowOnError extends boolean = false>(options: Options<PostKbWriteRecoveryDiagnosticsData, ThrowOnError>) => (options.client ?? client).post<PostKbWriteRecoveryDiagnosticsResponses, PostKbWriteRecoveryDiagnosticsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/write-recovery/diagnostics',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Recover
+ */
+export const postKbWriteRecoveryRecoveries = <ThrowOnError extends boolean = false>(options: Options<PostKbWriteRecoveryRecoveriesData, ThrowOnError>) => (options.client ?? client).post<PostKbWriteRecoveryRecoveriesResponses, PostKbWriteRecoveryRecoveriesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/write-recovery/recoveries',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Recovery
+ */
+export const getKbWriteRecoveryRecoveryByRecoveryId = <ThrowOnError extends boolean = false>(options: Options<GetKbWriteRecoveryRecoveryByRecoveryIdData, ThrowOnError>) => (options.client ?? client).get<GetKbWriteRecoveryRecoveryByRecoveryIdResponses, GetKbWriteRecoveryRecoveryByRecoveryIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/kb/write-recovery/recoveries/{recovery_id}',
+    ...options
+});
+
+/**
+ * List Experience Trajectories
+ *
+ * List trajectories produced by commits that read an Experience.
+ */
+export const getAgentEvolutionExperiencesTrajectories = <ThrowOnError extends boolean = false>(options: Options<GetAgentEvolutionExperiencesTrajectoriesData, ThrowOnError>) => (options.client ?? client).get<GetAgentEvolutionExperiencesTrajectoriesResponses, GetAgentEvolutionExperiencesTrajectoriesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/agent-evolution/experiences/trajectories',
+    ...options
+});
+
+/**
+ * Get Experience Outcome Distribution
+ *
+ * Count application trajectories by outcome for an Experience.
+ */
+export const getAgentEvolutionExperiencesOutcomes = <ThrowOnError extends boolean = false>(options: Options<GetAgentEvolutionExperiencesOutcomesData, ThrowOnError>) => (options.client ?? client).get<GetAgentEvolutionExperiencesOutcomesResponses, GetAgentEvolutionExperiencesOutcomesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/agent-evolution/experiences/outcomes',
+    ...options
+});
+
+/**
+ * Create Compile
+ */
+export const postCompile = <ThrowOnError extends boolean = false>(options: Options<PostCompileData, ThrowOnError>) => (options.client ?? client).post<PostCompileResponses, PostCompileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/compile',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**
  * Temp Upload
  *
  * Upload a temporary file for add_resource or import_ovpack.
+ *
+ * Two auth layers (see :func:`get_upload_request_context`): with an API key the file is
+ * stored and its ``temp_file_id`` returned (used by the CLI and ``import_ovpack``). With a
+ * signed ``?token=`` — minted by the MCP ``add_resource`` tool for local-file paths — the
+ * server additionally finishes ingestion in-request: it resolves the upload, calls
+ * ``add_resource`` with the token-bound ``to``/``reason``, and returns the final result, so
+ * the agent never needs a second call. The ``?token=`` query param is consumed by the auth
+ * dependency.
  */
 export const postResourcesTempUpload = <ThrowOnError extends boolean = false>(options: Options<PostResourcesTempUploadData, ThrowOnError>) => (options.client ?? client).post<PostResourcesTempUploadResponses, PostResourcesTempUploadErrors, ThrowOnError>({
     ...formDataBodySerializer,
@@ -208,6 +810,14 @@ export const postResourcesTempUpload = <ThrowOnError extends boolean = false>(op
  * Add Resource
  *
  * Add resource to OpenViking.
+ *
+ * Native Watches require an unoccupied resolved target and keep it while paused.
+ * Connector Watches may share targets only with other Connector Watches; repeating
+ * a source and target creates another independent task. Re-importing never updates
+ * or resumes a Watch: use PATCH /api/v1/watches/{task_id}, or delete it first.
+ * URI lookups return 409 for multiple accessible Watches; address them by task_id.
+ * Connector Watches are visible before the initial import and held by the scheduler
+ * until that import records its result.
  */
 export const postResources = <ThrowOnError extends boolean = false>(options: Options<PostResourcesData, ThrowOnError>) => (options.client ?? client).post<PostResourcesResponses, PostResourcesErrors, ThrowOnError>({
     responseType: 'json',
@@ -217,6 +827,17 @@ export const postResources = <ThrowOnError extends boolean = false>(options: Opt
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * List Skills
+ *
+ * List installed agent skills.
+ */
+export const getSkills = <ThrowOnError extends boolean = false>(options?: Options<GetSkillsData, ThrowOnError>) => (options?.client ?? client).get<GetSkillsResponses, GetSkillsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills',
+    ...options
 });
 
 /**
@@ -268,6 +889,32 @@ export const getFsStat = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
+ * Attrs
+ *
+ * Get logical extended attributes for a URI.
+ */
+export const getFsAttrs = <ThrowOnError extends boolean = false>(options: Options<GetFsAttrsData, ThrowOnError>) => (options.client ?? client).get<GetFsAttrsResponses, GetFsAttrsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/fs/attrs',
+    ...options
+});
+
+/**
+ * Attrs Set Tags
+ *
+ * Set explicit k=v retrieval tags metadata for a file or directory.
+ */
+export const postFsAttrsSetTags = <ThrowOnError extends boolean = false>(options: Options<PostFsAttrsSetTagsData, ThrowOnError>) => (options.client ?? client).post<PostFsAttrsSetTagsResponses, PostFsAttrsSetTagsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/fs/attrs/set_tags',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Mkdir
  *
  * Create directory.
@@ -291,6 +938,21 @@ export const deleteFs = <ThrowOnError extends boolean = false>(options: Options<
     responseType: 'json',
     url: '/api/v1/fs',
     ...options
+});
+
+/**
+ * Cp
+ *
+ * Copy a file or directory together with its vector records.
+ */
+export const postFsCp = <ThrowOnError extends boolean = false>(options: Options<PostFsCpData, ThrowOnError>) => (options.client ?? client).post<PostFsCpResponses, PostFsCpErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/fs/cp',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**
@@ -355,11 +1017,41 @@ export const getContentDownload = <ThrowOnError extends boolean = false>(options
 /**
  * Write
  *
- * Write text content to a file (replace, append, or create) and refresh semantics/vectors.
+ * Write text or base64-encoded binary content to a file and refresh semantics/vectors.
  */
 export const postContentWrite = <ThrowOnError extends boolean = false>(options: Options<PostContentWriteData, ThrowOnError>) => (options.client ?? client).post<PostContentWriteResponses, PostContentWriteErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/content/write',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Batch Write
+ *
+ * Apply file writes and refresh their indexes once after the batch is written.
+ */
+export const postContentBatchWrite = <ThrowOnError extends boolean = false>(options: Options<PostContentBatchWriteData, ThrowOnError>) => (options.client ?? client).post<PostContentBatchWriteResponses, PostContentBatchWriteErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/content/batch-write',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Set Tags
+ *
+ * Set explicit k=v retrieval tags metadata for a file or directory.
+ */
+export const postContentSetTags = <ThrowOnError extends boolean = false>(options: Options<PostContentSetTagsData, ThrowOnError>) => (options.client ?? client).post<PostContentSetTagsResponses, PostContentSetTagsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/content/set_tags',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -449,6 +1141,23 @@ export const postSearchFind = <ThrowOnError extends boolean = false>(options: Op
 export const postSearchSearch = <ThrowOnError extends boolean = false>(options: Options<PostSearchSearchData, ThrowOnError>) => (options.client ?? client).post<PostSearchSearchResponses, PostSearchSearchErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/search/search',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Recall
+ *
+ * Deprecated preset over context assembly; use /search with mode="context".
+ *
+ * @deprecated
+ */
+export const postSearchRecall = <ThrowOnError extends boolean = false>(options: Options<PostSearchRecallData, ThrowOnError>) => (options.client ?? client).post<PostSearchRecallResponses, PostSearchRecallErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/search/recall',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -558,6 +1267,73 @@ export const postPrivacyConfigsActivateByCategoryAndTargetKey = <ThrowOnError ex
 });
 
 /**
+ * Find Skills
+ *
+ * Find agent skills by semantic search.
+ */
+export const postSkillsFind = <ThrowOnError extends boolean = false>(options: Options<PostSkillsFindData, ThrowOnError>) => (options.client ?? client).post<PostSkillsFindResponses, PostSkillsFindErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills/find',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Validate Skill
+ *
+ * Validate a SKILL.md payload using Agent Skills formatting rules.
+ */
+export const postSkillsValidate = <ThrowOnError extends boolean = false>(options: Options<PostSkillsValidateData, ThrowOnError>) => (options.client ?? client).post<PostSkillsValidateResponses, PostSkillsValidateErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills/validate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Skill
+ *
+ * Remove one installed agent skill.
+ */
+export const deleteSkillBySkillName = <ThrowOnError extends boolean = false>(options: Options<DeleteSkillBySkillNameData, ThrowOnError>) => (options.client ?? client).delete<DeleteSkillBySkillNameResponses, DeleteSkillBySkillNameErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills/{skill_name}',
+    ...options
+});
+
+/**
+ * Get Skill
+ *
+ * Show one installed agent skill.
+ */
+export const getSkillBySkillName = <ThrowOnError extends boolean = false>(options: Options<GetSkillBySkillNameData, ThrowOnError>) => (options.client ?? client).get<GetSkillBySkillNameResponses, GetSkillBySkillNameErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills/{skill_name}',
+    ...options
+});
+
+/**
+ * Update Skill
+ *
+ * Replace an existing agent skill with new content.
+ */
+export const putSkillBySkillName = <ThrowOnError extends boolean = false>(options: Options<PutSkillBySkillNameData, ThrowOnError>) => (options.client ?? client).put<PutSkillBySkillNameResponses, PutSkillBySkillNameErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/skills/{skill_name}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List Sessions
  *
  * List all sessions.
@@ -605,6 +1381,57 @@ export const deleteSessionBySessionId = <ThrowOnError extends boolean = false>(o
 export const getSessionBySessionId = <ThrowOnError extends boolean = false>(options: Options<GetSessionBySessionIdData, ThrowOnError>) => (options.client ?? client).get<GetSessionBySessionIdResponses, GetSessionBySessionIdErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/sessions/{session_id}',
+    ...options
+});
+
+/**
+ * Update Session Config
+ *
+ * Update mutable session config (event-memory default tags).
+ *
+ * Takes effect on subsequent message writes, idle scans, and commits.
+ * ``auto_commit_policy=null`` disables automatic commits.
+ */
+export const patchSessionIdConfig = <ThrowOnError extends boolean = false>(options: Options<PatchSessionIdConfigData, ThrowOnError>) => (options.client ?? client).patch<PatchSessionIdConfigResponses, PatchSessionIdConfigErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/sessions/{session_id}/config',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Tool Results
+ *
+ * List externalized tool results for a session.
+ */
+export const getSessionIdToolResults = <ThrowOnError extends boolean = false>(options: Options<GetSessionIdToolResultsData, ThrowOnError>) => (options.client ?? client).get<GetSessionIdToolResultsResponses, GetSessionIdToolResultsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/sessions/{session_id}/tool-results',
+    ...options
+});
+
+/**
+ * Read Tool Result
+ *
+ * Read an externalized tool result by Unicode character range.
+ */
+export const getSessionIdToolResultByToolResultId = <ThrowOnError extends boolean = false>(options: Options<GetSessionIdToolResultByToolResultIdData, ThrowOnError>) => (options.client ?? client).get<GetSessionIdToolResultByToolResultIdResponses, GetSessionIdToolResultByToolResultIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/sessions/{session_id}/tool-results/{tool_result_id}',
+    ...options
+});
+
+/**
+ * Search Tool Result
+ *
+ * Search within an externalized tool result.
+ */
+export const getSessionIdToolResultIdSearch = <ThrowOnError extends boolean = false>(options: Options<GetSessionIdToolResultIdSearchData, ThrowOnError>) => (options.client ?? client).get<GetSessionIdToolResultIdSearchResponses, GetSessionIdToolResultIdSearchErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/sessions/{session_id}/tool-results/{tool_result_id}/search',
     ...options
 });
 
@@ -689,6 +1516,24 @@ export const postSessionIdMessages = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
+ * Batch Add Messages
+ *
+ * Add multiple messages to a session in a single request.
+ *
+ * Accepts a list of messages, each following the same format as AddMessageRequest.
+ * Missing sessions are auto-created on first add.
+ */
+export const postSessionIdMessagesBatch = <ThrowOnError extends boolean = false>(options: Options<PostSessionIdMessagesBatchData, ThrowOnError>) => (options.client ?? client).post<PostSessionIdMessagesBatchResponses, PostSessionIdMessagesBatchErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/sessions/{session_id}/messages/batch',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Record Used
  *
  * Record actually used contexts and skills in a session.
@@ -696,6 +1541,106 @@ export const postSessionIdMessages = <ThrowOnError extends boolean = false>(opti
 export const postSessionIdUsed = <ThrowOnError extends boolean = false>(options: Options<PostSessionIdUsedData, ThrowOnError>) => (options.client ?? client).post<PostSessionIdUsedResponses, PostSessionIdUsedErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/sessions/{session_id}/used',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Commit
+ *
+ * Create a new snapshot of the current workspace state.
+ */
+export const postSnapshotCommit = <ThrowOnError extends boolean = false>(options: Options<PostSnapshotCommitData, ThrowOnError>) => (options.client ?? client).post<PostSnapshotCommitResponses, PostSnapshotCommitErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/commit',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Log
+ *
+ * Walk commit history newest-first along parents[0].
+ */
+export const getSnapshotLog = <ThrowOnError extends boolean = false>(options?: Options<GetSnapshotLogData, ThrowOnError>) => (options?.client ?? client).get<GetSnapshotLogResponses, GetSnapshotLogErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/log',
+    ...options
+});
+
+/**
+ * Restore
+ *
+ * Forward-commit restore: rebuild project_dir from source_commit on top of HEAD.
+ */
+export const postSnapshotRestore = <ThrowOnError extends boolean = false>(options: Options<PostSnapshotRestoreData, ThrowOnError>) => (options.client ?? client).post<PostSnapshotRestoreResponses, PostSnapshotRestoreErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/restore',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Show
+ *
+ * Without ``path``: commit metadata JSON. With ``path``: raw blob bytes + X-Snapshot-* headers.
+ */
+export const getSnapshotShow = <ThrowOnError extends boolean = false>(options: Options<GetSnapshotShowData, ThrowOnError>) => (options.client ?? client).get<GetSnapshotShowResponses, GetSnapshotShowErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/show',
+    ...options
+});
+
+/**
+ * Diff
+ *
+ * Return a unified text diff for one path between two snapshots.
+ */
+export const getSnapshotDiff = <ThrowOnError extends boolean = false>(options: Options<GetSnapshotDiffData, ThrowOnError>) => (options.client ?? client).get<GetSnapshotDiffResponses, GetSnapshotDiffErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/diff',
+    ...options
+});
+
+/**
+ * Delete Ignore
+ *
+ * Delete the account ``.ovgitignore`` control file (missing is success).
+ */
+export const deleteSnapshotIgnore = <ThrowOnError extends boolean = false>(options?: Options<DeleteSnapshotIgnoreData, ThrowOnError>) => (options?.client ?? client).delete<DeleteSnapshotIgnoreResponses, DeleteSnapshotIgnoreErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/ignore',
+    ...options
+});
+
+/**
+ * Get Ignore
+ *
+ * Return the account ``.ovgitignore`` content (empty string if absent).
+ */
+export const getSnapshotIgnore = <ThrowOnError extends boolean = false>(options?: Options<GetSnapshotIgnoreData, ThrowOnError>) => (options?.client ?? client).get<GetSnapshotIgnoreResponses, GetSnapshotIgnoreErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/ignore',
+    ...options
+});
+
+/**
+ * Set Ignore
+ *
+ * Write the account ``.ovgitignore`` control file.
+ */
+export const putSnapshotIgnore = <ThrowOnError extends boolean = false>(options: Options<PutSnapshotIgnoreData, ThrowOnError>) => (options.client ?? client).put<PutSnapshotIgnoreResponses, PutSnapshotIgnoreErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/snapshot/ignore',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -899,6 +1844,36 @@ export const getObserverSystem = <ThrowOnError extends boolean = false>(options?
 });
 
 /**
+ * Resolve Assets
+ *
+ * Parse and validate configuration without submitting resources.
+ */
+export const postOpenvikingAssetsResolve = <ThrowOnError extends boolean = false>(options: Options<PostOpenvikingAssetsResolveData, ThrowOnError>) => (options.client ?? client).post<PostOpenvikingAssetsResolveResponses, PostOpenvikingAssetsResolveErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/openviking-assets/resolve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Preflight Asset
+ *
+ * Verify source readability without cloning, importing, or creating a task.
+ */
+export const postOpenvikingAssetsPreflight = <ThrowOnError extends boolean = false>(options: Options<PostOpenvikingAssetsPreflightData, ThrowOnError>) => (options.client ?? client).post<PostOpenvikingAssetsPreflightResponses, PostOpenvikingAssetsPreflightErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/openviking-assets/preflight',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Metrics
  *
  * Return Prometheus metrics in text exposition format.
@@ -921,6 +1896,17 @@ export const getTaskByTaskId = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
+ * Cancel Task
+ *
+ * Request cooperative cancellation of a background task.
+ */
+export const postTaskIdCancel = <ThrowOnError extends boolean = false>(options: Options<PostTaskIdCancelData, ThrowOnError>) => (options.client ?? client).post<PostTaskIdCancelResponses, PostTaskIdCancelErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/tasks/{task_id}/cancel',
+    ...options
+});
+
+/**
  * List Tasks
  *
  * List background tasks with optional filters.
@@ -928,6 +1914,142 @@ export const getTaskByTaskId = <ThrowOnError extends boolean = false>(options: O
 export const getTasks = <ThrowOnError extends boolean = false>(options?: Options<GetTasksData, ThrowOnError>) => (options?.client ?? client).get<GetTasksResponses, GetTasksErrors, ThrowOnError>({
     responseType: 'json',
     url: '/api/v1/tasks',
+    ...options
+});
+
+/**
+ * Delete Add Locations
+ */
+export const deleteUserSettingsAddLocations = <ThrowOnError extends boolean = false>(options?: Options<DeleteUserSettingsAddLocationsData, ThrowOnError>) => (options?.client ?? client).delete<DeleteUserSettingsAddLocationsResponses, DeleteUserSettingsAddLocationsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/user-settings/add-locations',
+    ...options
+});
+
+/**
+ * Get Add Locations
+ */
+export const getUserSettingsAddLocations = <ThrowOnError extends boolean = false>(options?: Options<GetUserSettingsAddLocationsData, ThrowOnError>) => (options?.client ?? client).get<GetUserSettingsAddLocationsResponses, GetUserSettingsAddLocationsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/user-settings/add-locations',
+    ...options
+});
+
+/**
+ * Patch Add Locations
+ */
+export const patchUserSettingsAddLocations = <ThrowOnError extends boolean = false>(options: Options<PatchUserSettingsAddLocationsData, ThrowOnError>) => (options.client ?? client).patch<PatchUserSettingsAddLocationsResponses, PatchUserSettingsAddLocationsErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/user-settings/add-locations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Watch By Uri
+ *
+ * Delete a watch task by to_uri.
+ */
+export const deleteWatches = <ThrowOnError extends boolean = false>(options: Options<DeleteWatchesData, ThrowOnError>) => (options.client ?? client).delete<DeleteWatchesResponses, DeleteWatchesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches',
+    ...options
+});
+
+/**
+ * List Or Get Watch
+ *
+ * List watch tasks, or look one up by ``to_uri``.
+ *
+ * Without ``to_uri`` returns ``{tasks: [...], total: N}``. With ``to_uri``
+ * returns the single matching task object (404 if missing). When both
+ * ``to_uri`` and ``active_only=true`` are supplied, a paused task at that
+ * URI still 404s — the active-only filter stays consistent in both modes.
+ */
+export const getWatches = <ThrowOnError extends boolean = false>(options?: Options<GetWatchesData, ThrowOnError>) => (options?.client ?? client).get<GetWatchesResponses, GetWatchesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches',
+    ...options
+});
+
+/**
+ * Patch Watch By Uri
+ *
+ * Partial update by to_uri (query parameter).
+ */
+export const patchWatches = <ThrowOnError extends boolean = false>(options: Options<PatchWatchesData, ThrowOnError>) => (options.client ?? client).patch<PatchWatchesResponses, PatchWatchesErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Watch By Id
+ *
+ * Delete a watch task by ID.
+ */
+export const deleteWatchesByTaskId = <ThrowOnError extends boolean = false>(options: Options<DeleteWatchesByTaskIdData, ThrowOnError>) => (options.client ?? client).delete<DeleteWatchesByTaskIdResponses, DeleteWatchesByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches/{task_id}',
+    ...options
+});
+
+/**
+ * Get Watch
+ *
+ * Get a single watch task by ID.
+ */
+export const getWatchesByTaskId = <ThrowOnError extends boolean = false>(options: Options<GetWatchesByTaskIdData, ThrowOnError>) => (options.client ?? client).get<GetWatchesByTaskIdResponses, GetWatchesByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches/{task_id}',
+    ...options
+});
+
+/**
+ * Patch Watch By Id
+ *
+ * Partial update by task_id. Fields left null are preserved.
+ */
+export const patchWatchesByTaskId = <ThrowOnError extends boolean = false>(options: Options<PatchWatchesByTaskIdData, ThrowOnError>) => (options.client ?? client).patch<PatchWatchesByTaskIdResponses, PatchWatchesByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches/{task_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Trigger Watch By Id
+ *
+ * Immediately schedule the watch task for execution (fire-and-forget).
+ *
+ * Dispatches the scheduling request asynchronously and returns right away;
+ * the actual re-fetch runs in the background. Poll
+ * ``GET /watches/{task_id}.last_execution_time`` to confirm completion.
+ */
+export const postWatchesTriggerByTaskId = <ThrowOnError extends boolean = false>(options: Options<PostWatchesTriggerByTaskIdData, ThrowOnError>) => (options.client ?? client).post<PostWatchesTriggerByTaskIdResponses, PostWatchesTriggerByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches/{task_id}/trigger',
+    ...options
+});
+
+/**
+ * Trigger Watch By Uri
+ *
+ * Trigger by to_uri (fire-and-forget; see by-id variant for semantics).
+ */
+export const postWatchesTrigger = <ThrowOnError extends boolean = false>(options: Options<PostWatchesTriggerData, ThrowOnError>) => (options.client ?? client).post<PostWatchesTriggerResponses, PostWatchesTriggerErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/v1/watches/trigger',
     ...options
 });
 
@@ -1018,6 +2140,33 @@ export const optionsWebdavResources = <ThrowOnError extends boolean = false>(opt
 export const putWebdavResources = <ThrowOnError extends boolean = false>(options?: Options<PutWebdavResourcesData, ThrowOnError>) => (options?.client ?? client).put<PutWebdavResourcesResponses, PutWebdavResourcesErrors, ThrowOnError>({
     responseType: 'json',
     url: '/webdav/resources',
+    ...options
+});
+
+/**
+ * Create Compile
+ */
+export const postBotV1Compile = <ThrowOnError extends boolean = false>(options?: Options<PostBotV1CompileData, ThrowOnError>) => (options?.client ?? client).post<PostBotV1CompileResponses, PostBotV1CompileErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/bot/v1/compile',
+    ...options
+});
+
+/**
+ * Get Compile
+ */
+export const getBotV1CompileByTaskId = <ThrowOnError extends boolean = false>(options: Options<GetBotV1CompileByTaskIdData, ThrowOnError>) => (options.client ?? client).get<GetBotV1CompileByTaskIdResponses, GetBotV1CompileByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/bot/v1/compile/{task_id}',
+    ...options
+});
+
+/**
+ * Cancel Compile
+ */
+export const postBotV1CompileCancelByTaskId = <ThrowOnError extends boolean = false>(options: Options<PostBotV1CompileCancelByTaskIdData, ThrowOnError>) => (options.client ?? client).post<PostBotV1CompileCancelByTaskIdResponses, PostBotV1CompileCancelByTaskIdErrors, ThrowOnError>({
+    responseType: 'json',
+    url: '/bot/v1/compile/{task_id}/cancel',
     ...options
 });
 

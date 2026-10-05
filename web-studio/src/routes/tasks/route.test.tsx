@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import * as React from 'react'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import type { ComponentType } from 'react'

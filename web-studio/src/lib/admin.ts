@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { ServerMode } from '#/hooks/use-server-mode'
 
 import { createClient } from '#/gen/ov-client/client'
 import {
@@ -88,7 +89,7 @@ export type ProbeConnectionInput = {
   adminApiKey: string
   apiKey: string
   baseUrl: string
-  serverMode: 'api_key' | 'trusted' | 'dev' | 'checking' | 'offline'
+  serverMode: ServerMode
   userId: string
 }
 
@@ -488,6 +489,42 @@ export async function updateAdminUserRole(
 }
 
 export type UserMemorySettings = { memory_policy: UserMemoryPolicy }
+
+export type RuntimeModelConfig = {
+  vlm: Record<string, unknown> | null
+  embedding: Record<string, unknown> | null
+  rerank: Record<string, unknown> | null
+  query_planner: Record<string, unknown> | null
+}
+
+export type ApplyModelConfigResult = {
+  updated: string[]
+  restart_required: string[]
+  config: RuntimeModelConfig
+}
+
+export async function fetchRuntimeModelConfig(
+  connection: AdminConnection,
+): Promise<RuntimeModelConfig> {
+  return getOvResult<RuntimeModelConfig>(
+    createAdminClient(connection).get({
+      url: '/api/v1/admin/model-config',
+    }),
+  )
+}
+
+export async function applyRuntimeModelConfig(
+  connection: AdminConnection,
+  patch: Partial<Record<keyof RuntimeModelConfig, unknown>>,
+): Promise<ApplyModelConfigResult> {
+  return getOvResult<ApplyModelConfigResult>(
+    createAdminClient(connection).put({
+      url: '/api/v1/admin/model-config',
+      headers: { 'Content-Type': 'application/json' },
+      body: patch,
+    }),
+  )
+}
 
 export async function fetchUserMemorySettings(
   connection: AdminConnection,

@@ -185,3 +185,27 @@ describe('recorded task execution events', () => {
     expect(screen.queryByText('future_process_event')).toBeNull()
   })
 })
+
+describe('chapter fallback information', () => {
+  it('shows persistent parsing notes without marking a completed task as failed', async () => {
+    api.getTask.mockResolvedValue({
+      ...structuredClone(task),
+      task_type: 'add_resource',
+      status: 'completed',
+      error: null,
+      alignment_status: 'failed',
+      structure_source: 'markdown_headings',
+      info: [
+        {
+          code: 'BOOKMARK_ALIGNMENT_FAILED',
+          message: '书签对齐未成功，已按Markdown标题切分并完成入库',
+          fallback_strategy: 'markdown_headings',
+        },
+      ],
+    })
+    await showDetail()
+    expect(
+      await screen.findByText(/Bookmark alignment was unsuccessful/),
+    ).toBeTruthy()
+  })
+})

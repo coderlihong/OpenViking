@@ -32,11 +32,13 @@ function parseQueueStatus(status: string): ParsedQueueRow[] {
 
   return tableBlock.rows.map((row) => ({
     name: col.name >= 0 ? (row[col.name] ?? '') : '',
-    processing: col.inProgress >= 0 ? (parseInt(row[col.inProgress] ?? '0', 10) || 0) : 0,
-    pending: col.pending >= 0 ? (parseInt(row[col.pending] ?? '0', 10) || 0) : 0,
-    completed: col.processed >= 0 ? (parseInt(row[col.processed] ?? '0', 10) || 0) : 0,
-    errors: col.errors >= 0 ? (parseInt(row[col.errors] ?? '0', 10) || 0) : 0,
-    total: col.total >= 0 ? (parseInt(row[col.total] ?? '0', 10) || 0) : 0,
+    processing:
+      col.inProgress >= 0 ? parseInt(row[col.inProgress] ?? '0', 10) || 0 : 0,
+    pending: col.pending >= 0 ? parseInt(row[col.pending] ?? '0', 10) || 0 : 0,
+    completed:
+      col.processed >= 0 ? parseInt(row[col.processed] ?? '0', 10) || 0 : 0,
+    errors: col.errors >= 0 ? parseInt(row[col.errors] ?? '0', 10) || 0 : 0,
+    total: col.total >= 0 ? parseInt(row[col.total] ?? '0', 10) || 0 : 0,
   }))
 }
 
@@ -46,11 +48,21 @@ export interface QueueStatusCardProps {
   status?: string
   isHealthy?: boolean
   customRows?: ParsedQueueRow[]
+  /** Optional caller-supplied display names keyed by raw row name. */
+  labels?: Record<string, string>
 }
 
-export function QueueStatusCard({ title, status = '', isHealthy = true, customRows }: QueueStatusCardProps) {
+export function QueueStatusCard({
+  title,
+  status = '',
+  customRows,
+  labels,
+}: QueueStatusCardProps) {
   const { t } = useTranslation('monitoringPage')
-  const parsedFromStatus = React.useMemo(() => parseQueueStatus(status), [status])
+  const parsedFromStatus = React.useMemo(
+    () => parseQueueStatus(status),
+    [status],
+  )
   const rows = customRows ?? parsedFromStatus
 
   const nonTotalRows = React.useMemo(
@@ -64,12 +76,16 @@ export function QueueStatusCard({ title, status = '', isHealthy = true, customRo
 
   const getQueueDisplayName = (name: string): string => {
     const lower = name.toLowerCase()
+    if (labels && labels[name]) return labels[name]
     if (lower === 'total') return t('queue.totalRow')
     if (lower.includes('embedding')) return t('queue.embedding')
-    if (lower.includes('semantic-node') || lower.includes('semantic_node')) return t('queue.semanticNodes')
+    if (lower.includes('semantic-node') || lower.includes('semantic_node'))
+      return t('queue.semanticNodes')
     if (lower.includes('semantic')) return t('queue.semantic')
-    if (lower.includes('externalparse') || lower.includes('external_parse')) return t('queue.externalParse')
-    if (lower.includes('sessioncommit') || lower.includes('session_commit')) return t('queue.sessionCommit')
+    if (lower.includes('externalparse') || lower.includes('external_parse'))
+      return t('queue.externalParse')
+    if (lower.includes('sessioncommit') || lower.includes('session_commit'))
+      return t('queue.sessionCommit')
     return name
   }
 
@@ -86,7 +102,9 @@ export function QueueStatusCard({ title, status = '', isHealthy = true, customRo
         )}
       >
         {/* 队列名 */}
-        <span className="col-span-2 font-sans font-medium truncate">{displayName}</span>
+        <span className="col-span-2 font-sans font-medium truncate">
+          {displayName}
+        </span>
 
         {/* 处理中 */}
         <span
@@ -140,7 +158,9 @@ export function QueueStatusCard({ title, status = '', isHealthy = true, customRo
   return (
     <Card className="flex h-full flex-col justify-between gap-2 p-2.5 shadow-none transition-colors hover:border-primary/30">
       <div className="flex items-center justify-between gap-2">
-        <CardTitle className="text-sm font-semibold">{title ?? t('queue.title')}</CardTitle>
+        <CardTitle className="text-sm font-semibold">
+          {title ?? t('queue.title')}
+        </CardTitle>
       </div>
 
       {rows.length === 0 ? (

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 // @vitest-environment jsdom
 
 import {
@@ -57,7 +58,7 @@ describe('UploadResourceFields', () => {
         onFilesChange={(update) => {
           current = typeof update === 'function' ? update(current) : update
         }}
-        t={(key) => key}
+        t={((key: unknown) => String(key)) as TFunction}
       />,
     )
 
@@ -91,7 +92,7 @@ describe('UploadResourceFields', () => {
         onFilesChange={(update) => {
           current = typeof update === 'function' ? update(current) : update
         }}
-        t={(key) => key}
+        t={((key: unknown) => String(key)) as TFunction}
       />,
     )
 
@@ -119,7 +120,7 @@ describe('UploadResourceFields', () => {
         onFilesChange={(update) => {
           current = typeof update === 'function' ? update(current) : update
         }}
-        t={(key) => key}
+        t={((key: unknown) => String(key)) as TFunction}
       />,
     )
 

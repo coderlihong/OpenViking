@@ -19,6 +19,7 @@ import { Route as RetrievalRouteRouteImport } from './routes/retrieval/route'
 import { Route as RequestLogsRouteRouteImport } from './routes/request-logs/route'
 import { Route as PlaygroundRouteRouteImport } from './routes/playground/route'
 import { Route as MonitoringRouteRouteImport } from './routes/monitoring/route'
+import { Route as ModelConfigRouteRouteImport } from './routes/model-config/route'
 import { Route as HomeRouteRouteImport } from './routes/home/route'
 import { Route as AgentExperienceRouteRouteImport } from './routes/agent-experience/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -78,6 +79,11 @@ const MonitoringRouteRoute = MonitoringRouteRouteImport.update({
   path: '/monitoring',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ModelConfigRouteRoute = ModelConfigRouteRouteImport.update({
+  id: '/model-config',
+  path: '/model-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRouteRoute = HomeRouteRouteImport.update({
   id: '/home',
   path: '/home',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agent-experience': typeof AgentExperienceRouteRouteWithChildren
   '/home': typeof HomeRouteRoute
+  '/model-config': typeof ModelConfigRouteRoute
   '/monitoring': typeof MonitoringRouteRoute
   '/playground': typeof PlaygroundRouteRoute
   '/request-logs': typeof RequestLogsRouteRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof HomeRouteRoute
+  '/model-config': typeof ModelConfigRouteRoute
   '/monitoring': typeof MonitoringRouteRoute
   '/playground': typeof PlaygroundRouteRoute
   '/request-logs': typeof RequestLogsRouteRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agent-experience': typeof AgentExperienceRouteRouteWithChildren
   '/home': typeof HomeRouteRoute
+  '/model-config': typeof ModelConfigRouteRoute
   '/monitoring': typeof MonitoringRouteRoute
   '/playground': typeof PlaygroundRouteRoute
   '/request-logs': typeof RequestLogsRouteRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agent-experience'
     | '/home'
+    | '/model-config'
     | '/monitoring'
     | '/playground'
     | '/request-logs'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/home'
+    | '/model-config'
     | '/monitoring'
     | '/playground'
     | '/request-logs'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agent-experience'
     | '/home'
+    | '/model-config'
     | '/monitoring'
     | '/playground'
     | '/request-logs'
@@ -244,6 +256,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentExperienceRouteRoute: typeof AgentExperienceRouteRouteWithChildren
   HomeRouteRoute: typeof HomeRouteRoute
+  ModelConfigRouteRoute: typeof ModelConfigRouteRoute
   MonitoringRouteRoute: typeof MonitoringRouteRoute
   PlaygroundRouteRoute: typeof PlaygroundRouteRoute
   RequestLogsRouteRoute: typeof RequestLogsRouteRoute
@@ -328,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/monitoring'
       fullPath: '/monitoring'
       preLoaderRoute: typeof MonitoringRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/model-config': {
+      id: '/model-config'
+      path: '/model-config'
+      fullPath: '/model-config'
+      preLoaderRoute: typeof ModelConfigRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -418,6 +438,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentExperienceRouteRoute: AgentExperienceRouteRouteWithChildren,
   HomeRouteRoute: HomeRouteRoute,
+  ModelConfigRouteRoute: ModelConfigRouteRoute,
   MonitoringRouteRoute: MonitoringRouteRoute,
   PlaygroundRouteRoute: PlaygroundRouteRoute,
   RequestLogsRouteRoute: RequestLogsRouteRoute,

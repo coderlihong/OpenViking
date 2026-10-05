@@ -35,6 +35,7 @@ export function GeneratedCredentialDialog() {
     return null
   }
 
+  const apiKey = generatedCredential.apiKey
   const accountId = generatedCredential.accountId || connection.accountId
   const userId = generatedCredential.userId || connection.userId
   const isCurrentIdentity =
@@ -44,7 +45,7 @@ export function GeneratedCredentialDialog() {
 
   async function copyKey(): Promise<void> {
     try {
-      await copyTextToClipboard(generatedCredential.apiKey)
+      await copyTextToClipboard(apiKey)
       toast.success(t('toast.copied'))
     } catch {
       toast.error(t('toast.copyFailed'))
@@ -57,7 +58,7 @@ export function GeneratedCredentialDialog() {
       await switchIdentity({
         accountId,
         allowLegacyIdentityFallback: true,
-        apiKey: generatedCredential.apiKey,
+        apiKey,
         userId,
       })
       toast.success(t('toast.dataKeySelected'))

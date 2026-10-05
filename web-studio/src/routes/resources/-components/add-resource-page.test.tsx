@@ -55,7 +55,7 @@ describe('AddResourceForm watch options', () => {
     )
 
     expect(screen.getByText('sourcePicker.title')).toBeTruthy()
-    const remoteUrlInput = screen.getByRole('textbox', { name: 'remoteUrl' })
+    const remoteUrlInput = screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' })
     expect(remoteUrlInput.getAttribute('placeholder')).toBe(
       'remoteUrl.placeholder',
     )
@@ -118,7 +118,7 @@ describe('AddResourceForm watch options', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /sourcePicker.feishu/ }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://github.com/volcengine/OpenViking' },
     })
 
@@ -169,11 +169,11 @@ describe('AddResourceForm watch options', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /sourcePicker.git/ }))
-    const remoteUrlInput = screen.getByRole('textbox', { name: 'remoteUrl' })
+    const remoteUrlInput = screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' })
     fireEvent.change(remoteUrlInput, {
       target: { value: 'https://github.com/volcengine/OpenViking' },
     })
-    fireEvent.change(screen.getByRole('textbox', { name: 'git.branch' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'git.branch' }), {
       target: { value: 'feature/docs' },
     })
 
@@ -181,7 +181,7 @@ describe('AddResourceForm watch options', () => {
     expect((remoteUrlInput as HTMLInputElement).value).toBe('')
 
     fireEvent.click(screen.getByRole('button', { name: /sourcePicker.git/ }))
-    expect(screen.getByRole('textbox', { name: 'git.branch' }).value).toBe('')
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'git.branch' }).value).toBe('')
     expect(
       screen
         .getByRole('button', { name: 'git.branch' })
@@ -199,7 +199,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://github.com/volcengine/OpenViking' },
     })
     fireEvent.change(
@@ -230,7 +230,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://example.feishu.cn/docx/doc-token' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /feishu.auth.user/ }))
@@ -267,7 +267,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://github.com/volcengine/OpenViking' },
     })
     const branchButton = screen.getByRole('button', { name: 'git.branch' })
@@ -275,7 +275,7 @@ describe('AddResourceForm watch options', () => {
     expect(branchButton.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(commitButton)
     expect(commitButton.getAttribute('aria-pressed')).toBe('true')
-    fireEvent.change(screen.getByRole('textbox', { name: 'git.commit' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'git.commit' }), {
       target: { value: 'abc123' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /git.auth.token/ }))
@@ -314,7 +314,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    const remoteUrlInput = screen.getByRole('textbox', { name: 'remoteUrl' })
+    const remoteUrlInput = screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' })
     fireEvent.change(remoteUrlInput, {
       target: { value: 'https://github.com/volcengine/OpenViking' },
     })
@@ -357,7 +357,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'tos://bucket/docs' },
     })
     expect(screen.getByText('destination.tosHint')).toBeTruthy()
@@ -382,7 +382,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://example.com/docs' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /web.mode.recursive/ }))
@@ -432,7 +432,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://example.com/docs' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /web.mode.recursive/ }))
@@ -475,7 +475,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://example.com/sitemap.xml' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /web.mode.site/ }))
@@ -516,7 +516,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'https://example.com/guide.pdf' },
     })
     fireEvent.click(screen.getByRole('radio', { name: 'destination.exact' }))
@@ -560,7 +560,7 @@ describe('AddResourceForm watch options', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'remoteUrl' }), {
+    fireEvent.change(screen.getByRole<HTMLInputElement>('textbox', { name: 'remoteUrl' }), {
       target: { value: 'tos://bucket/docs' },
     })
     fireEvent.change(screen.getByLabelText('targetUri'), {

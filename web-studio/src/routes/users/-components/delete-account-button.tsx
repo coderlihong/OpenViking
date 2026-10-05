@@ -55,7 +55,9 @@ export function DeleteAccountButton({
       await queryClient.invalidateQueries({ queryKey: ['account-switcher'] })
       setOpen(false)
       setConfirmation('')
-      toast.success(t('toast.accountDeletionStarted', { account: accountId, taskId }))
+      toast.success(
+        t('toast.accountDeletionStarted', { account: accountId, taskId }),
+      )
 
       if (!nextAccountId) {
         openConnectionSettings()

@@ -278,6 +278,22 @@ export function TaskDetailSheet({
 
                   <TaskExecutionEvents task={task} />
 
+                  {task.info?.length ? (
+                    <DetailSection title={t('detail.parsingNotes')}>
+                      <div className="grid gap-2 rounded-xl border bg-muted/20 p-4 text-sm">
+                        {task.info.map((info, index) => (
+                          <p key={`${info.code || 'info'}-${index}`}>
+                            {info.code === 'BOOKMARK_ALIGNMENT_FAILED'
+                              ? t('detail.bookmarkAlignmentFailed')
+                              : info.code === 'BOOKMARKS_UNAVAILABLE'
+                                ? t('detail.bookmarksUnavailable')
+                                : info.message}
+                          </p>
+                        ))}
+                      </div>
+                    </DetailSection>
+                  ) : null}
+
                   {task.error ? (
                     <DetailSection title={t('detail.error')}>
                       <p className="whitespace-pre-wrap rounded-xl border border-destructive/25 bg-destructive/5 p-4 font-mono text-xs leading-5 text-destructive">

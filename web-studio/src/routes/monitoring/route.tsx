@@ -24,6 +24,7 @@ import { useAppConnection } from '#/hooks/use-app-connection'
 import { getHealth, getObserverSystem, getOvResult } from '#/lib/ov-client'
 import { cn } from '#/lib/utils'
 import { ObserverStatusContent } from './-components/observer-status-content'
+import { DurableQueueCard } from './-components/durable-queue-card'
 import { stripVersionPrefix } from './-lib/version'
 
 export const Route = createFileRoute('/monitoring')({
@@ -357,9 +358,18 @@ function MonitoringRoute() {
                 </div>
               </CardHeader>
               <CardContent className="px-5 py-5">
-                <ObserverStatusContent
-                  status={selectedComponent?.status ?? ''}
-                />
+                {activeType === 'queue' ? (
+                  <div className="grid gap-4">
+                    <DurableQueueCard identityScopeKey={identityScopeKey} />
+                    <ObserverStatusContent
+                      status={selectedComponent?.status ?? ''}
+                    />
+                  </div>
+                ) : (
+                  <ObserverStatusContent
+                    status={selectedComponent?.status ?? ''}
+                  />
+                )}
               </CardContent>
             </Card>
           )}

@@ -11,6 +11,9 @@ export type TaskStatus =
   | 'unknown'
 
 export type TaskRecord = TaskTimestamp & {
+  info?: Array<{ code?: string; message?: string; fallback_strategy?: string }>
+  alignment_status?: string
+  structure_source?: string
   error?: string | null
   execution_events?: TaskEventHistory | null
   resource_id?: string | null

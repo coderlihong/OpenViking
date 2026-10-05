@@ -17,6 +17,7 @@ import {
   CableIcon,
   ScrollTextIcon,
   SearchIcon,
+  ServerCogIcon,
   SparklesIcon,
   SunIcon,
   UsersRoundIcon,
@@ -298,14 +299,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     useAppConnection()
   const settingsActive = pathname === '/settings'
   const usersActive = pathname === '/users'
-  const { canManageUsers } = resolveStudioManagementCapabilities({
-    hasControlCredential: Boolean(connection.adminApiKey.trim()),
-    isRoleLoading: isConnectionRoleLoading,
-    role: connectionRole,
-    serverMode,
-  })
+  const { canManageUsers, canManageAccounts } =
+    resolveStudioManagementCapabilities({
+      hasControlCredential: Boolean(connection.adminApiKey.trim()),
+      isRoleLoading: isConnectionRoleLoading,
+      role: connectionRole,
+      serverMode,
+    })
   const crossDeviceVerifyActive =
     pathname === '/oauth/verify' || pathname.startsWith('/oauth/verify/')
+  const modelConfigActive = pathname === '/model-config'
   const visibleNavItems = NAV_ITEMS
 
   function openCrossDeviceVerify(): void {
@@ -421,6 +424,19 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     >
                       <UsersRoundIcon />
                       <span>{t('footer.users', { ns: 'appShell' })}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : null}
+                {canManageAccounts ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link to="/model-config" />}
+                      isActive={modelConfigActive}
+                      tooltip={t('footer.modelConfig', { ns: 'appShell' })}
+                      className="h-9"
+                    >
+                      <ServerCogIcon />
+                      <span>{t('footer.modelConfig', { ns: 'appShell' })}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ) : null}

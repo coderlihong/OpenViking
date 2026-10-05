@@ -5,6 +5,7 @@ const workspace = {
       connection: 'Connection Settings',
       docs: 'Documentation',
       github: 'GitHub',
+      modelConfig: 'Server Configuration',
       sdkApi: 'SDK & API',
       users: 'User Management',
     },
@@ -412,6 +413,11 @@ const workspace = {
         updatedAt: 'Updated',
       },
       error: 'Failure reason',
+      parsingNotes: 'Parsing notes',
+      bookmarkAlignmentFailed:
+        'Bookmark alignment was unsuccessful; processing continued with Markdown headings or content blocks.',
+      bookmarksUnavailable:
+        'No usable PDF bookmarks; processing continued with Markdown headings or content blocks.',
       result: 'Result',
       noResult: 'No result yet',
       noResultDescription:
@@ -869,6 +875,76 @@ const workspace = {
         'This user has no plaintext API key available for data access.',
       openConnection: 'Open connection settings',
       title: 'User management',
+    },
+    modelConfig: {
+      accessDeniedDescription:
+        'Only the Root API key can view and change server configuration.',
+      accessDeniedTitle: 'Server configuration unavailable',
+      accessDeniedOpenConnection: 'Open connection settings',
+      apiBaseHint:
+        'Base URL ending in /v1 (e.g. http://host:8029/v1). The endpoint path (/chat/completions, /embeddings, /rerank) is appended automatically.',
+      description:
+        'Edit model configuration and persist it to ov.conf. vlm, rerank, and query_planner take effect immediately after saving; embedding requires a server restart.',
+      embedding: {
+        apiBase: 'API base URL',
+        apiKey: 'API key',
+        description:
+          'Text embedding model. The vector dimension is fixed at service startup, so changes require a restart to take effect.',
+        dimension: 'Dimension',
+        model: 'Model',
+        provider: 'Provider',
+        title: 'Embedding',
+      },
+      errors: {
+        loadFailed: 'Failed to load configuration: {{message}}',
+        jsonInvalid: 'Invalid JSON: {{message}}',
+        saveFailed: 'Failed to save: {{message}}',
+      },
+      formMode: 'Form mode',
+      formModeHint:
+        'Shows common fields only; switch to JSON mode for every field.',
+      jsonMode: 'JSON mode',
+      loading: 'Loading configuration...',
+      queryPlanner: {
+        description:
+          'Query planning model used for intent analysis and query rewriting before retrieval. Leave empty to disable.',
+        remove: 'Remove query_planner',
+        title: 'Query Planner',
+        unset: 'Not enabled',
+      },
+      rerank: {
+        apiBase: 'API base URL',
+        apiKey: 'API key',
+        description:
+          'Reranking model for retrieval results. Toggle off to skip reranking entirely (faster); the configuration is kept for later.',
+        enableToggle: 'Enable Rerank',
+        model: 'Model',
+        provider: 'Provider',
+        threshold: 'Score threshold',
+        title: 'Rerank',
+      },
+      restartBanner:
+        'Saved but requires a server restart to take effect: {{sections}}',
+      save: 'Save configuration',
+      savedDetail: '{{updated}} written to ov.conf; other sections unchanged.',
+      saving: 'Saving...',
+      sections: {
+        embedding: 'embedding',
+        rerank: 'rerank',
+        vlm: 'vlm',
+        queryPlanner: 'query_planner',
+      },
+      successTitle: 'Configuration saved',
+      title: 'Server Configuration',
+      vlm: {
+        apiBase: 'API base URL',
+        apiKey: 'API key',
+        description:
+          'Multimodal model used for document parsing and session compression. Takes effect immediately after saving.',
+        model: 'Model',
+        provider: 'Provider',
+        title: 'VLM',
+      },
     },
     page: {
       adminDescription:

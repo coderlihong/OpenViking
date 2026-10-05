@@ -17,7 +17,11 @@ export type ExperiencePage = {
 }
 
 export type TrajectoryOutcome =
-  'success' | 'failure' | 'partial' | 'unknown' | 'unfinished'
+  | 'success'
+  | 'failure'
+  | 'partial'
+  | 'unknown'
+  | 'unfinished'
 
 export type OutcomeCount = {
   outcome: TrajectoryOutcome

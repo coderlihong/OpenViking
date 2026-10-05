@@ -5,6 +5,7 @@ const workspace = {
       connection: '连接设置',
       docs: '文档站',
       github: 'GitHub',
+      modelConfig: '服务配置',
       sdkApi: 'SDK 与 API',
       users: '用户管理',
     },
@@ -399,6 +400,11 @@ const workspace = {
         updatedAt: '更新时间',
       },
       error: '失败原因',
+      parsingNotes: '解析说明',
+      bookmarkAlignmentFailed:
+        '书签对齐未成功，已按 Markdown 标题或内容块规则继续处理。',
+      bookmarksUnavailable:
+        '未找到可用的 PDF 书签，已按 Markdown 标题或内容块规则继续处理。',
       result: '执行结果',
       noResult: '暂无执行结果',
       noResultDescription: '任务完成后，接口返回的结果会显示在这里。',
@@ -829,6 +835,72 @@ const workspace = {
       noUsableKey: '该用户没有可用于数据访问的明文 API 密钥。',
       openConnection: '打开连接设置',
       title: '用户管理',
+    },
+    modelConfig: {
+      accessDeniedDescription: '只有 Root API 密钥才能查看和修改服务配置。',
+      accessDeniedTitle: '无服务配置权限',
+      accessDeniedOpenConnection: '打开连接设置',
+      apiBaseHint:
+        '以 /v1 结尾的地址（例如 http://host:8029/v1）。具体接口路径（/chat/completions、/embeddings、/rerank）由代码自动拼接，无需填写。',
+      description:
+        '修改模型配置并写入 ov.conf。vlm、rerank、query_planner 保存后立即生效；embedding 需要重启服务。',
+      embedding: {
+        apiBase: 'API 地址',
+        apiKey: 'API 密钥',
+        description:
+          '文本向量化模型。向量维度在服务启动时固定，修改后需要重启服务才能生效。',
+        dimension: '向量维度',
+        model: '模型',
+        provider: 'Provider',
+        title: 'Embedding（向量化）',
+      },
+      errors: {
+        loadFailed: '配置读取失败：{{message}}',
+        jsonInvalid: 'JSON 格式错误：{{message}}',
+        saveFailed: '保存失败：{{message}}',
+      },
+      formMode: '表单模式',
+      formModeHint: '仅展示常用字段；完整字段请切换到 JSON 模式。',
+      jsonMode: 'JSON 模式',
+      loading: '正在加载配置...',
+      queryPlanner: {
+        description:
+          '查询规划模型，用于检索前的意图分析与查询改写。留空表示不启用。',
+        remove: '移除 query_planner',
+        title: 'Query Planner（查询规划）',
+        unset: '未启用',
+      },
+      rerank: {
+        apiBase: 'API 地址',
+        apiKey: 'API 密钥',
+        description:
+          '检索结果重排序模型。关闭开关后检索跳过重排序(更快),配置保留随时可再开启。',
+        enableToggle: '启用 Rerank',
+        model: '模型',
+        provider: 'Provider',
+        threshold: '召回阈值',
+        title: 'Rerank（重排序）',
+      },
+      restartBanner: '以下配置已保存但需要重启服务才能生效：{{sections}}',
+      save: '保存配置',
+      savedDetail: '{{updated}} 已写入 ov.conf；其余部分保持不变。',
+      saving: '保存中...',
+      sections: {
+        embedding: 'embedding',
+        rerank: 'rerank',
+        vlm: 'vlm',
+        queryPlanner: 'query_planner',
+      },
+      successTitle: '配置已保存',
+      title: '服务配置',
+      vlm: {
+        apiBase: 'API 地址',
+        apiKey: 'API 密钥',
+        description: '多模态理解模型，用于文档解析与会话压缩，保存后立即生效。',
+        model: '模型',
+        provider: 'Provider',
+        title: 'VLM（多模态模型）',
+      },
     },
     page: {
       adminDescription:
