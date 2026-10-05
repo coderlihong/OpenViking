@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Soffice-compatible authenticated SSH transport; server uses SSH key auth."""
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+
+def main(argv):
+    host = os.environ.get("OPENVIKING_OFFICE_SSH_HOST", "t-wanghai@10.147.254.3")
+    worker = os.environ.get("OPENVIKING_OFFICE_SSH_WORKER", "/home/t-wanghai/models/openviking-office/transport_worker.py")
+    if not host or host.startswith("-") or any(c.isspace() for c in host):
+        raise ValueError("Invalid SSH destination")
+    if not worker.startswith("/"):
+        raise ValueError("Remote worker path must be absolute")
+    probe = argv == ["--version"] or argv == ["--font-inventory"]
+    if probe:
+        remote_args = argv
+        payload = None
+    else:
+        export = argv[argv.index("--convert-to") + 1]
+        output = Path(argv[argv.index("--outdir") + 1])
+        source = Path(argv[-1])
+        remote_args = ["--extension", source.suffix, "--filter", export]
+        payload = source.read_bytes()
+    command = " ".join(shlex.quote(arg) for arg in ["python3", worker, *remote_args])
+    completed = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                                "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=2",
+                                host, command], input=payload, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=210)
+    sys.stderr.buffer.write(completed.stderr)
+    if completed.returncode:
+        return completed.returncode
+    if probe:
+        sys.stdout.buffer.write(completed.stdout)
+    else:
+        extension = ".xlsx" if export.startswith("xlsx:") else ".pdf"
+        (output / (source.stem + extension)).write_bytes(completed.stdout)
+        print("SSH Docker conversion completed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

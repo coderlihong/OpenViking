@@ -1,0 +1,29 @@
+{
+  "image_id": "sha256:6a2cfcf932ad67e7f0445d50b87e446e0b5c9710053eee27324d54d06201cc70",
+  "architecture": "amd64",
+  "fonts": [
+    "DejaVu Sans",
+    "DejaVu Sans Mono",
+    "DejaVu Serif",
+    "Liberation Mono",
+    "Liberation Sans",
+    "Liberation Sans Narrow",
+    "Liberation Serif",
+    "Noto Sans CJK HK",
+    "Noto Sans CJK JP",
+    "Noto Sans CJK KR",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Noto Sans Mono CJK HK",
+    "Noto Sans Mono CJK JP",
+    "Noto Sans Mono CJK KR",
+    "Noto Sans Mono CJK SC",
+    "Noto Sans Mono CJK TC",
+    "Noto Serif CJK HK",
+    "Noto Serif CJK JP",
+    "Noto Serif CJK KR",
+    "Noto Serif CJK SC",
+    "Noto Serif CJK TC",
+    "OpenSymbol"
+  ]
+}

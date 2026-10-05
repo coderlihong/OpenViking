@@ -11,12 +11,15 @@
   },
   "embedding": {
     "dense": {
-      "provider": "volcengine",
-      "model": "doubao-embedding-vision-251215",
-      "api_base": "https://ark.cn-beijing.volces.com/api/v3",
-      "api_key": "YOUR_API_KEY",
-      "dimension": 1024
-    }
+      "provider": "openai",
+      "model": "qwen3-vl-embed",
+      "api_base": "http://10.147.254.3:8020/v1",
+      "api_key": "sk-embed",
+      "dimension": 4096,
+      "input": "multimodal",
+      "wire_format": "messages"
+    },
+    "text_source": "content_only"
   },
   "log": { "level": "INFO", "output": "stdout" }
 }

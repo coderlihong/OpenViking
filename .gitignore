@@ -238,3 +238,6 @@ node_modules/
 
 # Local scratch / working notes
 .scratch/
+
+# Local tool session state
+.omo/
