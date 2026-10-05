@@ -19,6 +19,7 @@ import io
 import re
 import time
 from collections import Counter, defaultdict
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -122,12 +123,94 @@ class PDFParser(BaseParser):
                 warnings=[f"File not found: {pdf_path}"],
             )
 
+        model_document = None
         try:
-            # Step 1: Convert PDF to Markdown
-            markdown_content, conversion_meta = await self._convert_to_markdown(
-                pdf_path,
-                resource_name=resource_name,
+            policy = kwargs.get("structure_policy")
+            backend = kwargs.get("parse_backend")
+            selected_model = (
+                backend if backend not in (None, "auto") else self.config.default_model_backend
             )
+            if policy is None and selected_model in (self.config.model_endpoints or {}):
+                policy = "bookmarks_preferred"
+            if policy not in (None, "bookmarks_preferred"):
+                raise ValueError(f"Unsupported structure_policy: {policy}")
+            if backend not in (None, "local", "mineru", "auto", "teleocr", "logics"):
+                raise ValueError(f"Unsupported PDF parse_backend: {backend}")
+            if policy and kwargs.get("split_content") is False:
+                raise ValueError("bookmarks_preferred cannot be combined with no_split")
+            # Each request owns its conversion config. Never mutate the registry's
+            # shared parser or let page-derived injected headings prove alignment.
+            converter = self
+            if policy or backend:
+                converter = PDFParser(
+                    replace(
+                        self.config,
+                        strategy=backend or self.config.strategy,
+                        heading_detection="none" if policy else self.config.heading_detection,
+                    )
+                )
+            # Step 1: registered Docker backends use the validated artifact protocol.
+            endpoints = self.config.model_endpoints or {}
+            effective_backend = backend or (
+                self.config.default_model_backend if endpoints else self.config.strategy
+            )
+            if effective_backend == "auto" and endpoints:
+                effective_backend = self.config.default_model_backend
+            if effective_backend in endpoints:
+                from openviking.parse.model_backend import ParseModelBackend
+
+                pymupdf = lazy_import("pymupdf")
+                with pymupdf.open(pdf_path) as source_pdf:
+                    expected_pages = len(source_pdf)
+                model_document = await ParseModelBackend(
+                    endpoints[effective_backend],
+                    api_key=self.config.model_api_key,
+                    timeout=self.config.model_timeout,
+                    max_artifact_bytes=self.config.max_model_artifact_bytes,
+                ).parse(
+                    pdf_path,
+                    backend=effective_backend,
+                    mode=kwargs.get("model_mode", "auto"),
+                    options=kwargs.get("backend_options"),
+                    expected_pages=expected_pages,
+                )
+                markdown_content = model_document.markdown
+                conversion_meta = {
+                    **model_document.metadata,
+                    "strategy": effective_backend,
+                    "effective_backend": effective_backend,
+                    "library": "parser-artifact-v1",
+                }
+            else:
+                if kwargs.get("model_mode", "auto") != "auto" or kwargs.get("backend_options"):
+                    raise ValueError(
+                        "model_mode/backend_options require a registered Docker parser backend"
+                    )
+                markdown_content, conversion_meta = await converter._convert_to_markdown(
+                    pdf_path,
+                    resource_name=resource_name,
+                )
+
+            chapter_kwargs = {}
+            if policy:
+                from openviking.parse.chapter_splitter import split_chapters
+
+                if conversion_meta.get("library") == "pdfplumber":
+                    # Local page comments are synthetic conversion annotations,
+                    # never chapter anchors or meaningful preface text.
+                    markdown_content = re.sub(
+                        r"<!-- Page \d+(?: (?:Table|Image) \d+)? -->\s*",
+                        "",
+                        markdown_content,
+                    ).strip()
+                bookmarks = await asyncio.to_thread(self._read_pdf_bookmarks, pdf_path)
+                plan = await asyncio.to_thread(
+                    split_chapters,
+                    markdown_content,
+                    bookmarks,
+                    section_target_tokens=kwargs.get("section_target_tokens", 4096),
+                )
+                chapter_kwargs["_chapter_plan"] = plan
 
             # Step 2: Parse Markdown using MarkdownParser, pass through resource name
             md_parser = self._get_markdown_parser()
@@ -137,11 +220,17 @@ class PDFParser(BaseParser):
             result = await md_parser.parse_content(
                 markdown_content,
                 source_path=str(pdf_path),
-                resource_name=resource_name,
+                resource_name=(
+                    Path(resource_name).stem
+                    if resource_name and Path(resource_name).suffix.lower() == ".pdf"
+                    else resource_name
+                ),
                 source_name=resource_name,
-                base_dir=pdf_path.parent,
-                allowed_media_dirs=[storage.media_dir],
+                base_dir=model_document.assets_dir if model_document else pdf_path.parent,
+                allowed_media_dirs=[storage.media_dir]
+                + ([model_document.assets_dir] if model_document else []),
                 split_content=kwargs.get("split_content", True),
+                **chapter_kwargs,
             )
 
             # Step 3: Update metadata for PDF origin
@@ -150,7 +239,9 @@ class PDFParser(BaseParser):
             result.parser_version = "2.0"
             result.parse_time = time.time() - start_time
             result.meta.update(conversion_meta)
-            result.meta["pdf_strategy"] = self.config.strategy
+            result.meta["pdf_strategy"] = conversion_meta.get(
+                "effective_backend", converter.config.strategy
+            )
             result.meta["intermediate_markdown_length"] = len(markdown_content)
             result.meta["intermediate_markdown_preview"] = markdown_content[:500]
 
@@ -172,6 +263,27 @@ class PDFParser(BaseParser):
                 parse_time=time.time() - start_time,
                 warnings=[f"Failed to parse PDF: {e}"],
             )
+
+        finally:
+            if model_document is not None:
+                model_document.close()
+
+    @staticmethod
+    def _read_pdf_bookmarks(pdf_path: Path) -> List[Dict[str, Any]]:
+        """Read outline hierarchy with resolved destinations; pages remain metadata."""
+        pymupdf = lazy_import("pymupdf")
+        with pymupdf.open(str(pdf_path)) as document:
+            if document.needs_pass:
+                raise ValueError("Password-protected PDF is not supported")
+            return [
+                {
+                    "level": level,
+                    "title": title.strip(),
+                    "page_num": page if 1 <= page <= len(document) else None,
+                }
+                for level, title, page in document.get_toc()
+                if title and title.strip()
+            ]
 
     async def _convert_to_markdown(
         self,
@@ -447,13 +559,23 @@ class PDFParser(BaseParser):
             page_ref_to_num = self._build_page_number_map(pdf)
 
             bookmarks = []
-            for level, title, dest, _action, _se in outlines:
+            for level, title, dest, action, _se in outlines:
                 if not title or not title.strip():
                     continue
 
                 page_num = None
                 try:
-                    if dest and len(dest) > 0:
+                    if dest is None and isinstance(action, dict):
+                        dest = action.get("D")
+                    # Resolve the destination before indexing: bytes[0] is an
+                    # ASCII integer, not a PDF page reference.
+                    if isinstance(dest, (str, bytes)):
+                        dest = pdf.doc.get_dest(dest)
+                    if hasattr(dest, "resolve"):
+                        dest = dest.resolve()
+                    if isinstance(dest, dict):
+                        dest = dest.get("D")
+                    if isinstance(dest, (list, tuple)) and dest:
                         page_num = self._resolve_bookmark_page(
                             dest[0], page_ref_to_num, len(pdf.pages)
                         )

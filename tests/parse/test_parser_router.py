@@ -357,3 +357,30 @@ async def test_prepared_understanding_file_bypasses_local_reopen():
     assert parser_router.parse.await_args.args == ("/tmp/upload_already_cleaned.pdf",)
     assert parser_router.parse.await_args.kwargs["parser_backend"] == "understanding"
     assert parser_router.parse.await_args.kwargs[PREPARED_FILE_ID_ARG] == "file-1"
+
+
+def test_registered_pdf_model_default_is_not_bypassed_by_understanding(monkeypatch):
+    config = SimpleNamespace(
+        parser_api=SimpleNamespace(enable=True, extensions=["pdf"]),
+        pdf=SimpleNamespace(model_endpoints={"mineru": "http://parser"}),
+    )
+    monkeypatch.setattr(
+        "openviking_cli.utils.config.open_viking_config.get_openviking_config", lambda: config
+    )
+    router = ParserRouter(SimpleNamespace())
+    assert not router.should_use_understanding_api("manual.pdf")
+    assert not router.should_use_understanding_api(
+        "https://example.com/download", resolved_extension="pdf"
+    )
+
+
+def test_pdf_without_configured_model_still_routes_to_understanding(monkeypatch):
+    config = SimpleNamespace(
+        parser_api=SimpleNamespace(enable=True, extensions=["pdf"]),
+        pdf=SimpleNamespace(model_endpoints=None),
+    )
+    monkeypatch.setattr(
+        "openviking_cli.utils.config.open_viking_config.get_openviking_config", lambda: config
+    )
+    router = ParserRouter(SimpleNamespace())
+    assert router.should_use_understanding_api("manual.pdf")

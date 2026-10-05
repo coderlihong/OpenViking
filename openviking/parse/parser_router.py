@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from openviking.parse.accessors.base import LocalResource, SourceType
 from openviking.parse.backend import ParserBackend, normalize_parser_backend
 from openviking.parse.base import ParseResult
+from openviking.parse.office_converter import OfficeConverter
 from openviking.parse.registry import ParserRegistry
 from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.utils.logger import get_logger
@@ -33,6 +34,7 @@ class ParserRouter:
     def __init__(self, parser_registry: ParserRegistry):
         self._parser_registry = parser_registry
         self._understanding_api = None
+        self._office_converter_instance = None
 
     def understanding_api_enabled(self) -> bool:
         """Return whether the external parser is enabled."""
@@ -49,9 +51,7 @@ class ParserRouter:
         source: Union[str, Path, LocalResource],
         resolved_extension: str = "",
     ) -> bool:
-        """
-        Decide whether to use UnderstandingAPI.
-        """
+        """Decide whether to use UnderstandingAPI."""
         # FeishuAccessor has already normalized proprietary content to Markdown.
         if (
             isinstance(source, LocalResource)
@@ -72,6 +72,7 @@ class ParserRouter:
             return False
 
         source_path = self._extract_source_path(source)
+
         try:
             from openviking.parse.accessors.feishu_accessor import FeishuAccessor
 
@@ -81,10 +82,19 @@ class ParserRouter:
             pass
 
         ext = self._normalize_extension(resolved_extension) or self._extract_extension(source_path)
+        # A configured PDF model is the default ingestion route; UnderstandingAPI
+        # must not silently bypass its artifact/chapter contract.
+        if ext == "pdf" and getattr(getattr(ov_config, "pdf", None), "model_endpoints", None):
+            return False
         extensions = getattr(parser_api, "extensions", None) or []
         return ext in extensions
 
     def should_use_understanding_directly(self, source: str, **kwargs) -> bool:
+        if any(
+            kwargs.get(key) is not None
+            for key in ("structure_policy", "parse_backend", "model_mode", "backend_options")
+        ):
+            return False
         parser_backend = normalize_parser_backend(kwargs.get("parser_backend"))
         if parser_backend is ParserBackend.INTERNAL:
             return False
@@ -110,6 +120,28 @@ class ParserRouter:
         Parse with ParserRegistry or UnderstandingAPI based on the routing decision.
         """
         source_path = self._extract_source_path(source)
+        extension = self._normalize_extension(
+            kwargs.get("resolved_extension", "")
+        ) or self._extract_extension(source_path)
+
+        # Office sources are converted to PDF and re-parsed through the same PDF
+        # path. AnyDoc->markdown is never used as a substitute completion path.
+        if self._get_office_converter().is_office_extension(extension):
+            return await self._parse_office(
+                source,
+                source_path=source_path,
+                extension=extension,
+                **kwargs,
+            )
+
+        chapter_requested = any(
+            kwargs.get(key) is not None
+            for key in ("structure_policy", "parse_backend", "model_mode", "backend_options")
+        )
+        if chapter_requested and extension != "pdf":
+            raise InvalidArgumentError(
+                "structure_policy/parse_backend currently require a PDF source"
+            )
 
         parser_backend = normalize_parser_backend(kwargs.pop("parser_backend", None))
 
@@ -118,13 +150,17 @@ class ParserRouter:
             and source.source_type == SourceType.FEISHU
             and source.meta.get("feishu_content_kind") != "file"
         )
-        use_understanding = not normalized_feishu and (
-            parser_backend is ParserBackend.UNDERSTANDING
-            or (
-                parser_backend is None
-                and self.should_use_understanding_api(
-                    source,
-                    resolved_extension=str(kwargs.get("resolved_extension") or ""),
+        use_understanding = (
+            not chapter_requested
+            and not normalized_feishu
+            and (
+                parser_backend is ParserBackend.UNDERSTANDING
+                or (
+                    parser_backend is None
+                    and self.should_use_understanding_api(
+                        source,
+                        resolved_extension=str(kwargs.get("resolved_extension") or ""),
+                    )
                 )
             )
         )
@@ -136,9 +172,11 @@ class ParserRouter:
 
         if use_understanding:
             if isinstance(source, LocalResource):
-                kwargs["source_name"] = source.meta["resolved_name"]
+                kwargs["source_name"] = source.meta.get("resolved_name") or Path(source_path).name
                 kwargs["resolved_extension"] = (
-                    kwargs.get("resolved_extension") or source.meta["resolved_extension"]
+                    kwargs.get("resolved_extension")
+                    or source.meta.get("resolved_extension")
+                    or extension
                 )
             display = source_path
             if isinstance(source_path, str) and source_path.startswith(("http://", "https://")):
@@ -157,6 +195,66 @@ class ParserRouter:
                 display = "<path>"
             logger.info(f"[ParserRouter] Using internal ParserRegistry for {display}")
             return await self._parser_registry.parse(source_path, **kwargs)
+
+    def _get_office_converter(self) -> OfficeConverter:
+        """Lazily build the shared Office -> PDF converter."""
+        if self._office_converter_instance is None:
+            from openviking.parse.office_converter import OfficeConverter
+
+            self._office_converter_instance = OfficeConverter()
+        return self._office_converter_instance
+
+    def set_office_converter(self, converter: OfficeConverter) -> None:
+        """Inject a converter (used by tests and by callers pinning config)."""
+        self._office_converter_instance = converter
+
+    async def _parse_office(
+        self,
+        source: Union[str, Path, LocalResource],
+        *,
+        source_path: Union[str, Path],
+        extension: str,
+        **kwargs,
+    ) -> ParseResult:
+        """Convert an Office source to PDF, then parse it via the PDF parser.
+
+        The converted PDF re-enters the *same* internal PDF parser path, so
+        chapter/structure semantics are identical to a native PDF upload.
+        Conversion errors (missing fonts / password / corrupt / timeout / macro)
+        propagate as clear :class:`OfficeConversionError`s; there is no AnyDoc
+        fallback.
+        """
+        converter = self._get_office_converter()
+        result = await converter.convert(Path(source_path), resolved_extension=extension)
+        try:
+            pdf_kwargs = dict(kwargs)
+            # Preserve the original filename for the resource, but parse the PDF.
+            resource_name = kwargs.get("resource_name") or kwargs.get("source_name")
+            if resource_name is None and isinstance(source, LocalResource):
+                resource_name = source.meta.get("resolved_name")
+            if resource_name is None:
+                resource_name = Path(source_path).name
+            pdf_kwargs["source_name"] = resource_name
+            pdf_kwargs["resource_name"] = resource_name
+            pdf_kwargs["resolved_extension"] = ".pdf"
+            parse_result = await self._parser_registry.parse(
+                result.pdf_path,
+                **pdf_kwargs,
+            )
+        finally:
+            # Intermediate PDF/profile are TTL artifacts, never persisted inputs.
+            converter.cleanup(result)
+            # The converter never owns the user original. Its caller owns the
+            # temporary upload/download lifecycle separately from PDF cleanup.
+
+        parse_result.source_format = extension.lstrip(".") or parse_result.source_format
+        parse_result.meta.update(result.metadata())
+        parse_result.meta["office_pdf_page_count"] = result.structure.get("page_count")
+        parse_result.meta["office_pdf_bookmark_count"] = result.structure.get("bookmark_count")
+        for warning in result.warnings:
+            if warning not in parse_result.warnings:
+                parse_result.warnings.append(warning)
+        return parse_result
 
     async def submit(self, source: Union[str, Path, LocalResource], **kwargs) -> str:
         source_path = self._extract_source_path(source)

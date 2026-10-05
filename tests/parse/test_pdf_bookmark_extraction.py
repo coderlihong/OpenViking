@@ -533,3 +533,37 @@ class TestExtractImages:
             )
             is None
         )
+
+
+def test_named_destination_resolves_before_byte_index_is_taken():
+    parser = PDFParser()
+    document = SimpleNamespace(
+        get_outlines=lambda: [(1, "Front matter", b"pdflink-8f1f3ee", None, None)],
+        get_dest=lambda name: {"D": [_make_ref(200), "/Fit"]},
+    )
+    pdf = SimpleNamespace(doc=document, pages=[_make_page(pageid=100), _make_page(pageid=200)])
+    assert parser._extract_bookmarks(pdf) == [{"level": 1, "title": "Front matter", "page_num": 2}]
+
+
+def test_unknown_named_destination_is_unknown_instead_of_ascii_page_number():
+    def missing(_name):
+        raise KeyError("unknown destination")
+
+    pdf = SimpleNamespace(
+        doc=SimpleNamespace(
+            get_outlines=lambda: [(1, "Front matter", b"pdflink-missing", None, None)],
+            get_dest=missing,
+        ),
+        pages=[_make_page(pageid=i) for i in range(120)],
+    )
+    assert PDFParser()._extract_bookmarks(pdf)[0]["page_num"] is None
+
+
+def test_local_goto_action_destination_is_resolved():
+    pdf = SimpleNamespace(
+        doc=SimpleNamespace(
+            get_outlines=lambda: [(1, "Action", None, {"D": [_make_ref(200), "/Fit"]}, None)],
+        ),
+        pages=[_make_page(pageid=100), _make_page(pageid=200)],
+    )
+    assert PDFParser()._extract_bookmarks(pdf)[0]["page_num"] == 2

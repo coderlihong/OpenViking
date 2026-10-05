@@ -19,12 +19,14 @@ The parser handles scenarios:
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import unquote, urlsplit
 
 from openviking.parse.accessors.mime_types import IANA_MEDIA_TYPE_TO_EXTENSION
 from openviking.parse.base import NodeType, ParseResult, ResourceNode, create_parse_result
@@ -289,6 +291,7 @@ class MarkdownParser(BaseParser):
             ParseResult with temp_dir_path (Viking URI)
         """
         start_time = time.time()
+        temp_uri = None
 
         try:
             split_content = bool(kwargs.get("split_content", True))
@@ -364,7 +367,12 @@ class MarkdownParser(BaseParser):
 
             return result
 
-        except Exception as e:
+        except BaseException as e:
+            if kwargs.get("_chapter_plan") is not None and temp_uri:
+                try:
+                    await self._get_viking_fs().delete_temp(temp_uri)
+                except Exception:
+                    logger.warning("Failed to clean chapter staging tree", exc_info=True)
             logger.error(f"[MarkdownParser] Parse failed: {e}", exc_info=True)
             raise
 
@@ -394,7 +402,7 @@ class MarkdownParser(BaseParser):
         stripped_content, frontmatter = self._extract_frontmatter(content)
         if frontmatter:
             meta["frontmatter"] = frontmatter
-        if self.extract_frontmatter:
+        if self.extract_frontmatter and kwargs.get("_chapter_plan") is None:
             content = stripped_content
 
         explicit_name = kwargs.get("resource_name")
@@ -420,6 +428,10 @@ class MarkdownParser(BaseParser):
             if kwargs.get("flatten_single_output", False)
             else f"{temp_uri}/{self._sanitize_for_path(root_name)}"
         )
+
+        chapter_plan = kwargs.get("_chapter_plan")
+        if chapter_plan is not None:
+            return self._compute_chapter_layout(chapter_plan, temp_uri, root_dir, doc_name)
 
         # Find all headings
         headings = self._find_headings(content)
@@ -450,6 +462,115 @@ class MarkdownParser(BaseParser):
             warnings=warnings,
         )
 
+    def _compute_chapter_layout(self, plan, temp_uri: str, root_dir: str, doc_name: str):
+        """Preserve every planned chapter, including small branches and leaves."""
+        ops = [_LayoutOp("mkdir", temp_uri)]
+        if root_dir != temp_uri:
+            ops.append(_LayoutOp("mkdir", root_dir))
+        children = {c.parent_id for c in plan.chapters if c.parent_id}
+        directories: Dict[str, str] = {}
+        paths: Dict[str, str] = {}
+        used: set[str] = {"toc.md", "images", "_toc.json", "_manifest.json"}
+        records = []
+        from markdown_it import MarkdownIt
+        original = "".join(c.content for c in sorted(
+            (c for c in plan.chapters if c.start is not None), key=lambda c: c.start))
+        plan.validate_coverage(original)
+        env = {}
+        MarkdownIt("commonmark").enable("table").parse(original, env)
+        references = {label: value["href"] for label, value in env.get("references", {}).items()}
+        for chapter in plan.chapters:
+            if chapter.alias_of:
+                paths[chapter.chapter_id] = paths[chapter.alias_of]
+                records.append(
+                    {
+                        "chapter_id": chapter.chapter_id,
+                        "title": chapter.title,
+                        "path": paths[chapter.chapter_id],
+                        "match_status": chapter.match_status,
+                        "alias_of": chapter.alias_of,
+                        "page_start": chapter.page_start,
+                    }
+                )
+                continue
+            parent = directories.get(chapter.parent_id, "")
+            name = self._sanitize_for_path(chapter.title)
+            if chapter.chapter_id.startswith("preface_"):
+                name = f"00_{doc_name}"
+            branch = chapter.chapter_id in children
+            stem = f"{parent}/{name}".lstrip("/")
+            path = f"{stem}/index.md" if branch else f"{stem}.md"
+            collision_key = stem if branch else path
+            initial_stem, collision_count = stem, 0
+            while collision_key.casefold() in used or path.casefold() in used:
+                collision_count += 1
+                suffix = f"_{chapter.chapter_id}" + (f"_{collision_count}" if collision_count > 1 else "")
+                stem = initial_stem + suffix
+                path = f"{stem}/index.md" if branch else f"{stem}.md"
+                collision_key = stem if branch else path
+            used.add(collision_key.casefold())
+            used.add(path.casefold())
+            if branch:
+                directories[chapter.chapter_id] = stem
+                ops.append(_LayoutOp("mkdir", f"{root_dir}/{stem}"))
+            paths[chapter.chapter_id] = path
+            # A structural-only chapter (a container whose title never appears as a
+            # body heading) has no own text. Emit a self-describing heading stub so
+            # the published Markdown stays non-empty and reindexable rather than
+            # dropping a 0-byte file that downstream capture must reject.
+            body = chapter.content if chapter.content.strip() else f"# {chapter.title}\n"
+            ops.append(_LayoutOp("write", f"{root_dir}/{path}", body))
+            records.append(
+                {
+                    "chapter_id": chapter.chapter_id,
+                    "title": chapter.title,
+                    "level": chapter.level,
+                    "parent_id": chapter.parent_id,
+                    "path": path,
+                    "page_start": chapter.page_start,
+                    "match_status": chapter.match_status,
+                }
+            )
+        manifest = {
+            "version": 1,
+            "structure_source": plan.structure_source,
+            "alignment_status": plan.alignment_status,
+            "info": plan.info,
+            "chapters": records,
+        }
+        toc = (
+            "# 文档目录\n\n"
+            + "\n".join(
+                f"- [{r['title'].replace('[', '').replace(']', '')}]({r['path']})" for r in records
+            )
+            + "\n"
+        )
+        ops.extend(
+            [
+                _LayoutOp("write", f"{root_dir}/toc.md", toc),
+                _LayoutOp(
+                    "write",
+                    f"{root_dir}/_toc.json",
+                    json.dumps(
+                        {"bookmarks": plan.bookmarks, "alignment_status": plan.alignment_status},
+                        ensure_ascii=False,
+                    ),
+                ),
+                _LayoutOp(
+                    "write", f"{root_dir}/_manifest.json", json.dumps(manifest, ensure_ascii=False)
+                ),
+            ]
+        )
+        return _Layout(
+            temp_uri,
+            root_dir,
+            doc_name,
+            doc_name,
+            ops=ops,
+            meta={**manifest, "chapter_layout": True, "preserve_relative_images": True,
+                  "image_reference_definitions": references},
+        )
+
     async def _apply_layout(
         self,
         layout: _Layout,
@@ -463,6 +584,9 @@ class MarkdownParser(BaseParser):
         ingest the local images those sections reference."""
         started = time.perf_counter()
         viking_fs = self._get_viking_fs()
+        if layout.meta.get("chapter_layout"):
+            await self._apply_chapter_layout(layout, base_dir, allowed_media_dirs)
+            return
         mkdir_ops = [op for op in layout.ops if op.kind == "mkdir"]
         write_ops = [op for op in layout.ops if op.kind == "write"]
         write_chars = sum(len(op.content or "") for op in write_ops)
@@ -501,6 +625,120 @@ class MarkdownParser(BaseParser):
                 f"rewrite_enabled={rewrite_enabled} has_image_refs={has_image_refs} "
                 f"root={layout.root_dir}"
             )
+
+    async def _apply_chapter_layout(self, layout, base_dir, allowed_media_dirs) -> None:
+        """Write validated chapter assets beside their references with relative links.
+
+        Unlike the legacy permissive importer, missing images and remote/viking
+        references fail before the temporary tree can be published. An image
+        that exists but fails the quality gate (too small, unreadable…) is
+        skipped with a structured warning — source PDFs legitimately contain
+        tiny decorative drawings that must not abort a 1000-page parse. Code
+        examples are never image inputs.
+        """
+        from openviking.parse.image_rewrite import _protected_ranges
+
+        fs = self._get_viking_fs()
+        image_dirs: set[str] = set()
+        rejected_images: list[str] = []
+        for op in layout.ops:
+            if op.kind == "mkdir":
+                await fs.mkdir(op.uri, exist_ok=op.exist_ok)
+                continue
+            content = op.content or ""
+            if not op.uri.endswith(".md"):
+                await fs.write_file(op.uri, content)
+                continue
+            content = self._expand_chapter_image_references(content, layout.meta.get("image_reference_definitions", {}))
+            protected = _protected_ranges(content)
+            replacements = []
+            written_refs = set()
+            matches = [(m, 2) for m in self._image_pattern.finditer(content)]
+            html_pattern = re.compile(r"""<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.I)
+            for match in html_pattern.finditer(content):
+                group = next(i for i in (1, 2, 3) if match.group(i) is not None)
+                matches.append((match, group))
+            for match, group in matches:
+                if any(start <= match.start() < end for start, end in protected):
+                    continue
+                original = match.group(group)
+                if original.startswith("viking://"):
+                    # External-domain assets need namespace authorization support.
+                    raise ValueError("Chapter images must be supplied as local parser assets")
+                if self._is_remote_uri(original):
+                    raise ValueError("Remote chapter image must be materialized before publishing")
+                local = self._resolve_image_path(original, base_dir, allowed_media_dirs)
+                if local is None:
+                    raise ValueError(f"Missing chapter image: {original}")
+                data = await asyncio.to_thread(local.read_bytes)
+                if not await asyncio.to_thread(self._is_valid_image, data, local):
+                    rejected_images.append(original)
+                    span = self._image_syntax_span(content, match, group)
+                    replacements.append((span[0], span[1], ""))
+                    continue
+                digest = hashlib.sha256(data).hexdigest()
+                image_dir = op.uri.rsplit("/", 1)[0] + "/images"
+                if image_dir not in image_dirs:
+                    await fs.mkdir(image_dir, exist_ok=True)
+                    image_dirs.add(image_dir)
+                suffix = local.suffix.lower() or ".png"
+                name = digest + suffix
+                await fs.write_file_bytes(f"{image_dir}/{name}", data)
+                written_refs.add(f"images/{name}")
+                replacements.append((match.start(group), match.end(group), f"images/{name}"))
+            for start, end, replacement in sorted(replacements, reverse=True):
+                content = content[:start] + replacement + content[end:]
+            from markdown_it import MarkdownIt
+            for token in MarkdownIt("commonmark").enable("table").parse(content):
+                for child in token.children or []:
+                    if child.type == "image" and child.attrGet("src") not in written_refs:
+                        raise ValueError("Unsupported or unmaterialized chapter image syntax")
+            await fs.write_file(op.uri, content)
+        if rejected_images:
+            logger.warning(
+                f"[MarkdownParser] Skipped {len(rejected_images)} chapter image(s) "
+                f"failing the quality gate: {rejected_images}"
+            )
+            layout.meta.setdefault("info", []).append({
+                "code": "CHAPTER_IMAGE_QUALITY_SKIPPED",
+                "count": len(rejected_images),
+                "images": sorted(set(rejected_images)),
+            })
+
+    @staticmethod
+    def _expand_chapter_image_references(content: str, references: dict) -> str:
+        """Resolve document-wide image labels before chapters become separate files."""
+        from markdown_it.common.utils import normalizeReference
+        from openviking.parse.image_rewrite import _protected_ranges
+        protected = _protected_ranges(content)
+        pattern = re.compile(r"(?<!\\)!\[([^]\n]*)\](?:[ \t]*\[([^]\n]*)\])?")
+        replacements = []
+        for match in pattern.finditer(content):
+            if any(start <= match.start() < end for start, end in protected):
+                continue
+            if content[match.end():].lstrip().startswith("("):
+                continue
+            label = normalizeReference(match.group(2) or match.group(1))
+            if label in references:
+                replacements.append((match.start(), match.end(), f"![{match.group(1)}](<{references[label]}>)"))
+        for start, end, replacement in sorted(replacements, reverse=True):
+            content = content[:start] + replacement + content[end:]
+        return content
+
+    @staticmethod
+    def _image_syntax_span(content: str, match: re.Match, group: int) -> tuple[int, int]:
+        """Span of the whole image syntax, not just its URL group.
+
+        Dropping only the URL leaves a broken ``![]()`` fragment behind, which the
+        post-write token gate would then reject as unmaterialized syntax.
+        """
+        if group != 2:
+            return match.start(group), match.end(group)
+        opener = content.rfind("![", 0, match.start(group) + 1)
+        close = content.find(")", match.end(group))
+        if opener == -1 or close == -1 or content[opener:close + 1].count("\n") > 2:
+            return match.start(group), match.end(group)
+        return opener, close + 1
 
     # ========== Helper Methods ==========
 
@@ -949,7 +1187,13 @@ class MarkdownParser(BaseParser):
             allowed root, otherwise None
         """
         try:
-            path = Path(self._unwrap_link_destination(path_str))
+            reference = urlsplit(self._unwrap_link_destination(path_str))
+            if reference.scheme or reference.netloc:
+                return None
+            decoded = unquote(reference.path)
+            if not decoded or "\x00" in decoded or "\\" in decoded:
+                return None
+            path = Path(decoded)
 
             # Reject absolute paths: they can point anywhere on the host
             if path.is_absolute():

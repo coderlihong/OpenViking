@@ -3,6 +3,7 @@
 """Media-related utilities for OpenViking."""
 
 import asyncio
+import hashlib
 import re
 import tempfile
 from pathlib import Path
@@ -251,6 +252,8 @@ async def generate_image_summary(
     original_filename: str,
     llm_sem: Optional[asyncio.Semaphore] = None,
     ctx: Optional["RequestContext"] = None,
+    contexts: Optional[list[dict]] = None,
+    strict: bool = False,
 ) -> Dict[str, Any]:
     """
     Generate summary for an image file using VLM.
@@ -278,6 +281,8 @@ async def generate_image_summary(
         # Check for unsupported formats (SVG, etc.) by detecting magic bytes
         # SVG format is not supported by VolcEngine VLM API, skip VLM analysis
         if _is_svg(image_bytes):
+            if strict:
+                raise ValueError("SVG format is not supported by the image summary path")
             logger.info(
                 f"[MediaUtils.generate_image_summary] SVG format detected, skipping VLM analysis: {image_uri}"
             )
@@ -287,30 +292,47 @@ async def generate_image_summary(
             f"[MediaUtils.generate_image_summary] Generating summary for image: {image_uri}"
         )
 
-        # Render prompt
-        prompt = render_prompt(
-            "parsing.image_summary",
-            {"context": "No additional context"},
-        )
-
-        # Call VLM
-        async with llm_sem or asyncio.Semaphore(1):
-            response = await vlm.get_vision_completion_async(
-                prompt=prompt,
-                images=[
-                    prepare_image_bytes_for_model(
-                        image_bytes,
-                        config=getattr(config, "image", None),
-                    )
-                ],
+        occurrences = contexts or [
+            {
+                "context": "No referencing chapter was found. Describe only visible evidence; do not invent a use or machine configuration.",
+                "context_status": "unreferenced",
+            }
+        ]
+        summaries = []
+        from openviking.indexing.image_cache import semantics_signature
+        signature = semantics_signature()
+        for occurrence in occurrences:
+            prompt = render_prompt("parsing.image_summary", {"context": occurrence["context"]})
+            async with llm_sem or asyncio.Semaphore(1):
+                response = await vlm.get_vision_completion_async(
+                    prompt=prompt,
+                    images=[
+                        prepare_image_bytes_for_model(
+                            image_bytes, config=getattr(config, "image", None)
+                        )
+                    ],
+                )
+            if not response.strip():
+                raise ValueError("VLM returned an empty image summary")
+            summaries.append(
+                {
+                    **occurrence,
+                    "summary": response.strip(),
+                    "asset_sha256": hashlib.sha256(image_bytes).hexdigest(),
+                    "semantics_signature": signature,
+                }
             )
-
-        logger.info(
-            f"[MediaUtils.generate_image_summary] VLM response received, length: {len(response)}"
-        )
-        return {"name": file_name, "summary": response.strip()}
+        if contexts is None:
+            return {"name": file_name, "summary": summaries[0]["summary"]}
+        return {
+            "name": file_name,
+            "summary": "\n\n".join(s["summary"] for s in summaries),
+            "image_occurrences": summaries,
+        }
 
     except ValueError as e:
+        if strict:
+            raise
         if "SVG format" in str(e) or "not supported" in str(e):
             logger.warning(
                 f"[MediaUtils.generate_image_summary] Unsupported image format for {image_uri}: {e}"
@@ -322,6 +344,8 @@ async def generate_image_summary(
             f"[MediaUtils.generate_image_summary] Failed to generate image summary: {e}",
             exc_info=True,
         )
+        if strict:
+            raise
         return {"name": file_name, "summary": "Image summary generation failed"}
 
 
