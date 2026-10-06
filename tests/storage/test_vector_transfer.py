@@ -1195,3 +1195,30 @@ async def test_transfer_strips_managed_generation_fields():
             record.get("index_generation") is None and record.get("index_plan_id") is None
             for record in backend.records.values()
         )
+
+
+@pytest.mark.asyncio
+async def test_transfer_collapses_generation_stamped_duplicate_chunk_rows():
+    """Two stored rows differing only in index_generation rewrite to one id.
+
+    A same-content reindex publishes a second generation of the identical
+    (uri, chunk_id) pair; the stored ids stay distinct because the generation
+    participates in the stored key. After the transfer strips the generation
+    fields both rows collapse onto one target id, which the batch upsert's
+    duplicate guard would refuse mid-move.
+    """
+    source = "viking://resources/src"
+    records = [
+        _record("row-a", f"{source}/doc.md", chunk_id="chunk-1",
+                index_generation="a" * 64, index_plan_id="b" * 64),
+        _record("row-b", f"{source}/doc.md", chunk_id="chunk-1",
+                index_generation="c" * 64, index_plan_id="d" * 64),
+    ]
+    backend = _MemoryTransferBackend(records)
+
+    result = await backend.update_uri_mapping(_ctx(), source, "viking://resources/dst", recursive=True)
+
+    moved = _records_under(backend, "viking://resources/dst")
+    assert len(moved) == 1
+    assert moved[0]["uri"] == "viking://resources/dst/doc.md"
+    assert result.written == 1

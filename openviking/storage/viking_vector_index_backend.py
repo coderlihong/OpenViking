@@ -58,6 +58,7 @@ RETRIEVAL_OUTPUT_FIELDS = [
     "uri",
     "level",
     "context_type",
+    "type",
     "abstract",
     "active_count",
     "updated_at",
@@ -2085,6 +2086,10 @@ class VikingVectorIndexBackend:
             )
             for record in source_records
         ]
+        # Generation-stamped rows that share a rewritten (uri, chunk_id) collapse
+        # onto one target id once the transfer strips index_generation; the
+        # batch upsert's duplicate guard would refuse them. Keep the last write.
+        target_payloads = list({str(p["id"]): p for p in reversed(target_payloads)}.values())[::-1]
         if target_acl_fields:
             for payload in target_payloads:
                 acl_fields = target_acl_fields.get(
@@ -2182,6 +2187,9 @@ class VikingVectorIndexBackend:
                     moved_acl_by_uri[rewritten_uri] = acl_fields
                 payload.update(acl_fields)
             target_payloads.append(payload)
+        # Same collapse guard as the copy path: generation-stamped rows sharing a
+        # rewritten (uri, chunk_id) converge onto one id after the strip.
+        target_payloads = list({str(p["id"]): p for p in reversed(target_payloads)}.values())[::-1]
         target_ids = [str(payload["id"]) for payload in target_payloads]
         attempted_target_ids: List[str] = []
         try:
