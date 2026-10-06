@@ -120,7 +120,12 @@ def rewrite_vector_record(
         raise ValueError("Vector record is missing a string URI")
 
     rewritten_uri = rewrite_transfer_uri(record_uri, source_uri, target_uri)
-    payload = {key: value for key, value in record.items() if key != "_score"}
+    # A transfer is not a managed generation write: the moved record's original
+    # index_generation/index_plan_id still point at a builds row keyed by the OLD
+    # uri, so carrying them through would fail the write-identity check after mv.
+    payload = {key: value for key, value in record.items()
+               if key != "_score" and key not in {"index_generation", "index_plan_id"}}
+
     owner_fields = owner_fields_for_uri(rewritten_uri)
     payload.update(
         {

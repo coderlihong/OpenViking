@@ -1164,3 +1164,34 @@ async def test_target_entry_lookup_failure_precedes_vector_mutation():
             target_entry_exists=AsyncMock(side_effect=RuntimeError("stat failed")),
         )
     assert backend.delete_calls == backend.upsert_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_transfer_strips_managed_generation_fields():
+    """A URI-scope transfer is not a managed generation write.
+
+    Moved/copied records keep their original index_generation/index_plan_id, which
+    still reference a builds row keyed by the OLD uri; carrying them through the
+    upsert would fail the write-identity check ('Managed write generation identity
+    mismatch') because the payload uri was rewritten to the new location.
+    """
+    source = "viking://resources/src"
+    records = [
+        _record("source-root", source, index_generation="a" * 64, index_plan_id="b" * 64),
+        _record("source-a", f"{source}/a.md", index_generation="c" * 64, index_plan_id="d" * 64),
+    ]
+    backend = _MemoryTransferBackend(records)
+
+    result = await backend.update_uri_mapping(_ctx(), source, "viking://resources/dst", recursive=True)
+
+    assert (result.written, result.deleted) == (2, 2)
+    moved = sorted(_records_under(backend, "viking://resources/dst"), key=lambda r: r["uri"])
+    assert [record["uri"] for record in moved] == ["viking://resources/dst", "viking://resources/dst/a.md"]
+    for record in moved:
+        assert record.get("index_generation") is None
+        assert record.get("index_plan_id") is None
+    for original in records:
+        assert all(
+            record.get("index_generation") is None and record.get("index_plan_id") is None
+            for record in backend.records.values()
+        )
