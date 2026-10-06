@@ -17,6 +17,7 @@ import re
 
 from openviking.indexing.content import archive_bytes, blob_path
 from openviking.wiki.catalog import _json
+from openviking.wiki.adjudication import service_adjudication
 from openviking.wiki.policies import EXTRACTOR_VERSION, POLICY_VERSION, check_build_profile
 from openviking.wiki.schema import SchemaBundle, SchemaError, _yaml, compile_bundle
 from openviking.wiki.validation import inspect_entity, source_uri
@@ -283,7 +284,13 @@ DATA_JSON:\n''' + _json(payload)
         body = json.loads(plan.manifest)
         pin = await self.planner.catalog.pin_collection(ctx, body['collection']['collection_id'], input_kind=body['input_kind'])
         bundle = SchemaBundle.freeze(pin.bundle.schema_id, pin.bundle.version, dict(pin.bundle.members))
-        coverage = check_build_profile(bundle, profile)  # Strict refusal precedes model use.
+        # Strict gates were already receipt-checked at submission; re-adjudicating
+        # here with the same registry readers keeps the pre-model refusal from
+        # regressing to the static six-gate list when receipts exist.
+        adjudication = (lambda: service_adjudication(self.planner.registry,
+                        account_id=ctx.account_id, collection_id=body['collection']['collection_id'],
+                        bundle=pin.bundle)) if profile == 'strict_diagnostic' else None
+        coverage = check_build_profile(bundle, profile, adjudication=adjudication)  # Strict refusal precedes model use.
         schemas = {schema.kind: schema for schema in compile_bundle(bundle)}
         from openviking.wiki.namespaces import NamespaceCatalog
         policy = NamespaceCatalog(self.fs, registry=self.planner.registry)

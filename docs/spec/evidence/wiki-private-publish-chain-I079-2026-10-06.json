@@ -1,0 +1,75 @@
+{
+  "round": "I079",
+  "date": "2026-10-06",
+  "title": "私有发布全链真机走通：业务 schema 强制 business_code → merge 2/2 有效 → G1 注册 2 行 → 发布 2 页 6 chunk，I081 判定器读证命名空间修正",
+  "target": "I078 残余『三门发布态由 FLOW 链供给』：用 i079c 业务 schema（business_code required + identity policy key_fields）真实跑通 draft→merge→G1→publish→strict 提交，验证发布态回执能否让判定器放行",
+  "chain": {
+    "schema": {
+      "schema_id": "business/i079c",
+      "digest": "dbcd046289c2f8fa60045b08cb04607b3f24a834bf0f6aa9f3b81be22aea0ca3",
+      "key_field": {"name": "business_code", "type": "string", "required": true},
+      "identity_policy": {"policy_version": "i079c-business-v1", "key_fields": ["business_code"], "normalization": "exact"},
+      "state": "structural_ready"
+    },
+    "source": "viking://resources/i079c-raw/manual.md（单节事实段，含『本手册适用机型代号 SY215C-9』以满足 business_code 抽取）",
+    "draft": {
+      "job": "flow-w2-exec-i079g",
+      "state": "draft_ready",
+      "draft_receipts": 2
+    },
+    "merge": {
+      "group_count": 2,
+      "conflict_count": 0,
+      "pending_identity_count": 0,
+      "valid_graph_count": 2,
+      "canonical_ids": ["candidate-6c9f43e71df6d15b00ab95b92e7996bde1cf1ec7862304efa358f53684c256fb", "candidate-cfe2baac48e2c1125dec1231426eb8cd5b6d155a82cb0a7add26445c0404e0b3"]
+    },
+    "g1_registration": {
+      "rows_registered": 2,
+      "verified_live": "wiki_entity_catalog 查得 2 行，entity_type=Thing, schema_id=business/i079c",
+      "method": "SDK register_wiki_entities('sany-wiki-i079c', entries)"
+    },
+    "publish": {
+      "pages": ["viking://resources/wiki/sany-i079c/Thing/sy215c-维修手册.md", "viking://resources/wiki/sany-i079c/Thing/部件要点.md"],
+      "published_count": 2,
+      "indexed_chunks": 6,
+      "contributor_stamps": "两页 content.wiki_contributors = ['viking://resources/i079c-raw/manual.md']（快照 0fc44f44 实读）"
+    },
+    "strict_submit": {
+      "job_id": "921ae60e1e024031b8091a997f9e8e07",
+      "outcome": "提交被接受（submission 侧判定器读证放行），执行 wiki_extract 阶段失败——见 defects"
+    }
+  },
+  "defects_found_and_fixed": [
+    {
+      "id": "I080",
+      "symptom": "W1 真实 PDF 整树 staged 替换在 fs.mv 处报 Managed write generation identity mismatch",
+      "root_cause": "矢量搬运 rewrite_vector_record 原样携带 index_generation/index_plan_id，二者键在旧 uri 的 builds 行上，URI-scope 搬运后与写身份检查冲突",
+      "fix": "vector_migration.py 搬运时剥离两个字段（commit 68366eae）+ test_transfer_strips_managed_generation_managed 测试",
+      "status": "closed"
+    },
+    {
+      "id": "I081",
+      "symptom": "service_adjudication 的 _snapshot_pages 读 per-collection wiki namespace，heads 只存在 'resources' 命名空间下，发布态门观察恒空",
+      "root_cause": "内容发布把资源世代记在 resources head（kb_job_runtime.begin_batch 约定），非 wiki namespace",
+      "fix": "adjudication.py _snapshot_pages 改读 resources head（commit 185fb0f3）+ test_wiki_service_adjudication 4 绿",
+      "status": "closed"
+    },
+    {
+      "id": "I082",
+      "symptom": "strict_diagnostic 提交侧接受后，执行侧 extraction.py:286 check_build_profile(bundle, profile) 不带 adjudication，静态六门名单再次整体拒绝（job 921ae60e failed@wiki_extract，error 为无 reason 的六门拼接）",
+      "root_cause": "双调用点只有 submission 接了判定器，执行路径漏接",
+      "fix": "extraction.py extract() 同样以 service_adjudication 读证后再调 check_build_profile；58 项关联测试绿",
+      "status": "fix_in_tree，待服务重启后真机复投验证"
+    }
+  ],
+  "design_observations": [
+    "同 URI 重投因模型输出字节级不同触发 CAS 拒绝（Published candidate page changed by a later edit）——按设计拒改写已发布页，非缺陷",
+    "merge 的 valid_graph 是 canonical-id 字符串列表而非对象数组；首轮误解析返回空集，修正后 2 个 canonical id 全部解析"
+  ],
+  "regression": {
+    "test_wiki_service_adjudication": "4 passed",
+    "test_vector_transfer": "136 passed across transfer/migration/merge-binding suites"
+  },
+  "conclusion": "私有发布链真机全通：业务约束 schema→草稿→合并（0 pending/2 valid）→G1 目录→发布落页带贡献章，每一步都有活库行/快照实读背书；三缺陷（I080 已提交、I081 已提交、I082 在树）沿途修复，strict 执行侧复验待 I082 重启后完成"
+}

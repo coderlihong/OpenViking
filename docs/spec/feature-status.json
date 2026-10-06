@@ -1,1360 +1,1394 @@
 {
- "version": "0.15",
- "date": "2026-10-06",
- "change_id": "CR-019",
- "baseline": "I042",
- "latest_scoped_tests": 184,
- "full_repository_tests": "I053e（2026-10-06）两项落点：①章节布局图片质量门——书册解析落盘阶段对每张本地图片先过 is_valid_image 质量门，不达标图跳过引用并写结构化 info 条目 CHAPTER_IMAGE_QUALITY_SKIPPED，解析照常成功；缺文件/viking:// 与远程引用仍硬失败；修复部署侧保全模块 undersized 源 PDF 裁片致 1072 页手册整本中止的阻塞（章节管线+契约硬化 63 回归通过）。②KB-027 补强已在前序 I053/I053b/I053c/I053d 完成：私有候选树发布→整批预检→共享 D1 索引管线→写入途中崩溃重放治愈全批（65 回归）。I052 七类共同发布覆盖门禁读取已提交权威证据并在 ready 路径强制执行。当前 FLOW-D1 真册验收进行中：362MB/1072 页 SY215C 维修手册已上传（temp_upload 通过），D1 持久 job semantic_and_vectors 已入队 parse_write。模型图片语义与章节归属质量未验收。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
- "features": [
-  {
-   "id": "F1",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "真实三后端路由 + I039 真实 SANY 维修手册切片（11 页含 TOC 元数据）三后端全页通过、图片签名全部有效；MinerU 全卷历史证据。全后端全卷、完整图文适配与正式 D1 验收仍未完成。",
-   "tasks": [
-    "KB-001",
-    "KB-009",
-    "KB-010"
-   ]
+  "version": "0.15",
+  "date": "2026-10-06",
+  "change_id": "CR-019",
+  "baseline": "I079",
+  "latest_scoped_tests": "I079 私有发布全链真机回归：test_wiki_service_adjudication 4 绿（I081 resources-head 读证修正）、test_vector_transfer+test_vector_migration+test_transfer_merge_binding 136 绿（I080 搬运剥离）、test_wiki_publication_adjudication+page_rules+path_policy 58 绿（I082 执行侧判定器接线）。前值：I078 strict 判定器真机探针 4+9 绿。",
+  "full_repository_tests": "I053e（2026-10-06）两项落点：①章节布局图片质量门——书册解析落盘阶段对每张本地图片先过 is_valid_image 质量门，不达标图跳过引用并写结构化 info 条目 CHAPTER_IMAGE_QUALITY_SKIPPED，解析照常成功；缺文件/viking:// 与远程引用仍硬失败；修复部署侧保全模块 undersized 源 PDF 裁片致 1072 页手册整本中止的阻塞（章节管线+契约硬化 63 回归通过）。②KB-027 补强已在前序 I053/I053b/I053c/I053d 完成：私有候选树发布→整批预检→共享 D1 索引管线→写入途中崩溃重放治愈全批（65 回归）。I052 七类共同发布覆盖门禁读取已提交权威证据并在 ready 路径强制执行。当前 FLOW-D1 真册验收进行中：362MB/1072 页 SY215C 维修手册已上传（temp_upload 通过），D1 持久 job semantic_and_vectors 已入队 parse_write。模型图片语义与章节归属质量未验收。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
+  "features": [
+    {
+      "id": "F1",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：D1 手册新向量代重投终态 completed（rebuilt=4840/failed=0），type/image 过滤与 I060 三段位探针双过；仍以三后端全卷+完整图文适配为完成条件。",
+      "tasks": [
+        "KB-001",
+        "KB-009",
+        "KB-010"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F2",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I001/I003：书签meta、自动回退及全卷章节产物；gold结构与完整发布待验收",
+      "tasks": [
+        "KB-006",
+        "KB-010",
+        "KB-011"
+      ]
+    },
+    {
+      "id": "F3",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：reindex stage 观测（semantic:/vectors:）+ DAG 节点级 /observer/queue 实时透出在 2.6h 全树重投全程有效；I051 已证 backoff/SIGKILL 恢复。",
+      "tasks": [
+        "KB-004",
+        "KB-021"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F4",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：type=text/image must 组合过滤对新代向量真实生效（基线三组全 0 → 各 8 命中且类型正确）；I060 三段位探针 head/mid/tail 全命中且回指 viking URI。",
+      "tasks": [
+        "KB-006",
+        "KB-013"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F5",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I011–I015：引用上下文/缓存/joint实际向量及共同发布；真实VLM质量、多空间搜索与引用分页未完 I048：修复深目录漏引用和误用embedding tokenizer，72专项通过；完整预算和质量仍未验收。",
+      "tasks": [
+        "KB-006",
+        "KB-014",
+        "KB-015"
+      ]
+    },
+    {
+      "id": "F6",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：I060 探针对新发布向量代复测通过（head 0.920 主文档、mid H031/H033 故障条目 top1/top2、tail 英文段落），混合检索+溯源链路在新代上成立。",
+      "tasks": [
+        "KB-016",
+        "KB-017"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F7",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：meta/type 过滤矩阵在新代上验证——type must/must_not 三组从基线全 0 翻转为按类型精确隔离；模糊 meta 字典通道既有 I032 契约不变。",
+      "tasks": [
+        "KB-018",
+        "KB-019"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F8",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I047：冻结远端Docker经显式SSH transport接入真实parser/job预检，六格式转换合同、实际 D1 Word 和 W1 三现代Office族私有草稿通过；字体声明/实际库存门禁已修复。legacy HTTP/SDK、Office gold、全链路共同发布与规模/故障仍未完整验收。 I050 legacy六文本合同PASS；I050复现XLS可见图在worker产物丢失，历史图保留FAIL，完整Office未验收。 I051对同XLS补真实PDF图保全后D1/W1均exact1 PNG，D1 11重建/0失败、真实摘要与joint回执/图片URI检索PASS；仅MinerU保全合同，模型质量/章节归属与全Office未验收。",
+      "tasks": [
+        "KB-012"
+      ]
+    },
+    {
+      "id": "F9",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I079 私有发布全链真机走通：business/i079c schema（business_code required + identity policy）→ draft_ready → merge 2 组 0 pending/2 valid → G1 注册 2 行 → 发布 2 页 6 chunk 带贡献章（快照 0fc44f44 实读）。沿途修三缺陷：I080 矢量搬运剥离 index_generation/index_plan_id（68366eae）、I081 判定器 _snapshot_pages 改读 resources head（185fb0f3）、I082 执行侧 extraction 补接判定器（在树）。[evidence/wiki-private-publish-chain-I079-2026-10-06.json] 前序 I078 判定器真机双向验证、I077 FLOW-W2 重跑收口。",
+      "tasks": [
+        "KB-013",
+        "KB-020"
+      ],
+      "latest_round": "I079",
+      "round_updated": "2026-10-06",
+      "latest_scoped_tests": [
+        "I079: test_wiki_service_adjudication 4 passed（I081 resources-head 读证修正）",
+        "I079: test_vector_transfer/test_vector_migration/test_transfer_merge_binding 136 passed（I080 搬运剥离回归）"
+      ]
+    },
+    {
+      "id": "F10",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I079 FLOW-W2 发布态三门供给实证：closed_relationships/derived_access_intersection/atomic_joint_publication 所需回执由 publish 链真实产出（合并图组+贡献章+已发布页），strict_diagnostic 提交侧四读取器读证通过；执行侧静态拒绝系 I082（extraction 未接判定器），修复后待真机复投收官。[evidence/wiki-private-publish-chain-I079-2026-10-06.json] 前序 I078 空回执点名五门。",
+      "tasks": [
+        "KB-022",
+        "KB-023",
+        "KB-024",
+        "KB-025",
+        "KB-026",
+        "KB-027",
+        "KB-028",
+        "KB-029",
+        "KB-030"
+      ],
+      "latest_round": "I079",
+      "round_updated": "2026-10-06",
+      "latest_scoped_tests": [
+        "I079: FLOW-W2 publish 链真机：merge(pending=0,valid=2)→G1 2 行→publish 2 页/6 chunk→strict 提交被受理；strict 执行失败根因 I082 已修待复验"
+      ]
+    },
+    {
+      "id": "F11",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I068收口：reindex semantic_and_vectors 全树重投 completed（语义 DAG 4839 节点+向量 4835 build 全 published），语义分层在 reindex 中可重建获得全树量级真机证据。",
+      "tasks": [
+        "KB-006",
+        "KB-020"
+      ],
+      "latest_round": "I068",
+      "round_updated": "2026-10-06"
+    },
+    {
+      "id": "F12",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I032：JEV式状态/类型化决策PoC（openviking/jev）状态机与决策路径单测通过；独立校准PoC与真实质量待验收",
+      "tasks": [
+        "KB-033"
+      ]
+    },
+    {
+      "id": "F13",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I034受控未知写入恢复、离线联合备份及隔离恢复验证；I038 KB-029来源撤权后拒绝读取、仍有合法来源时同身份重建并丢弃撤回贡献（44项通过）；零证据stale/权威边投影重建/迁移回滚、普通AGFS/生产向量身份/完整GC回执和灾备activate未完。 I050提交成员持久批次与authority原子fence封口，最终85回归；7类完整共同门禁未齐、I050时线上新协议未部署。 I051实际服务已加载新协议，单MD/目录多成员共同发布及published/backoff边界SIGKILL恢复通过，inflight崩溃与7完整覆盖门禁仍未通过。",
+      "tasks": [
+        "KB-002",
+        "KB-004",
+        "KB-005",
+        "KB-006",
+        "KB-007",
+        "KB-008",
+        "KB-029"
+      ]
+    },
+    {
+      "id": "F14",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I033注册域与collection迁移门禁、读回/向量预过滤、job当前身份检查；全通道与多源派生权限交集/提交fencing未完成。 I047：ACL当前代筛选/受影响子树head变化检测/真实reindex后更新通过；完整权限revision事务CAS与全部通道仍未验收。",
+      "tasks": [
+        "KB-003",
+        "KB-022",
+        "KB-027"
+      ]
+    },
+    {
+      "id": "F15",
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "summary": "I034保存局部回归和真实容器/模型探针；用户暂未提供人工gold，全部完整Feature及四FLOW NOT_RUN。",
+      "tasks": [
+        "KB-010",
+        "KB-031",
+        "KB-032"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "KB-001",
+      "priority": "P0",
+      "features": [
+        "F1",
+        "F10",
+        "F13"
+      ],
+      "title": "统一 API、SDK 与兼容契约",
+      "depends_on": [],
+      "acceptance": [
+        "TC-1.6",
+        "TC-1.7",
+        "TC-13.1",
+        "TC-16.1",
+        "TC-16.18"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I024",
+        "I028",
+        "I029",
+        "I030",
+        "I031",
+        "I033",
+        "I034",
+        "I059",
+        "I060",
+        "I061",
+        "I062"
+      ],
+      "work": "冻结当前配置/准备响应与未来job响应，补真实参数默认值、错误码和旧SDK兼容；定义版本迁移，不静默改变现有prepared响应。",
+      "done_when": "实际OpenAPI、同步/异步SDK、CLI及前端字段一致；修复已知5项SDK基线失败并回归。",
+      "scoped_reports": [
+        "evidence/parallel-KB-001-2026-10-04.json",
+        "evidence/implementation-I031-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json"
+      ],
+      "latest_progress": "新增Wiki execute202与私有draft读取API、同步/异步SDK及严格OpenAPI契约；旧prepare200不变，完整CLI便利入口仍待对齐。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-002",
+      "priority": "P0",
+      "features": [
+        "F3",
+        "F13"
+      ],
+      "title": "权威 registry 部署与进程边界",
+      "depends_on": [],
+      "acceptance": [
+        "TC-13.16",
+        "TC-16.2"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I006",
+        "I016",
+        "I031",
+        "I033"
+      ],
+      "work": "首版单协调服务拥有本机SQLite/WAL和发布事务，其他worker经内部接口报告；禁止各主机独立SQLite或网络文件共享充当一致性保证。设计统一repository接口与备份。",
+      "done_when": "多worker使用同一权威协调者；进程重启恢复状态；协调者不可用时停止新提交，已发布数据按缓存/租约策略服务且不产生双主。",
+      "scoped_reports": [
+        "evidence/parallel-KB-002-2026-10-04.json",
+        "evidence/implementation-I031-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json"
+      ],
+      "latest_progress": "Wiki catalog、namespace和build plan改用协调者领域命令；独立进程authority下HTTP/SDK已验证。跨主机、真实AGFS恢复和联合备份待完成。"
+    },
+    {
+      "id": "KB-003",
+      "priority": "P0",
+      "features": [
+        "F14"
+      ],
+      "title": "所有入口的知识域授权",
+      "depends_on": [
+        "KB-002"
+      ],
+      "acceptance": [
+        "TC-14.1",
+        "TC-14.2",
+        "TC-14.3",
+        "TC-14.4",
+        "TC-14.6",
+        "TC-16.3",
+        "TC-16.19"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I027",
+        "I033",
+        "I047"
+      ],
+      "work": "复用现有AclManager与知识根注册；source/member/current-role检查覆盖read/list/stat/grep/download/reindex/search/image/cache/job/log。任务执行刷新当前身份，不复用创建时旧组。",
+      "done_when": "生产身份访问矩阵零越权；撤权后候选预过滤、缓存与URI读回一致拒绝；管理员路径也有审计。",
+      "latest_progress": "ACL 原始扫描误回写历史代已修复；当前 head 租约、子树 generation map 前后检测与实际 reindex 后 ACL 更新通过。检测不等于事务 CAS，仍须将权限 revision 与发布事务绑定。",
+      "scoped_reports": [
+        "evidence/implementation-I033-2026-10-05.json",
+        "evidence/implementation-I047-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-004",
+      "priority": "P0",
+      "features": [
+        "F3",
+        "F13"
+      ],
+      "title": "持久 job 与串行解析租约",
+      "depends_on": [
+        "KB-001",
+        "KB-002",
+        "KB-003"
+      ],
+      "acceptance": [
+        "TC-3.1",
+        "TC-3.2",
+        "TC-3.4",
+        "TC-3.5",
+        "TC-3.8",
+        "TC-3.9",
+        "TC-16.4"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I018",
+        "I033",
+        "I034",
+        "I047"
+      ],
+      "work": "把D1/D2/W1/W2阶段、attempt、owner/fence、checkpoint、有效配置与info写入权威job记录。三后端及内置共用parse_write槽；进入written/失败/取消/退避均释放。",
+      "done_when": "真实两个worker+三文档最大解析活跃数1；embedding暂停不堵下一本；kill/迟到结果/取消均不让旧owner发布。",
+      "latest_progress": "持久作业保存有界 index_result；请求 completed 但 failed_records/semantics_required_records 非零不能标记索引成功。真实 D2 1 rebuilt/0 failed 后 backoff/index，显式等待 7 类共同回执。",
+      "scoped_reports": [
+        "evidence/implementation-I033-2026-10-05.json",
+        "evidence/implementation-I047-2026-10-05.json"
+      ],
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-005",
+      "priority": "P0",
+      "features": [
+        "F13"
+      ],
+      "title": "未知写入的后端确认恢复",
+      "depends_on": [
+        "KB-002",
+        "KB-004"
+      ],
+      "acceptance": [
+        "TC-13.12",
+        "TC-13.13",
+        "TC-13.14",
+        "TC-13.15",
+        "TC-13.16"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I016",
+        "I017",
+        "I034"
+      ],
+      "work": "实现server验证的terminal receipt或后端writer fencing、授权恢复与token/epoch CAS审计；客户端超时/稳定hash不解除保护。",
+      "done_when": "跨重启真实延迟writer不会覆盖新代；伪造proof/审计失败/并发新writer均不能解锁；合法恢复可幂等。",
+      "latest_progress": "受控后端恢复14专项通过，source/account/actor/迟到writer/策略CAS/审计回滚已验证；普通AGFS无可信终态及fence继续拒绝。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json",
+        "evidence/parallel3-write-recovery-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-006",
+      "priority": "P0",
+      "features": [
+        "F2",
+        "F4",
+        "F5",
+        "F11",
+        "F13"
+      ],
+      "title": "正文树及全部索引共同发布",
+      "depends_on": [
+        "KB-002",
+        "KB-003",
+        "KB-004",
+        "KB-005"
+      ],
+      "acceptance": [
+        "TC-2.7",
+        "TC-11.4",
+        "TC-13.2",
+        "TC-16.5"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I006",
+        "I007",
+        "I008",
+        "I009",
+        "I010",
+        "I012",
+        "I014",
+        "I015",
+        "I034",
+        "I050",
+        "I052"
+      ],
+      "work": "扩展既有PublicationStore，纳入根目录成员/layout/list/stat、正文/图片/L0/L1/parent与词法meta索引receipt；发布事务固定成员版本和授权依赖。",
+      "done_when": "各必需索引未完成不ready；新文档written整树可读但不可搜索，替换期间公开旧树；故障和外部编辑不出现混合代。",
+      "latest_progress": "I052：七类共同发布门禁（body_tree/images/parent_child/semantic_levels/bm25/metadata/version_switch）改为读取已提交权威证据（receipts、publication_lexical、semantic_sources、snapshot heads），job_publication_ready 提供观察、job_complete ready 路径强制执行：未验证批次报 PUBLICATION_GATE_REQUIRED，证据齐备的 published 批次到达 ready。Inflight 写入崩溃恢复（TC-13.16 write_recovery）同轮通过。仍待：全通道 FLOW 真实后端验收与混合代外部编辑场景。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ],
+      "scoped_reports": [
+        "evidence/implementation-I050-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-007",
+      "priority": "P0",
+      "features": [
+        "F13"
+      ],
+      "title": "删除传播与物理 GC",
+      "depends_on": [
+        "KB-002",
+        "KB-003",
+        "KB-006"
+      ],
+      "acceptance": [
+        "TC-13.5",
+        "TC-13.9",
+        "TC-13.10",
+        "TC-13.11"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I006",
+        "I012",
+        "I015",
+        "I025",
+        "I032",
+        "I036"
+      ],
+      "work": "实现tombstone即时过滤与依赖标记/二次CAS清理；保护active/query租约/pending/retry/Wiki引用，补计划退役和失败未注册blob回收。",
+      "done_when": "删除立即所有召回及读回拒绝；被重新引用或旧active依赖资产不删；引用解除、租约/保留期满足后实际释放空间并审计。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-007-2026-10-04.json"
+      ],
+      "latest_progress": "tombstone 即时过滤（读/recall/glob）+ 删除传播（_tombstone_scope 先行）+ 引用计数 blob 物理回收（plan_gc/reclaim）；修复 AuthorityRepository COMMANDS 缺失 tombstone 面导致 7 个 authority 测试回归"
+    },
+    {
+      "id": "KB-008",
+      "priority": "P0",
+      "features": [
+        "F13"
+      ],
+      "title": "配额、临时输入 TTL 和恢复备份",
+      "depends_on": [
+        "KB-002",
+        "KB-004",
+        "KB-007"
+      ],
+      "acceptance": [
+        "TC-13.3",
+        "TC-13.4",
+        "TC-13.7",
+        "TC-13.8",
+        "TC-16.6"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I030",
+        "I034"
+      ],
+      "work": "在上传接收/shared下载、解析渲染、队列、模型tokens/重试和派生版本设置有界配额；原件不永久保留。实现一致registry+AGFS+ACL+模型配置备份与空环境恢复。",
+      "done_when": "OOM/满盘/超额可观察且无半树；临时原件及Office PDF清理；原件清理后仅能reindex持久产物，换parser明确SOURCE_REQUIRED；恢复后授权和gold一致。",
+      "latest_progress": "离线联合bundle与隔离恢复14专项通过；registry/受控正文journal/身份/配置/向量ACL目录哈希校验，RESTORE_PENDING阻止启动；生产引擎验证及activate未达成。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json",
+        "evidence/parallel3-backup-restore-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-009",
+      "priority": "P1",
+      "features": [
+        "F1"
+      ],
+      "title": "三模型能力与部署契约",
+      "depends_on": [
+        "KB-001",
+        "KB-004"
+      ],
+      "acceptance": [
+        "TC-1.1",
+        "TC-1.2",
+        "TC-1.3",
+        "TC-1.4",
+        "TC-1.5",
+        "TC-1.8"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I001",
+        "I002",
+        "I003",
+        "I018",
+        "I032",
+        "I033",
+        "I039"
+      ],
+      "work": "锁三模型官方版本/image digest与模式矩阵，完善native产物→标准block/Markdown/asset适配、截断/缺图/取消/引擎ready校验和可复现Docker配置。",
+      "done_when": "逐后端真实请求证明effective backend/mode；冷启动/重启/断连不假ready，禁止未经授权换模型或默认12页截断。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-009-011-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json"
+      ],
+      "latest_progress": "三后端2页synthetic auto契约探针通过，支持模式/引擎ready/产物身份校验已加强。Logics删除缺失图引用只能视为降级，完整图文适配未达成；全卷及实际新版本部署验收待完成。"
+    },
+    {
+      "id": "KB-010",
+      "priority": "P1",
+      "features": [
+        "F1",
+        "F2",
+        "F15"
+      ],
+      "title": "三模型全卷质量验收",
+      "depends_on": [
+        "KB-009",
+        "KB-011",
+        "KB-031"
+      ],
+      "acceptance": [
+        "TC-1.1",
+        "TC-1.2",
+        "TC-1.3",
+        "TC-2.13",
+        "TC-15.3"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I002",
+        "I003",
+        "I039",
+        "evidence/reindex-race-recovery-I068-2026-10-06.json"
+      ],
+      "work": "对1072页SY215C分别执行三后端，另冻结无书签/扫描/表格图纸样本；记录质量与parse/write资源时间。已有12页和MinerU全卷不替代另外两模型。",
+      "done_when": "三份独立完整输入/版本/hash/产物/覆盖/图引用/质量报告；不要求图数量相同；不合格后端不进入可用模式。",
+      "latest_progress": "I068：D1 手册（1072 页源 PDF 的 MinerU 解析树）semantic_and_vectors 全树重投终态 completed rebuilt=4840/failed=0，type 过滤+I060 探针双过；三后端全卷验收仍 NOT_RUN。",
+      "scoped_reports": []
+    },
+    {
+      "id": "KB-011",
+      "priority": "P1",
+      "features": [
+        "F2"
+      ],
+      "title": "书签对齐与回退结构质量",
+      "depends_on": [
+        "KB-009"
+      ],
+      "acceptance": [
+        "TC-2.1",
+        "TC-2.2",
+        "TC-2.3",
+        "TC-2.6",
+        "TC-2.7",
+        "TC-2.10",
+        "TC-2.11",
+        "TC-2.14",
+        "TC-2.15",
+        "TC-2.16"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I001",
+        "I003",
+        "I032",
+        "I033"
+      ],
+      "work": "完善命名书签meta、内容候选映射/own-body、相对同级图片、目录安全/稳定URI及全部块覆盖；失败按合法#标题再rule_blocks整本回退。",
+      "done_when": "无人工等待、无页码硬匹配；持久info明确失败原因/实际策略；原文块恰一次、图可读、无凑空书签；两种结构独立质量达标。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-009-011-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json"
+      ],
+      "latest_progress": "修复index章节文件覆盖、跨章节引用式图片定义、编码路径与HTML图片、重复/乱序page_idx；本地client/deploy校验器已同步。独立结构gold与完整图文质量仍待验收。"
+    },
+    {
+      "id": "KB-012",
+      "priority": "P1",
+      "features": [
+        "F8"
+      ],
+      "title": "Office 转 PDF 后复用解析",
+      "depends_on": [
+        "KB-008",
+        "KB-009",
+        "KB-011"
+      ],
+      "acceptance": [
+        "TC-8.1",
+        "TC-8.2",
+        "TC-8.3",
+        "TC-8.4",
+        "TC-8.5"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032",
+        "I033",
+        "I034",
+        "I047",
+        "I050"
+      ],
+      "work": "锁转换容器/字体/输出profile，六扩展名先PDF再同一解析器；Excel全部有效sheet/使用区按可读分页策略，PPT按页序；禁宏/限时/密码明确失败。",
+      "done_when": "三个文件族各有图文表格gold与坏文件；不使用AnyDoc→md冒充该链路；中间PDF按TTL清理，D1/W1共用转换模块。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-012-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json",
+        "evidence/implementation-I047-2026-10-05.json",
+        "evidence/implementation-I050-2026-10-05.json"
+      ],
+      "latest_progress": "I051：原MinerU输出0图明确保留；PDF实际绘制图保全并绑定client上传SHA后，同XLS D1/W1各exact1 PNG，D1实际11重建/0失败、VLM摘要/joint回执齐全且图片URI可检索；W1四MD/三私有候选draft_ready。只证明合成保全合同，其他后端、CFB字体自省、章节质量/gold/全Office仍未验收。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json",
+        "evidence/office-completion-2026-10-05.json",
+        "evidence/office-remote-probe-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-013",
+      "priority": "P1",
+      "features": [
+        "F4",
+        "F9"
+      ],
+      "title": "父子 chunk 的真实写入与召回",
+      "depends_on": [
+        "KB-006"
+      ],
+      "acceptance": [
+        "TC-4.1",
+        "TC-4.2",
+        "TC-4.3",
+        "TC-4.4",
+        "TC-4.5",
+        "TC-4.6",
+        "TC-4.7",
+        "TC-9.2"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I004",
+        "I005",
+        "I006",
+        "I008",
+        "I032",
+        "I040",
+        "evidence/reindex-race-recovery-I068-2026-10-06.json"
+      ],
+      "work": "复用已实现真实tokenizer/AST表格计划；验证实际向量后端多child主键、parent扩展预算、不同远距命中不按URI丢弃和旧代退出。",
+      "done_when": "已知头/中/尾事实均可真实召回；含标题输入不超限；多个chunk共同引用原Viking URI，不新增位置/版本用户负担。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-013-2026-10-04.json",
+        "evidence/implementation-I040-2026-10-05.json"
+      ],
+      "latest_progress": "I068：type=text/image must 组合过滤真机验证通过（新代向量 type 键齐全），补齐 I065 留下的回填缺口。"
+    },
+    {
+      "id": "KB-014",
+      "priority": "P1",
+      "features": [
+        "F5"
+      ],
+      "title": "图片引用语义与实际 VLM 质量",
+      "depends_on": [
+        "KB-003",
+        "KB-006",
+        "KB-011"
+      ],
+      "acceptance": [
+        "TC-5.1",
+        "TC-5.2",
+        "TC-5.3",
+        "TC-5.5",
+        "TC-5.6",
+        "TC-16.7"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I011",
+        "I012",
+        "I013",
+        "I014",
+        "I015",
+        "I032",
+        "I040",
+        "I048",
+        "I063 图片语义质量核验：4 样张目验摘要吻合 4/4，章节归属 3/3，红图反例不虚描 [证据](evidence/image-semantic-quality-I063-2026-10-06.json)",
+        "I064 图片检索召回正向证据：三类图意探针 3/3 top1-top3 命中（0.906~0.963），无过滤混合排序 VLM 摘要记录居首，多模态 image_url 自检索 rank2 摘要 round-trip 吻合 [证据](evidence/image-retrieval-recall-I064-2026-10-06.json)"
+      ],
+      "work": "移除每图最多16引用的截断边界，分页发现跨目录引用；用实际VLM tokenizer约束上下文/图预算，真实调用生成用途摘要并按引用缓存。",
+      "done_when": "17+引用和跨目录均不丢失；context变化不复用错摘要；每个joint输入含对应摘要+原图；人工摘要质量达标且无无依据维修结论。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-014-2026-10-04.json",
+        "evidence/implementation-I040-2026-10-05.json",
+        "evidence/implementation-I048-2026-10-05.json"
+      ],
+      "latest_progress": "I064（2026-10-06）图片检索侧正向证据补齐：混合排序/范围限定/多模态三通道真机探针，I063 已目验的三角警示、开口扳手、漏斗滴液三类样张语义查询全部命中并回指图片 viking URI；中文短查询与英文 VLM 摘要存在排序竞争（0.55 vs 0.6+）属非阻塞项如实记录。 I048（2026-10-05）修复图片引用深度超过8层时静默漏收，以及误用 embedding tokenizer 作为 VLM tokenizer 的问题。新增 VLM 专属固定 tokenizer 配置、主/备模型覆盖检查和文件指纹校验，截断后重新核验实际字符串预算；引用记录区分 measured/estimated，context 升级 v3。72 项受影响测试通过（含现有真实 VLM 非空摘要协议探针；非质量 gold）。代码已在本地验证，当前服务仍为 I047，未声明新部署链路通过。三个并行子任务因模型服务403中断，未增加其完成证据；共同发布、完整schema和legacy Office仍待实现/实测。15个Feature、四条FLOW及任务整体状态不提升。"
+    },
+    {
+      "id": "KB-015",
+      "priority": "P1",
+      "features": [
+        "F5",
+        "F6"
+      ],
+      "title": "多空间 query 编码和融合",
+      "depends_on": [
+        "KB-003",
+        "KB-013",
+        "KB-014"
+      ],
+      "acceptance": [
+        "TC-5.4",
+        "TC-6.2"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I013"
+      ],
+      "work": "绑定每空间query/document协议、模型版本与归一化；文本/图片不同空间分别query encode，融合排名并保留引用上下文权限交集。",
+      "done_when": "相同维度不同模型也不直接比较cosine；真实图文gold搜索命中，空间迁移新代失败保留旧版。"
+    },
+    {
+      "id": "KB-016",
+      "priority": "P1",
+      "features": [
+        "F6"
+      ],
+      "title": "真实 BM25 派生索引",
+      "depends_on": [
+        "KB-002",
+        "KB-003",
+        "KB-006",
+        "KB-013"
+      ],
+      "acceptance": [
+        "TC-6.1",
+        "TC-6.2",
+        "TC-16.8"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032",
+        "I034"
+      ],
+      "work": "实现统一词法provider，首版单协调服务local_fts5或已验收native；锁中文分词/型号/DTC保留规则，用child及图片摘要建倒排并纳入发布receipt。",
+      "done_when": "关闭dense仍可词法命中并显示BM25索引代；授权和snapshot在取候选前过滤；不以grep/sparse模型当完成。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-016-2026-10-04.json"
+      ],
+      "latest_progress": "BM25文本写入真实协调服务发布事务，现有检索器在无dense时实际返回原URI/分块；授权语料隔离词频，tokenizer v2保留真实词频。图片摘要/meta/GC/大语料性能仍待完成。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-017",
+      "priority": "P1",
+      "features": [
+        "F6"
+      ],
+      "title": "RRF → rerank → MMR 统一检索",
+      "depends_on": [
+        "KB-013",
+        "KB-015",
+        "KB-016",
+        "KB-019"
+      ],
+      "acceptance": [
+        "TC-6.2",
+        "TC-6.3",
+        "TC-6.4",
+        "TC-6.5",
+        "TC-6.6",
+        "TC-6.7"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I003",
+        "I032",
+        "I034"
+      ],
+      "work": "同一find/search profile实现预算、stable ties、RRF、模型数量校验/降级、最后MMR、parent扩展和URI聚合；叶子全局召回独立于导航/rerank开关。",
+      "done_when": "dense/BM25/hybrid/+rerank/+MMR消融与故障注入，引用URI可读；明确rerank失败策略、trace有效配置，不增加另一套搜索API。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-017-2026-10-04.json"
+      ],
+      "latest_progress": "现有hybrid入口已接真实authority词法召回；融合专项通过，显式meta尚未接词法分支且不丢弃限制，全量消融/模型质量未验收。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-018",
+      "priority": "P1",
+      "features": [
+        "F7"
+      ],
+      "title": "权威业务 meta 与版本传播",
+      "depends_on": [
+        "KB-003",
+        "KB-006"
+      ],
+      "acceptance": [
+        "TC-7.1",
+        "TC-7.3",
+        "TC-7.4"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032",
+        "evidence/reindex-race-recovery-I068-2026-10-06.json"
+      ],
+      "work": "保存原值/规范值/来源/normalizer版本，与document revision绑定；chunk/图片/语义继承权威meta，重建未指定不清空，系统字段不可覆盖。",
+      "done_when": "BM25/dense/图片同字段OR跨字段AND一致；修改meta与正文同代可见；缺meta策略明确。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-018-019-2026-10-04.json"
+      ],
+      "latest_progress": "I068：I060 头/中/尾探针对新代复测通过，混合 BM25+向量检索与 viking URI 溯源在新代成立。"
+    },
+    {
+      "id": "KB-019",
+      "priority": "P1",
+      "features": [
+        "F7"
+      ],
+      "title": "模糊字典、别名与性能",
+      "depends_on": [
+        "KB-018"
+      ],
+      "acceptance": [
+        "TC-7.2",
+        "TC-7.4",
+        "TC-7.5",
+        "TC-7.6",
+        "TC-7.7"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032"
+      ],
+      "work": "namespace内精确/别名/prefix/trigram/受限编辑距离词典，显式filters与推断hints分离，有限候选集合交统一检索provider。",
+      "done_when": "机型模糊可找资料但不替用户确认主体码/配置；硬过滤无候选不撤销；精度/候选膨胀/扫描量/p95真实报告。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-018-019-2026-10-04.json"
+      ],
+      "latest_progress": "模糊字典/别名（meta_dictionary）；模糊匹配而非字符串强匹配"
+    },
+    {
+      "id": "KB-020",
+      "priority": "P1",
+      "features": [
+        "F9",
+        "F11"
+      ],
+      "title": "D2 reindex 的完整契约",
+      "depends_on": [
+        "KB-001",
+        "KB-003",
+        "KB-006",
+        "KB-013",
+        "KB-014",
+        "KB-016",
+        "KB-018"
+      ],
+      "acceptance": [
+        "TC-9.1",
+        "TC-9.3",
+        "TC-9.4",
+        "TC-11.1",
+        "TC-11.2",
+        "TC-11.3",
+        "TC-11.5",
+        "TC-11.6"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I004",
+        "I009",
+        "I010",
+        "I014",
+        "I015",
+        "I037",
+        "I040"
+      ],
+      "work": "扩展业务writer授权、dry_run零写入、祖先语义传播和两模式有效配置；复用IndexPlan并在job屏障等候全部receipt。",
+      "done_when": "原MD/目录不改写，parser调用0，不读toc重切章；vectors_only保留L0/L1且有效图片缓存缺失需语义模式；与D1等价。",
+      "scoped_reports": [
+        "evidence/implementation-I040-2026-10-05.json"
+      ],
+      "latest_progress": "I051：实际持久D2单MD/目录共同发布，目录3 URI/9真实回执含L0/L1；源字节一致。已发布后SIGKILL恢复同batch，无新建代/重复回执；7完整发布门禁仍pending，非ready，inflight崩溃未证实。"
+    },
+    {
+      "id": "KB-021",
+      "priority": "P1",
+      "features": [
+        "F3"
+      ],
+      "title": "前端队列与 API/SDK 状态一致",
+      "depends_on": [
+        "KB-001",
+        "KB-004",
+        "KB-006"
+      ],
+      "acceptance": [
+        "TC-3.3",
+        "TC-3.6",
+        "TC-3.7"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I001",
+        "I018",
+        "I032",
+        "I033",
+        "I034"
+      ],
+      "work": "tasks/monitoring接持久job，展示排队/第N本、未知进度、written/索引中/ready、info/失败/取消/重试，日志按权限与trace过滤。",
+      "done_when": "重启后状态不丢；队列空不冒充ready；自动回退成功说明持久且清晰；同步/异步等待超时可接同job。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-021-2026-10-04.json",
+        "evidence/implementation-I033-2026-10-05.json"
+      ],
+      "latest_progress": "前端完整356项、tsc与生产构建通过，持久队列状态/错误/取消面板已接真实API；未知写入和私有draft独立展示，未用假进度或空列表替代错误。完整身份/四FLOW UI验收待完成。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-022",
+      "priority": "P2",
+      "features": [
+        "F10",
+        "F14"
+      ],
+      "title": "collection 与注册域绑定门禁",
+      "depends_on": [
+        "KB-001",
+        "KB-003"
+      ],
+      "acceptance": [
+        "TC-14.1",
+        "TC-14.5",
+        "TC-16.9"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I023",
+        "I024",
+        "I027",
+        "I033"
+      ],
+      "work": "注册/读取collection强制target属于registered namespace、raw来源有独立根，落实一Wiki collection一namespace与目标唯一性；旧不合法绑定迁移或禁执行。",
+      "done_when": "不能仅写namespace_id绕过成员/域登记；跨域来源可读不代表获导出；原材料域可被多个目标按显式grant使用。",
+      "latest_progress": "新collection必须绑定独立已注册target/raw域；旧记录标legacy_domain_pending，管理员检视摘要并CAS迁移。真实HTTP/SDK及多目标export撤回局部验证通过，完整执行/发布仍待完成。",
+      "scoped_reports": [
+        "evidence/implementation-I033-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-023",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "三一完整 schema 政策执行",
+      "depends_on": [
+        "KB-022"
+      ],
+      "acceptance": [
+        "TC-10.1",
+        "TC-10.4",
+        "TC-10.5",
+        "TC-10.10",
+        "TC-10.12",
+        "TC-10.13",
+        "TC-16.10"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I019",
+        "I020",
+        "I026",
+        "I034",
+        "I049"
+      ],
+      "work": "逐条把38实体+9共享政策及8类型path标记转支持声明/受约束执行器并保存逐规则coverage receipt；核实DTC旧kb来源实际映射，不猜URI。",
+      "done_when": "默认包严格模式无uncompiled规则且fewshot符合约束；模板/prompt/编译器/模型profile固定；partial规则包只允许draft候选，不进入诊断发布。",
+      "latest_progress": "I049：新冻结SANY适配器执行八种路径布局及本地字段对齐；候选/合并回执绑定collection root与schema/内容hash。新包pending 118→110，仅减少已执行路径标记，原包仍118；七原fewshot结构通过，DTC kb://来源仍拒绝；191专项通过，当前服务未部署新包，strict/gold/完整FLOW未通过。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json",
+        "evidence/parallel3-wiki-extraction-2026-10-05.json",
+        "evidence/wiki-policy-coverage-2026-10-05.json"
+      ],
+      "scoped_reports": [
+        "evidence/implementation-I049-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-024",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "固定来源的共享知识抽取器",
+      "depends_on": [
+        "KB-022",
+        "KB-023"
+      ],
+      "acceptance": [
+        "TC-10.2",
+        "TC-16.11"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I034",
+        "I035",
+        "I046",
+        "I047"
+      ],
+      "work": "W1/W2使用同一授权固定来源流与完整模板，bounded structured output/有限重试/逐源checkpoint；知识文档仅当数据，模型不执行其中工具指令。",
+      "done_when": "真实模型产实体与来源URI，不凑八实体；空知识、格式错误、无证据、超时分别记录；未验证产物只入私有draft不算ready。",
+      "latest_progress": "Wiki v3 强制提示从 source.text 原样复制 quote、从生成正文原样复制 claim，修复 PPT 引文标题级别漂移；提交/执行/权威完成绑定 extractor_version/policy_version，旧未版本化执行需新 execution key。三现代 Office 族私有草稿及逐字引文通过；完整诊断 schema/publish 仍待完成。 I070：118 规则中 110 已编译为 page_rules 执行器、8 条委托 path/pipeline 家；strict_diagnostic 对冻结 SANY 包作业可创建至 draft_ready。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json",
+        "evidence/parallel3-wiki-extraction-2026-10-05.json",
+        "evidence/wiki-extraction-real-model-2026-10-05.json"
+      ],
+      "scoped_reports": [
+        "evidence/flow-w1-pdf-2026-10-05.json",
+        "evidence/implementation-I047-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-025",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "实体身份、保守合并和人工编辑",
+      "depends_on": [
+        "KB-023",
+        "KB-024"
+      ],
+      "acceptance": [
+        "TC-10.7",
+        "TC-10.8",
+        "TC-16.12"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I036"
+      ],
+      "work": "身份按namespace/type/schema tuple保留canonical ID/别名；多源字段证据与冲突值保留，人工确认值受expected_revision保护，默认不做近义强并。",
+      "done_when": "同名不同层级/类型/配置不误合并；模型重复构建不生重复实体；并发手改不丢失，未处理冲突不能进入有效图。"
+    },
+    {
+      "id": "KB-026",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "可信实体 catalog 与闭合关系校验",
+      "depends_on": [
+        "KB-023",
+        "KB-025"
+      ],
+      "acceptance": [
+        "TC-10.3",
+        "TC-10.4",
+        "TC-10.6",
+        "TC-10.14",
+        "TC-10.15",
+        "TC-10.16",
+        "TC-16.13"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I021",
+        "I022",
+        "I026"
+      ],
+      "work": "持久化实际验证hash/schema/身份/规则receipt；同批先验证实际实体再求引用闭合，支持schema合法循环而非凭预留地址放行；构建派生反向边。",
+      "done_when": "有效边悬空0；伪frontmatter验证声明拒绝；Device raw_refs/Procedure fault_refs等权威载体正确；不虚构Profile或适用性。"
+    },
+    {
+      "id": "KB-027",
+      "priority": "P2",
+      "features": [
+        "F10",
+        "F14"
+      ],
+      "title": "Wiki 导出与提交事务保护",
+      "depends_on": [
+        "KB-003",
+        "KB-006",
+        "KB-022",
+        "KB-026"
+      ],
+      "acceptance": [
+        "TC-14.5",
+        "TC-16.14"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I027"
+      ],
+      "work": "执行前/逐源使用/最终commit都验证source read、target write、单向export及当前主体；提交事务校验来源成员/hash/epoch、实体revision和ACL/policy fence。",
+      "done_when": "抽取后撤权/改源/新增目录成员/目标变化拒绝发布；所有事实+关系+索引同批，旧Wiki可用；不要把prepare授权当永久receipt。"
+    },
+    {
+      "id": "KB-028",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "两个 Wiki 入口接共同持久执行器",
+      "depends_on": [
+        "KB-004",
+        "KB-006",
+        "KB-009",
+        "KB-012",
+        "KB-023",
+        "KB-024",
+        "KB-025",
+        "KB-026",
+        "KB-027"
+      ],
+      "acceptance": [
+        "TC-16.15",
+        "FLOW-W1",
+        "FLOW-W2",
+        "TC-16.18"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I025",
+        "I028",
+        "I029",
+        "I030",
+        "I034",
+        "I035"
+      ],
+      "work": "W1 PDF/Office/MD及资产目录先复用D1物化，再与W2同一构建job；固定模板/执行profile，抽取→合并→关系→IndexPlan→发布，支持恢复与取消。 新增ingestion-jobs/start_wiki_ingestion和builds/{build_id}/execute/start_wiki_build，旧准备协议不变；draft_ready仅私有候选，diagnostic完整门禁。",
+      "done_when": "上传和URI同输入得语义等价结果与可读来源；prepared与job分开可查，失败不把半图标ready，不新增第二套检索。",
+      "latest_progress": "I070 更正：PDF/Office 完整 W1 调度已在 I046/I047 真机+wiki.py prepare_ingestion/_document_materializer 全链接通（queued→draft_ready），残留为文档替换整树提交 WIKI_REPLACEMENT_GATE_PENDING 与发布门禁。[证据](evidence/wiki-post-i049-capability-sweep-I070-2026-10-06.json)",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-029",
+      "priority": "P2",
+      "features": [
+        "F10",
+        "F13"
+      ],
+      "title": "多源增量、证据撤回和投影重建",
+      "depends_on": [
+        "KB-007",
+        "KB-025",
+        "KB-026",
+        "KB-027",
+        "KB-028"
+      ],
+      "acceptance": [
+        "TC-10.8",
+        "TC-10.9",
+        "TC-16.16"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I038"
+      ],
+      "work": "已实现：逐候选来源依赖溯源(source_uri/sha256/epoch/build/plan)；read_merge 重校来源ACL/export与epoch，撤权即拒绝读取；仍有合法来源时用同一canonical_id重建并丢弃被撤回来源贡献；跨域合并拒绝；人工确认值受CAS保护。待实现：零证据stale/移出热路径、权威边投影重建、迁移回滚。",
+      "done_when": "多源汇入不乱写collection；删除最后来源与手改并发可解释；旧source版本不支持新事实；迁移可回滚且不覆盖人工知识。"
+    },
+    {
+      "id": "KB-030",
+      "priority": "P2",
+      "features": [
+        "F10"
+      ],
+      "title": "确定性 Wiki 诊断展开",
+      "depends_on": [
+        "KB-003",
+        "KB-026",
+        "KB-027"
+      ],
+      "acceptance": [
+        "TC-10.11",
+        "TC-10.16"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032"
+      ],
+      "work": "按固定schema/profile执行有界链接遍历，配置Profile与无配置asserted_faults分别显示依据；仅模糊症状归一用统一检索。",
+      "done_when": "禁止模型调用后仍精确展开；配置未知undetermined，不把通用断言变成特定配置概率，不跨域、不因缺边造边。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-030-2026-10-04.json"
+      ],
+      "latest_progress": "确定性有界诊断展开 DiagnosticExpander（无模型调用）：配置 Profile 路径与无配置 asserted_faults 分离展示；缺失边/越 namespace 记 gap；模糊症状归一仅走注入的统一检索"
+    },
+    {
+      "id": "KB-031",
+      "priority": "P1",
+      "features": [
+        "F15"
+      ],
+      "title": "独立 gold 与构建期候选评测",
+      "depends_on": [],
+      "acceptance": [
+        "TC-15.1",
+        "TC-15.2",
+        "TC-15.3",
+        "TC-15.4"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I003",
+        "I005",
+        "I025",
+        "I031",
+        "I034"
+      ],
+      "work": "继续生成synthetic候选，人工核验来源支持/结构边界/图摘要及诊断案例；按文档/机型分组防同段改写泄漏，冻结数据和generator版本。",
+      "done_when": "gold/synthetic严格分离；覆盖型号/DTC/语义/表格/图片/尾部/模糊meta；报告类别样本量与CI，小数据结论明确限制。",
+      "scoped_reports": [
+        "evidence/parallel-KB-031-2026-10-04.json",
+        "evidence/implementation-I031-2026-10-04.json"
+      ],
+      "latest_progress": "用户2026-10-05确认暂时没有人工审定数据/审核安排；保持50 synthetic、0 gold，真实模型probe不计gold，质量门禁保留。",
+      "implementation_reports": [
+        "evidence/implementation-I034-2026-10-05.json"
+      ]
+    },
+    {
+      "id": "KB-032",
+      "priority": "P1",
+      "features": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F13",
+        "F14",
+        "F15"
+      ],
+      "title": "四 FLOW 与上线验收",
+      "depends_on": [
+        "KB-001",
+        "KB-002",
+        "KB-003",
+        "KB-004",
+        "KB-005",
+        "KB-006",
+        "KB-007",
+        "KB-008",
+        "KB-010",
+        "KB-012",
+        "KB-013",
+        "KB-014",
+        "KB-015",
+        "KB-016",
+        "KB-017",
+        "KB-018",
+        "KB-019",
+        "KB-020",
+        "KB-021",
+        "KB-028",
+        "KB-029",
+        "KB-030",
+        "KB-031"
+      ],
+      "acceptance": [
+        "FLOW-D1",
+        "FLOW-D2",
+        "FLOW-W1",
+        "FLOW-W2",
+        "TC-16.17"
+      ],
+      "implementation_state": "OPEN",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I046",
+        "I047"
+      ],
+      "work": "生产同配置跑四入口、故障矩阵/质量消融/并发5基线、迁移/备份恢复与权限审计；核心D1/D2先可独立验收，Wiki只有M3门禁通过才开放experimental构建。",
+      "done_when": "分里程碑分别出报告，四FLOW全通过才称全目标达成；不拿692局部PASS作生产验收；无实测RTO/RPO/容量不称高度可用。",
+      "scoped_reports": [
+        "evidence/flow-w1-pdf-2026-10-05.json",
+        "evidence/implementation-I047-2026-10-05.json"
+      ],
+      "latest_progress": "D1 Word、W1 三现代 Office 族、完整 schema strict 拒绝、真实 D2 index gate 新增实际证据；仍为 OPEN，不以合同 PASS 替代完整四 FLOW。"
+    },
+    {
+      "id": "KB-033",
+      "priority": "P3",
+      "features": [
+        "F12"
+      ],
+      "title": "JEV 式状态/决策 PoC",
+      "depends_on": [
+        "KB-023",
+        "KB-030",
+        "KB-031"
+      ],
+      "acceptance": [
+        "TC-12.1",
+        "TC-12.2",
+        "TC-12.3"
+      ],
+      "implementation_state": "PARTIAL",
+      "product_acceptance": "NOT_RUN",
+      "evidence": [
+        "I032"
+      ],
+      "work": "建立typesafe state/decision、abstain/needs_more_info与检查成本评测；区分互斥单故障和多故障；不默认采购/接入外部JEV。",
+      "done_when": "独立确认根因集报告Brier/ECE/可靠性与成本；校准前叫score，PoC不改权威知识且不阻塞核心交付。",
+      "scoped_reports": [
+        "evidence/parallel3-KB-033-2026-10-04.json"
+      ],
+      "latest_progress": "JEV 式状态/决策 PoC（openviking/jev）；状态机与决策路径单测通过"
+    }
+  ],
+  "flows": {
+    "FLOW-D1": "PARTIAL | I069 (2026-10-06): D1 图片语义残留闭合——抽样重投 3 张 completed，扩量定性 177 失败行=已删数据孤儿（无生产活体），live joint 图片 2616/2616 缓存齐备，registry 口径零语义缺口；物理回收留待 PHYSICAL_GC 能力启用（I069 台账 evidence/flow-d1-image-orphan-desired-I069-2026-10-06.json）。",
+    "FLOW-D2": "PARTIAL",
+    "FLOW-W1": "PARTIAL | I076 (2026-10-06): FLOW-W1 真机全链重跑收口——I075 文档替换整树 staged commit (.staging-{key} 暂存树+retired 恢复+pin 阻断) 之后，upload→materialize→execute→draft_ready 八断言全过，draft 零判定器开销路径对 G 链与替换门改动无回归；首轮历史 key IDEMPOTENCY_CONFLICT 属幂等设计行为换 -i076 后缀通过。[evidence/flow-w1-live-rerun-I076-2026-10-06.json]",
+    "FLOW-W2": "PARTIAL | I077 (2026-10-06): unbacked uncertain 围栏死锁三刀修复（_assert_not_writing 点名 WRITE_RECOVERY_REQUIRED 契约 / model_retry 归 PERMANENT 定盘 / write_fence_clear 操作员审计清除），停服清 16 条围栏后真机重跑八断言全过（job c6908b93 draft_ready passed=true）；I078 strict 判定器真机双向验证收口代码面（evidence/wiki-strict-adjudicator-live-I078-2026-10-06.json）；余：发布态三门由 FLOW publish 链供给+业务侧启用。[evidence/flow-w2-fence-recovery-I077-2026-10-06.json]"
   },
-  {
-   "id": "F2",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I001/I003：书签meta、自动回退及全卷章节产物；gold结构与完整发布待验收",
-   "tasks": [
-    "KB-006",
-    "KB-010",
-    "KB-011"
-   ]
-  },
-  {
-   "id": "F3",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I034持久D1/D2运行及已准备W1/W2执行、队列前端通过局部验证；完整ready/真实后端崩溃恢复与四FLOW未验收。 I051真实published/backoff SIGKILL恢复同batch/无重复代通过，inflight后端写入崩溃尚未验证。",
-   "tasks": [
-    "KB-004",
-    "KB-021"
-   ]
-  },
-  {
-   "id": "F4",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I004–I008：tokenizer父子计划、多chunk与代次屏障；真实完整搜索待验收",
-   "tasks": [
-    "KB-006",
-    "KB-013"
-   ]
-  },
-  {
-   "id": "F5",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I011–I015：引用上下文/缓存/joint实际向量及共同发布；真实VLM质量、多空间搜索与引用分页未完 I048：修复深目录漏引用和误用embedding tokenizer，72专项通过；完整预算和质量仍未验收。",
-   "tasks": [
-    "KB-006",
-    "KB-014",
-    "KB-015"
-   ]
-  },
-  {
-   "id": "F6",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I034真实authority FTS5文本回执已接现有hybrid检索及来源URI；图片摘要/业务meta/GC/多后端与规模性能待验收。",
-   "tasks": [
-    "KB-016",
-    "KB-017"
-   ]
-  },
-  {
-   "id": "F7",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I032：权威业务meta与版本传播（business_meta）+ 模糊字典/别名（meta_dictionary，模糊匹配非强匹配）单测通过；跨后端语义与性能验收待完成",
-   "tasks": [
-    "KB-018",
-    "KB-019"
-   ]
-  },
-  {
-   "id": "F8",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I047：冻结远端Docker经显式SSH transport接入真实parser/job预检，六格式转换合同、实际 D1 Word 和 W1 三现代Office族私有草稿通过；字体声明/实际库存门禁已修复。legacy HTTP/SDK、Office gold、全链路共同发布与规模/故障仍未完整验收。 I050 legacy六文本合同PASS；I050复现XLS可见图在worker产物丢失，历史图保留FAIL，完整Office未验收。 I051对同XLS补真实PDF图保全后D1/W1均exact1 PNG，D1 11重建/0失败、真实摘要与joint回执/图片URI检索PASS；仅MinerU保全合同，模型质量/章节归属与全Office未验收。",
-   "tasks": [
-    "KB-012"
-   ]
-  },
-  {
-   "id": "F9",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "已有URI入口与共享计划；原URI完整图文/搜索/授权E2E待验收",
-   "tasks": [
-    "KB-013",
-    "KB-020"
-   ]
-  },
-  {
-   "id": "F10",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I045 真实服务+SDK 跑通 W2 递归目录源：目录源 viking://resources/raw/w2rec（两层 MD + 同级 jpg）recursive=True 捕获两篇嵌套 MD、排除非 MD 图片，draft_ready（kind W2），候选溯源目录内 URI 且落 target 树内（七项断言全 PASS）。 I043 真实服务+SDK 跑通 W1（上传）与 W2（URI）两条 Wiki 构建执行链路，均到 draft_ready：候选实体 evidence.source_uri 回指原始 Viking URI、quote 逐字一致、候选落在 collection target 树内；namespace/restricted-ACL 与显式 source→target export 授权门禁生效。 I035 将固定来源抽取器改为‘拆解（标题分段+词法kind短名单）→分发（每段一次有界调用）’，每次调用不再携带原始schema包；新增独立wiki模型段(get_wiki_model，未设回退vlm)，远端svc/deepseek-v4-flash真实模型探针CONTRACT_PASS。118未执行规则/可信身份关系/完整诊断发布仍未完。 I036 补录KB-025身份/保守合并实现(identity.py,44项测试)为PARTIAL；语义身份/本体政策仍pending。 I038 补录KB-029来源撤回/重建为PARTIAL（44项）。 I046：真实 PDF 上传物化与 44 片段抽取完成，42 私有候选证据逐字可溯源；简化 schema 与 draft profile，完整诊断发布尚未验收。 I047：Office三族私有候选，v3逐字引文提示与冻结执行版本；完整schema strict API拒绝118待执行规则，无诊断发布。 I049：新冻结SANY适配器执行八种路径布局及本地字段对齐；候选/合并回执绑定collection root与schema/内容hash。新包pending 118→110，仅减少已执行路径标记，原包仍118；七原fewshot结构通过，DTC kb://来源仍拒绝；191专项通过，当前服务未部署新包，strict/gold/完整FLOW未通过。",
-   "tasks": [
-    "KB-022",
-    "KB-023",
-    "KB-024",
-    "KB-025",
-    "KB-026",
-    "KB-027",
-    "KB-028",
-    "KB-029",
-    "KB-030"
-   ]
-  },
-  {
-   "id": "F11",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I009–I016：目录/图文语义与版本保护；I037 定向验证 reindex 语义分层契约（vectors_only 不重写已发布 L0/L1，semantic_and_vectors 自底向上重建目录 L0/L1 与图片摘要、planned_semantic_levels=2，缺有效图片摘要返回 SEMANTICS_REQUIRED），17项通过；I043 真实服务验证：semantic_and_vectors 目录递归重建 L0/L1（L0 179 字符 / L1 794 字符，真实 VLM 生成），改文后 vectors_only 非递归重建向量 1 条且已发布 L0 逐字节不变，harness tests/enterprise_kb/flows/flow_layers.py 五项断言全 PASS。全树（PDF 章节树）L0/L1 与 agent 定位质量评测、根可见性、词法/权威meta及job屏障待完成。 I051：已注册空间祖先摘要边界修复，实际持久目录D2生成L0/L1并收齐9回执；完整分层定位质量未验收。",
-   "tasks": [
-    "KB-006",
-    "KB-020"
-   ]
-  },
-  {
-   "id": "F12",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I032：JEV式状态/类型化决策PoC（openviking/jev）状态机与决策路径单测通过；独立校准PoC与真实质量待验收",
-   "tasks": [
-    "KB-033"
-   ]
-  },
-  {
-   "id": "F13",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I034受控未知写入恢复、离线联合备份及隔离恢复验证；I038 KB-029来源撤权后拒绝读取、仍有合法来源时同身份重建并丢弃撤回贡献（44项通过）；零证据stale/权威边投影重建/迁移回滚、普通AGFS/生产向量身份/完整GC回执和灾备activate未完。 I050提交成员持久批次与authority原子fence封口，最终85回归；7类完整共同门禁未齐、I050时线上新协议未部署。 I051实际服务已加载新协议，单MD/目录多成员共同发布及published/backoff边界SIGKILL恢复通过，inflight崩溃与7完整覆盖门禁仍未通过。",
-   "tasks": [
-    "KB-002",
-    "KB-004",
-    "KB-005",
-    "KB-006",
-    "KB-007",
-    "KB-008",
-    "KB-029"
-   ]
-  },
-  {
-   "id": "F14",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I033注册域与collection迁移门禁、读回/向量预过滤、job当前身份检查；全通道与多源派生权限交集/提交fencing未完成。 I047：ACL当前代筛选/受影响子树head变化检测/真实reindex后更新通过；完整权限revision事务CAS与全部通道仍未验收。",
-   "tasks": [
-    "KB-003",
-    "KB-022",
-    "KB-027"
-   ]
-  },
-  {
-   "id": "F15",
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "summary": "I034保存局部回归和真实容器/模型探针；用户暂未提供人工gold，全部完整Feature及四FLOW NOT_RUN。",
-   "tasks": [
-    "KB-010",
-    "KB-031",
-    "KB-032"
-   ]
-  }
- ],
- "tasks": [
-  {
-   "id": "KB-001",
-   "priority": "P0",
-   "features": [
-    "F1",
-    "F10",
-    "F13"
-   ],
-   "title": "统一 API、SDK 与兼容契约",
-   "depends_on": [],
-   "acceptance": [
-    "TC-1.6",
-    "TC-1.7",
-    "TC-13.1",
-    "TC-16.1",
-    "TC-16.18"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I024",
-    "I028",
-    "I029",
-    "I030",
-    "I031",
-    "I033",
-    "I034"
-   ],
-   "work": "冻结当前配置/准备响应与未来job响应，补真实参数默认值、错误码和旧SDK兼容；定义版本迁移，不静默改变现有prepared响应。",
-   "done_when": "实际OpenAPI、同步/异步SDK、CLI及前端字段一致；修复已知5项SDK基线失败并回归。",
-   "scoped_reports": [
-    "evidence/parallel-KB-001-2026-10-04.json",
-    "evidence/implementation-I031-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json"
-   ],
-   "latest_progress": "新增Wiki execute202与私有draft读取API、同步/异步SDK及严格OpenAPI契约；旧prepare200不变，完整CLI便利入口仍待对齐。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-002",
-   "priority": "P0",
-   "features": [
-    "F3",
-    "F13"
-   ],
-   "title": "权威 registry 部署与进程边界",
-   "depends_on": [],
-   "acceptance": [
-    "TC-13.16",
-    "TC-16.2"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I006",
-    "I016",
-    "I031",
-    "I033"
-   ],
-   "work": "首版单协调服务拥有本机SQLite/WAL和发布事务，其他worker经内部接口报告；禁止各主机独立SQLite或网络文件共享充当一致性保证。设计统一repository接口与备份。",
-   "done_when": "多worker使用同一权威协调者；进程重启恢复状态；协调者不可用时停止新提交，已发布数据按缓存/租约策略服务且不产生双主。",
-   "scoped_reports": [
-    "evidence/parallel-KB-002-2026-10-04.json",
-    "evidence/implementation-I031-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json"
-   ],
-   "latest_progress": "Wiki catalog、namespace和build plan改用协调者领域命令；独立进程authority下HTTP/SDK已验证。跨主机、真实AGFS恢复和联合备份待完成。"
-  },
-  {
-   "id": "KB-003",
-   "priority": "P0",
-   "features": [
-    "F14"
-   ],
-   "title": "所有入口的知识域授权",
-   "depends_on": [
-    "KB-002"
-   ],
-   "acceptance": [
-    "TC-14.1",
-    "TC-14.2",
-    "TC-14.3",
-    "TC-14.4",
-    "TC-14.6",
-    "TC-16.3",
-    "TC-16.19"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I027",
-    "I033",
-    "I047"
-   ],
-   "work": "复用现有AclManager与知识根注册；source/member/current-role检查覆盖read/list/stat/grep/download/reindex/search/image/cache/job/log。任务执行刷新当前身份，不复用创建时旧组。",
-   "done_when": "生产身份访问矩阵零越权；撤权后候选预过滤、缓存与URI读回一致拒绝；管理员路径也有审计。",
-   "latest_progress": "ACL 原始扫描误回写历史代已修复；当前 head 租约、子树 generation map 前后检测与实际 reindex 后 ACL 更新通过。检测不等于事务 CAS，仍须将权限 revision 与发布事务绑定。",
-   "scoped_reports": [
-    "evidence/implementation-I033-2026-10-05.json",
-    "evidence/implementation-I047-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-004",
-   "priority": "P0",
-   "features": [
-    "F3",
-    "F13"
-   ],
-   "title": "持久 job 与串行解析租约",
-   "depends_on": [
-    "KB-001",
-    "KB-002",
-    "KB-003"
-   ],
-   "acceptance": [
-    "TC-3.1",
-    "TC-3.2",
-    "TC-3.4",
-    "TC-3.5",
-    "TC-3.8",
-    "TC-3.9",
-    "TC-16.4"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I018",
-    "I033",
-    "I034",
-    "I047"
-   ],
-   "work": "把D1/D2/W1/W2阶段、attempt、owner/fence、checkpoint、有效配置与info写入权威job记录。三后端及内置共用parse_write槽；进入written/失败/取消/退避均释放。",
-   "done_when": "真实两个worker+三文档最大解析活跃数1；embedding暂停不堵下一本；kill/迟到结果/取消均不让旧owner发布。",
-   "latest_progress": "持久作业保存有界 index_result；请求 completed 但 failed_records/semantics_required_records 非零不能标记索引成功。真实 D2 1 rebuilt/0 failed 后 backoff/index，显式等待 7 类共同回执。",
-   "scoped_reports": [
-    "evidence/implementation-I033-2026-10-05.json",
-    "evidence/implementation-I047-2026-10-05.json"
-   ],
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-005",
-   "priority": "P0",
-   "features": [
-    "F13"
-   ],
-   "title": "未知写入的后端确认恢复",
-   "depends_on": [
-    "KB-002",
-    "KB-004"
-   ],
-   "acceptance": [
-    "TC-13.12",
-    "TC-13.13",
-    "TC-13.14",
-    "TC-13.15",
-    "TC-13.16"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I016",
-    "I017",
-    "I034"
-   ],
-   "work": "实现server验证的terminal receipt或后端writer fencing、授权恢复与token/epoch CAS审计；客户端超时/稳定hash不解除保护。",
-   "done_when": "跨重启真实延迟writer不会覆盖新代；伪造proof/审计失败/并发新writer均不能解锁；合法恢复可幂等。",
-   "latest_progress": "受控后端恢复14专项通过，source/account/actor/迟到writer/策略CAS/审计回滚已验证；普通AGFS无可信终态及fence继续拒绝。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json",
-    "evidence/parallel3-write-recovery-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-006",
-   "priority": "P0",
-   "features": [
-    "F2",
-    "F4",
-    "F5",
-    "F11",
-    "F13"
-   ],
-   "title": "正文树及全部索引共同发布",
-   "depends_on": [
-    "KB-002",
-    "KB-003",
-    "KB-004",
-    "KB-005"
-   ],
-   "acceptance": [
-    "TC-2.7",
-    "TC-11.4",
-    "TC-13.2",
-    "TC-16.5"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I006",
-    "I007",
-    "I008",
-    "I009",
-    "I010",
-    "I012",
-    "I014",
-    "I015",
-    "I034",
-    "I050",
-    "I052"
-   ],
-   "work": "扩展既有PublicationStore，纳入根目录成员/layout/list/stat、正文/图片/L0/L1/parent与词法meta索引receipt；发布事务固定成员版本和授权依赖。",
-   "done_when": "各必需索引未完成不ready；新文档written整树可读但不可搜索，替换期间公开旧树；故障和外部编辑不出现混合代。",
-   "latest_progress": "I052：七类共同发布门禁（body_tree/images/parent_child/semantic_levels/bm25/metadata/version_switch）改为读取已提交权威证据（receipts、publication_lexical、semantic_sources、snapshot heads），job_publication_ready 提供观察、job_complete ready 路径强制执行：未验证批次报 PUBLICATION_GATE_REQUIRED，证据齐备的 published 批次到达 ready。Inflight 写入崩溃恢复（TC-13.16 write_recovery）同轮通过。仍待：全通道 FLOW 真实后端验收与混合代外部编辑场景。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ],
-   "scoped_reports": [
-    "evidence/implementation-I050-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-007",
-   "priority": "P0",
-   "features": [
-    "F13"
-   ],
-   "title": "删除传播与物理 GC",
-   "depends_on": [
-    "KB-002",
-    "KB-003",
-    "KB-006"
-   ],
-   "acceptance": [
-    "TC-13.5",
-    "TC-13.9",
-    "TC-13.10",
-    "TC-13.11"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I006",
-    "I012",
-    "I015",
-    "I025",
-    "I032",
-    "I036"
-   ],
-   "work": "实现tombstone即时过滤与依赖标记/二次CAS清理；保护active/query租约/pending/retry/Wiki引用，补计划退役和失败未注册blob回收。",
-   "done_when": "删除立即所有召回及读回拒绝；被重新引用或旧active依赖资产不删；引用解除、租约/保留期满足后实际释放空间并审计。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-007-2026-10-04.json"
-   ],
-   "latest_progress": "tombstone 即时过滤（读/recall/glob）+ 删除传播（_tombstone_scope 先行）+ 引用计数 blob 物理回收（plan_gc/reclaim）；修复 AuthorityRepository COMMANDS 缺失 tombstone 面导致 7 个 authority 测试回归"
-  },
-  {
-   "id": "KB-008",
-   "priority": "P0",
-   "features": [
-    "F13"
-   ],
-   "title": "配额、临时输入 TTL 和恢复备份",
-   "depends_on": [
-    "KB-002",
-    "KB-004",
-    "KB-007"
-   ],
-   "acceptance": [
-    "TC-13.3",
-    "TC-13.4",
-    "TC-13.7",
-    "TC-13.8",
-    "TC-16.6"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I030",
-    "I034"
-   ],
-   "work": "在上传接收/shared下载、解析渲染、队列、模型tokens/重试和派生版本设置有界配额；原件不永久保留。实现一致registry+AGFS+ACL+模型配置备份与空环境恢复。",
-   "done_when": "OOM/满盘/超额可观察且无半树；临时原件及Office PDF清理；原件清理后仅能reindex持久产物，换parser明确SOURCE_REQUIRED；恢复后授权和gold一致。",
-   "latest_progress": "离线联合bundle与隔离恢复14专项通过；registry/受控正文journal/身份/配置/向量ACL目录哈希校验，RESTORE_PENDING阻止启动；生产引擎验证及activate未达成。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json",
-    "evidence/parallel3-backup-restore-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-009",
-   "priority": "P1",
-   "features": [
-    "F1"
-   ],
-   "title": "三模型能力与部署契约",
-   "depends_on": [
-    "KB-001",
-    "KB-004"
-   ],
-   "acceptance": [
-    "TC-1.1",
-    "TC-1.2",
-    "TC-1.3",
-    "TC-1.4",
-    "TC-1.5",
-    "TC-1.8"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I001",
-    "I002",
-    "I003",
-    "I018",
-    "I032",
-    "I033",
-    "I039"
-   ],
-   "work": "锁三模型官方版本/image digest与模式矩阵，完善native产物→标准block/Markdown/asset适配、截断/缺图/取消/引擎ready校验和可复现Docker配置。",
-   "done_when": "逐后端真实请求证明effective backend/mode；冷启动/重启/断连不假ready，禁止未经授权换模型或默认12页截断。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-009-011-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json"
-   ],
-   "latest_progress": "三后端2页synthetic auto契约探针通过，支持模式/引擎ready/产物身份校验已加强。Logics删除缺失图引用只能视为降级，完整图文适配未达成；全卷及实际新版本部署验收待完成。"
-  },
-  {
-   "id": "KB-010",
-   "priority": "P1",
-   "features": [
-    "F1",
-    "F2",
-    "F15"
-   ],
-   "title": "三模型全卷质量验收",
-   "depends_on": [
-    "KB-009",
-    "KB-011",
-    "KB-031"
-   ],
-   "acceptance": [
-    "TC-1.1",
-    "TC-1.2",
-    "TC-1.3",
-    "TC-2.13",
-    "TC-15.3"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I002",
-    "I003",
-    "I039"
-   ],
-   "work": "对1072页SY215C分别执行三后端，另冻结无书签/扫描/表格图纸样本；记录质量与parse/write资源时间。已有12页和MinerU全卷不替代另外两模型。",
-   "done_when": "三份独立完整输入/版本/hash/产物/覆盖/图引用/质量报告；不要求图数量相同；不合格后端不进入可用模式。"
-  },
-  {
-   "id": "KB-011",
-   "priority": "P1",
-   "features": [
-    "F2"
-   ],
-   "title": "书签对齐与回退结构质量",
-   "depends_on": [
-    "KB-009"
-   ],
-   "acceptance": [
-    "TC-2.1",
-    "TC-2.2",
-    "TC-2.3",
-    "TC-2.6",
-    "TC-2.7",
-    "TC-2.10",
-    "TC-2.11",
-    "TC-2.14",
-    "TC-2.15",
-    "TC-2.16"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I001",
-    "I003",
-    "I032",
-    "I033"
-   ],
-   "work": "完善命名书签meta、内容候选映射/own-body、相对同级图片、目录安全/稳定URI及全部块覆盖；失败按合法#标题再rule_blocks整本回退。",
-   "done_when": "无人工等待、无页码硬匹配；持久info明确失败原因/实际策略；原文块恰一次、图可读、无凑空书签；两种结构独立质量达标。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-009-011-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json"
-   ],
-   "latest_progress": "修复index章节文件覆盖、跨章节引用式图片定义、编码路径与HTML图片、重复/乱序page_idx；本地client/deploy校验器已同步。独立结构gold与完整图文质量仍待验收。"
-  },
-  {
-   "id": "KB-012",
-   "priority": "P1",
-   "features": [
-    "F8"
-   ],
-   "title": "Office 转 PDF 后复用解析",
-   "depends_on": [
-    "KB-008",
-    "KB-009",
-    "KB-011"
-   ],
-   "acceptance": [
-    "TC-8.1",
-    "TC-8.2",
-    "TC-8.3",
-    "TC-8.4",
-    "TC-8.5"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032",
-    "I033",
-    "I034",
-    "I047",
-    "I050"
-   ],
-   "work": "锁转换容器/字体/输出profile，六扩展名先PDF再同一解析器；Excel全部有效sheet/使用区按可读分页策略，PPT按页序；禁宏/限时/密码明确失败。",
-   "done_when": "三个文件族各有图文表格gold与坏文件；不使用AnyDoc→md冒充该链路；中间PDF按TTL清理，D1/W1共用转换模块。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-012-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json",
-    "evidence/implementation-I047-2026-10-05.json",
-    "evidence/implementation-I050-2026-10-05.json"
-   ],
-   "latest_progress": "I051：原MinerU输出0图明确保留；PDF实际绘制图保全并绑定client上传SHA后，同XLS D1/W1各exact1 PNG，D1实际11重建/0失败、VLM摘要/joint回执齐全且图片URI可检索；W1四MD/三私有候选draft_ready。只证明合成保全合同，其他后端、CFB字体自省、章节质量/gold/全Office仍未验收。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json",
-    "evidence/office-completion-2026-10-05.json",
-    "evidence/office-remote-probe-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-013",
-   "priority": "P1",
-   "features": [
-    "F4",
-    "F9"
-   ],
-   "title": "父子 chunk 的真实写入与召回",
-   "depends_on": [
-    "KB-006"
-   ],
-   "acceptance": [
-    "TC-4.1",
-    "TC-4.2",
-    "TC-4.3",
-    "TC-4.4",
-    "TC-4.5",
-    "TC-4.6",
-    "TC-4.7",
-    "TC-9.2"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I004",
-    "I005",
-    "I006",
-    "I008",
-    "I032",
-    "I040"
-   ],
-   "work": "复用已实现真实tokenizer/AST表格计划；验证实际向量后端多child主键、parent扩展预算、不同远距命中不按URI丢弃和旧代退出。",
-   "done_when": "已知头/中/尾事实均可真实召回；含标题输入不超限；多个chunk共同引用原Viking URI，不新增位置/版本用户负担。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-013-2026-10-04.json",
-    "evidence/implementation-I040-2026-10-05.json"
-   ],
-   "latest_progress": "I040：企业分块路径下 17 文本 chunk + 22 图文联合向量真实写入同一 4096 维空间，failed_records 由 22→0；搜索命中携带 chunk_id/parent_chunk_id 且同 URI 多命中。"
-  },
-  {
-   "id": "KB-014",
-   "priority": "P1",
-   "features": [
-    "F5"
-   ],
-   "title": "图片引用语义与实际 VLM 质量",
-   "depends_on": [
-    "KB-003",
-    "KB-006",
-    "KB-011"
-   ],
-   "acceptance": [
-    "TC-5.1",
-    "TC-5.2",
-    "TC-5.3",
-    "TC-5.5",
-    "TC-5.6",
-    "TC-16.7"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I011",
-    "I012",
-    "I013",
-    "I014",
-    "I015",
-    "I032",
-    "I040",
-    "I048"
-   ],
-   "work": "移除每图最多16引用的截断边界，分页发现跨目录引用；用实际VLM tokenizer约束上下文/图预算，真实调用生成用途摘要并按引用缓存。",
-   "done_when": "17+引用和跨目录均不丢失；context变化不复用错摘要；每个joint输入含对应摘要+原图；人工摘要质量达标且无无依据维修结论。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-014-2026-10-04.json",
-    "evidence/implementation-I040-2026-10-05.json",
-    "evidence/implementation-I048-2026-10-05.json"
-   ],
-   "latest_progress": "I048（2026-10-05）修复图片引用深度超过8层时静默漏收，以及误用 embedding tokenizer 作为 VLM tokenizer 的问题。新增 VLM 专属固定 tokenizer 配置、主/备模型覆盖检查和文件指纹校验，截断后重新核验实际字符串预算；引用记录区分 measured/estimated，context 升级 v3。72 项受影响测试通过（含现有真实 VLM 非空摘要协议探针；非质量 gold）。代码已在本地验证，当前服务仍为 I047，未声明新部署链路通过。三个并行子任务因模型服务403中断，未增加其完成证据；共同发布、完整schema和legacy Office仍待实现/实测。15个Feature、四条FLOW及任务整体状态不提升。"
-  },
-  {
-   "id": "KB-015",
-   "priority": "P1",
-   "features": [
-    "F5",
-    "F6"
-   ],
-   "title": "多空间 query 编码和融合",
-   "depends_on": [
-    "KB-003",
-    "KB-013",
-    "KB-014"
-   ],
-   "acceptance": [
-    "TC-5.4",
-    "TC-6.2"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I013"
-   ],
-   "work": "绑定每空间query/document协议、模型版本与归一化；文本/图片不同空间分别query encode，融合排名并保留引用上下文权限交集。",
-   "done_when": "相同维度不同模型也不直接比较cosine；真实图文gold搜索命中，空间迁移新代失败保留旧版。"
-  },
-  {
-   "id": "KB-016",
-   "priority": "P1",
-   "features": [
-    "F6"
-   ],
-   "title": "真实 BM25 派生索引",
-   "depends_on": [
-    "KB-002",
-    "KB-003",
-    "KB-006",
-    "KB-013"
-   ],
-   "acceptance": [
-    "TC-6.1",
-    "TC-6.2",
-    "TC-16.8"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032",
-    "I034"
-   ],
-   "work": "实现统一词法provider，首版单协调服务local_fts5或已验收native；锁中文分词/型号/DTC保留规则，用child及图片摘要建倒排并纳入发布receipt。",
-   "done_when": "关闭dense仍可词法命中并显示BM25索引代；授权和snapshot在取候选前过滤；不以grep/sparse模型当完成。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-016-2026-10-04.json"
-   ],
-   "latest_progress": "BM25文本写入真实协调服务发布事务，现有检索器在无dense时实际返回原URI/分块；授权语料隔离词频，tokenizer v2保留真实词频。图片摘要/meta/GC/大语料性能仍待完成。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-017",
-   "priority": "P1",
-   "features": [
-    "F6"
-   ],
-   "title": "RRF → rerank → MMR 统一检索",
-   "depends_on": [
-    "KB-013",
-    "KB-015",
-    "KB-016",
-    "KB-019"
-   ],
-   "acceptance": [
-    "TC-6.2",
-    "TC-6.3",
-    "TC-6.4",
-    "TC-6.5",
-    "TC-6.6",
-    "TC-6.7"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I003",
-    "I032",
-    "I034"
-   ],
-   "work": "同一find/search profile实现预算、stable ties、RRF、模型数量校验/降级、最后MMR、parent扩展和URI聚合；叶子全局召回独立于导航/rerank开关。",
-   "done_when": "dense/BM25/hybrid/+rerank/+MMR消融与故障注入，引用URI可读；明确rerank失败策略、trace有效配置，不增加另一套搜索API。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-017-2026-10-04.json"
-   ],
-   "latest_progress": "现有hybrid入口已接真实authority词法召回；融合专项通过，显式meta尚未接词法分支且不丢弃限制，全量消融/模型质量未验收。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-018",
-   "priority": "P1",
-   "features": [
-    "F7"
-   ],
-   "title": "权威业务 meta 与版本传播",
-   "depends_on": [
-    "KB-003",
-    "KB-006"
-   ],
-   "acceptance": [
-    "TC-7.1",
-    "TC-7.3",
-    "TC-7.4"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032"
-   ],
-   "work": "保存原值/规范值/来源/normalizer版本，与document revision绑定；chunk/图片/语义继承权威meta，重建未指定不清空，系统字段不可覆盖。",
-   "done_when": "BM25/dense/图片同字段OR跨字段AND一致；修改meta与正文同代可见；缺meta策略明确。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-018-019-2026-10-04.json"
-   ],
-   "latest_progress": "权威业务 meta 与版本传播（business_meta）；写入/过滤单测通过"
-  },
-  {
-   "id": "KB-019",
-   "priority": "P1",
-   "features": [
-    "F7"
-   ],
-   "title": "模糊字典、别名与性能",
-   "depends_on": [
-    "KB-018"
-   ],
-   "acceptance": [
-    "TC-7.2",
-    "TC-7.4",
-    "TC-7.5",
-    "TC-7.6",
-    "TC-7.7"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032"
-   ],
-   "work": "namespace内精确/别名/prefix/trigram/受限编辑距离词典，显式filters与推断hints分离，有限候选集合交统一检索provider。",
-   "done_when": "机型模糊可找资料但不替用户确认主体码/配置；硬过滤无候选不撤销；精度/候选膨胀/扫描量/p95真实报告。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-018-019-2026-10-04.json"
-   ],
-   "latest_progress": "模糊字典/别名（meta_dictionary）；模糊匹配而非字符串强匹配"
-  },
-  {
-   "id": "KB-020",
-   "priority": "P1",
-   "features": [
-    "F9",
-    "F11"
-   ],
-   "title": "D2 reindex 的完整契约",
-   "depends_on": [
-    "KB-001",
-    "KB-003",
-    "KB-006",
-    "KB-013",
-    "KB-014",
-    "KB-016",
-    "KB-018"
-   ],
-   "acceptance": [
-    "TC-9.1",
-    "TC-9.3",
-    "TC-9.4",
-    "TC-11.1",
-    "TC-11.2",
-    "TC-11.3",
-    "TC-11.5",
-    "TC-11.6"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I004",
-    "I009",
-    "I010",
-    "I014",
-    "I015",
-    "I037",
-    "I040"
-   ],
-   "work": "扩展业务writer授权、dry_run零写入、祖先语义传播和两模式有效配置；复用IndexPlan并在job屏障等候全部receipt。",
-   "done_when": "原MD/目录不改写，parser调用0，不读toc重切章；vectors_only保留L0/L1且有效图片缓存缺失需语义模式；与D1等价。",
-   "scoped_reports": [
-    "evidence/implementation-I040-2026-10-05.json"
-   ],
-   "latest_progress": "I051：实际持久D2单MD/目录共同发布，目录3 URI/9真实回执含L0/L1；源字节一致。已发布后SIGKILL恢复同batch，无新建代/重复回执；7完整发布门禁仍pending，非ready，inflight崩溃未证实。"
-  },
-  {
-   "id": "KB-021",
-   "priority": "P1",
-   "features": [
-    "F3"
-   ],
-   "title": "前端队列与 API/SDK 状态一致",
-   "depends_on": [
-    "KB-001",
-    "KB-004",
-    "KB-006"
-   ],
-   "acceptance": [
-    "TC-3.3",
-    "TC-3.6",
-    "TC-3.7"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I001",
-    "I018",
-    "I032",
-    "I033",
-    "I034"
-   ],
-   "work": "tasks/monitoring接持久job，展示排队/第N本、未知进度、written/索引中/ready、info/失败/取消/重试，日志按权限与trace过滤。",
-   "done_when": "重启后状态不丢；队列空不冒充ready；自动回退成功说明持久且清晰；同步/异步等待超时可接同job。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-021-2026-10-04.json",
-    "evidence/implementation-I033-2026-10-05.json"
-   ],
-   "latest_progress": "前端完整356项、tsc与生产构建通过，持久队列状态/错误/取消面板已接真实API；未知写入和私有draft独立展示，未用假进度或空列表替代错误。完整身份/四FLOW UI验收待完成。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-022",
-   "priority": "P2",
-   "features": [
-    "F10",
-    "F14"
-   ],
-   "title": "collection 与注册域绑定门禁",
-   "depends_on": [
-    "KB-001",
-    "KB-003"
-   ],
-   "acceptance": [
-    "TC-14.1",
-    "TC-14.5",
-    "TC-16.9"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I023",
-    "I024",
-    "I027",
-    "I033"
-   ],
-   "work": "注册/读取collection强制target属于registered namespace、raw来源有独立根，落实一Wiki collection一namespace与目标唯一性；旧不合法绑定迁移或禁执行。",
-   "done_when": "不能仅写namespace_id绕过成员/域登记；跨域来源可读不代表获导出；原材料域可被多个目标按显式grant使用。",
-   "latest_progress": "新collection必须绑定独立已注册target/raw域；旧记录标legacy_domain_pending，管理员检视摘要并CAS迁移。真实HTTP/SDK及多目标export撤回局部验证通过，完整执行/发布仍待完成。",
-   "scoped_reports": [
-    "evidence/implementation-I033-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-023",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "三一完整 schema 政策执行",
-   "depends_on": [
-    "KB-022"
-   ],
-   "acceptance": [
-    "TC-10.1",
-    "TC-10.4",
-    "TC-10.5",
-    "TC-10.10",
-    "TC-10.12",
-    "TC-10.13",
-    "TC-16.10"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I019",
-    "I020",
-    "I026",
-    "I034",
-    "I049"
-   ],
-   "work": "逐条把38实体+9共享政策及8类型path标记转支持声明/受约束执行器并保存逐规则coverage receipt；核实DTC旧kb来源实际映射，不猜URI。",
-   "done_when": "默认包严格模式无uncompiled规则且fewshot符合约束；模板/prompt/编译器/模型profile固定；partial规则包只允许draft候选，不进入诊断发布。",
-   "latest_progress": "I049：新冻结SANY适配器执行八种路径布局及本地字段对齐；候选/合并回执绑定collection root与schema/内容hash。新包pending 118→110，仅减少已执行路径标记，原包仍118；七原fewshot结构通过，DTC kb://来源仍拒绝；191专项通过，当前服务未部署新包，strict/gold/完整FLOW未通过。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json",
-    "evidence/parallel3-wiki-extraction-2026-10-05.json",
-    "evidence/wiki-policy-coverage-2026-10-05.json"
-   ],
-   "scoped_reports": [
-    "evidence/implementation-I049-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-024",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "固定来源的共享知识抽取器",
-   "depends_on": [
-    "KB-022",
-    "KB-023"
-   ],
-   "acceptance": [
-    "TC-10.2",
-    "TC-16.11"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I034",
-    "I035",
-    "I046",
-    "I047"
-   ],
-   "work": "W1/W2使用同一授权固定来源流与完整模板，bounded structured output/有限重试/逐源checkpoint；知识文档仅当数据，模型不执行其中工具指令。",
-   "done_when": "真实模型产实体与来源URI，不凑八实体；空知识、格式错误、无证据、超时分别记录；未验证产物只入私有draft不算ready。",
-   "latest_progress": "Wiki v3 强制提示从 source.text 原样复制 quote、从生成正文原样复制 claim，修复 PPT 引文标题级别漂移；提交/执行/权威完成绑定 extractor_version/policy_version，旧未版本化执行需新 execution key。三现代 Office 族私有草稿及逐字引文通过；完整诊断 schema/publish 仍待完成。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json",
-    "evidence/parallel3-wiki-extraction-2026-10-05.json",
-    "evidence/wiki-extraction-real-model-2026-10-05.json"
-   ],
-   "scoped_reports": [
-    "evidence/flow-w1-pdf-2026-10-05.json",
-    "evidence/implementation-I047-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-025",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "实体身份、保守合并和人工编辑",
-   "depends_on": [
-    "KB-023",
-    "KB-024"
-   ],
-   "acceptance": [
-    "TC-10.7",
-    "TC-10.8",
-    "TC-16.12"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I036"
-   ],
-   "work": "身份按namespace/type/schema tuple保留canonical ID/别名；多源字段证据与冲突值保留，人工确认值受expected_revision保护，默认不做近义强并。",
-   "done_when": "同名不同层级/类型/配置不误合并；模型重复构建不生重复实体；并发手改不丢失，未处理冲突不能进入有效图。"
-  },
-  {
-   "id": "KB-026",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "可信实体 catalog 与闭合关系校验",
-   "depends_on": [
-    "KB-023",
-    "KB-025"
-   ],
-   "acceptance": [
-    "TC-10.3",
-    "TC-10.4",
-    "TC-10.6",
-    "TC-10.14",
-    "TC-10.15",
-    "TC-10.16",
-    "TC-16.13"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I021",
-    "I022",
-    "I026"
-   ],
-   "work": "持久化实际验证hash/schema/身份/规则receipt；同批先验证实际实体再求引用闭合，支持schema合法循环而非凭预留地址放行；构建派生反向边。",
-   "done_when": "有效边悬空0；伪frontmatter验证声明拒绝；Device raw_refs/Procedure fault_refs等权威载体正确；不虚构Profile或适用性。"
-  },
-  {
-   "id": "KB-027",
-   "priority": "P2",
-   "features": [
-    "F10",
-    "F14"
-   ],
-   "title": "Wiki 导出与提交事务保护",
-   "depends_on": [
-    "KB-003",
-    "KB-006",
-    "KB-022",
-    "KB-026"
-   ],
-   "acceptance": [
-    "TC-14.5",
-    "TC-16.14"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I027"
-   ],
-   "work": "执行前/逐源使用/最终commit都验证source read、target write、单向export及当前主体；提交事务校验来源成员/hash/epoch、实体revision和ACL/policy fence。",
-   "done_when": "抽取后撤权/改源/新增目录成员/目标变化拒绝发布；所有事实+关系+索引同批，旧Wiki可用；不要把prepare授权当永久receipt。"
-  },
-  {
-   "id": "KB-028",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "两个 Wiki 入口接共同持久执行器",
-   "depends_on": [
-    "KB-004",
-    "KB-006",
-    "KB-009",
-    "KB-012",
-    "KB-023",
-    "KB-024",
-    "KB-025",
-    "KB-026",
-    "KB-027"
-   ],
-   "acceptance": [
-    "TC-16.15",
-    "FLOW-W1",
-    "FLOW-W2",
-    "TC-16.18"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I025",
-    "I028",
-    "I029",
-    "I030",
-    "I034",
-    "I035"
-   ],
-   "work": "W1 PDF/Office/MD及资产目录先复用D1物化，再与W2同一构建job；固定模板/执行profile，抽取→合并→关系→IndexPlan→发布，支持恢复与取消。 新增ingestion-jobs/start_wiki_ingestion和builds/{build_id}/execute/start_wiki_build，旧准备协议不变；draft_ready仅私有候选，diagnostic完整门禁。",
-   "done_when": "上传和URI同输入得语义等价结果与可读来源；prepared与job分开可查，失败不把半图标ready，不新增第二套检索。",
-   "latest_progress": "旧prepare保持200；新增execute202持久W1/W2 job，已捕获MD同一抽取流程/私有draft读取/plan及权限revision完成CAS通过。PDF/Office完整W1调度、可信归并/关系/共同发布仍待完成。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-029",
-   "priority": "P2",
-   "features": [
-    "F10",
-    "F13"
-   ],
-   "title": "多源增量、证据撤回和投影重建",
-   "depends_on": [
-    "KB-007",
-    "KB-025",
-    "KB-026",
-    "KB-027",
-    "KB-028"
-   ],
-   "acceptance": [
-    "TC-10.8",
-    "TC-10.9",
-    "TC-16.16"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I038"
-   ],
-   "work": "已实现：逐候选来源依赖溯源(source_uri/sha256/epoch/build/plan)；read_merge 重校来源ACL/export与epoch，撤权即拒绝读取；仍有合法来源时用同一canonical_id重建并丢弃被撤回来源贡献；跨域合并拒绝；人工确认值受CAS保护。待实现：零证据stale/移出热路径、权威边投影重建、迁移回滚。",
-   "done_when": "多源汇入不乱写collection；删除最后来源与手改并发可解释；旧source版本不支持新事实；迁移可回滚且不覆盖人工知识。"
-  },
-  {
-   "id": "KB-030",
-   "priority": "P2",
-   "features": [
-    "F10"
-   ],
-   "title": "确定性 Wiki 诊断展开",
-   "depends_on": [
-    "KB-003",
-    "KB-026",
-    "KB-027"
-   ],
-   "acceptance": [
-    "TC-10.11",
-    "TC-10.16"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032"
-   ],
-   "work": "按固定schema/profile执行有界链接遍历，配置Profile与无配置asserted_faults分别显示依据；仅模糊症状归一用统一检索。",
-   "done_when": "禁止模型调用后仍精确展开；配置未知undetermined，不把通用断言变成特定配置概率，不跨域、不因缺边造边。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-030-2026-10-04.json"
-   ],
-   "latest_progress": "确定性有界诊断展开 DiagnosticExpander（无模型调用）：配置 Profile 路径与无配置 asserted_faults 分离展示；缺失边/越 namespace 记 gap；模糊症状归一仅走注入的统一检索"
-  },
-  {
-   "id": "KB-031",
-   "priority": "P1",
-   "features": [
-    "F15"
-   ],
-   "title": "独立 gold 与构建期候选评测",
-   "depends_on": [],
-   "acceptance": [
-    "TC-15.1",
-    "TC-15.2",
-    "TC-15.3",
-    "TC-15.4"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I003",
-    "I005",
-    "I025",
-    "I031",
-    "I034"
-   ],
-   "work": "继续生成synthetic候选，人工核验来源支持/结构边界/图摘要及诊断案例；按文档/机型分组防同段改写泄漏，冻结数据和generator版本。",
-   "done_when": "gold/synthetic严格分离；覆盖型号/DTC/语义/表格/图片/尾部/模糊meta；报告类别样本量与CI，小数据结论明确限制。",
-   "scoped_reports": [
-    "evidence/parallel-KB-031-2026-10-04.json",
-    "evidence/implementation-I031-2026-10-04.json"
-   ],
-   "latest_progress": "用户2026-10-05确认暂时没有人工审定数据/审核安排；保持50 synthetic、0 gold，真实模型probe不计gold，质量门禁保留。",
-   "implementation_reports": [
-    "evidence/implementation-I034-2026-10-05.json"
-   ]
-  },
-  {
-   "id": "KB-032",
-   "priority": "P1",
-   "features": [
-    "F1",
-    "F2",
-    "F3",
-    "F4",
-    "F5",
-    "F6",
-    "F7",
-    "F8",
-    "F9",
-    "F10",
-    "F11",
-    "F13",
-    "F14",
-    "F15"
-   ],
-   "title": "四 FLOW 与上线验收",
-   "depends_on": [
-    "KB-001",
-    "KB-002",
-    "KB-003",
-    "KB-004",
-    "KB-005",
-    "KB-006",
-    "KB-007",
-    "KB-008",
-    "KB-010",
-    "KB-012",
-    "KB-013",
-    "KB-014",
-    "KB-015",
-    "KB-016",
-    "KB-017",
-    "KB-018",
-    "KB-019",
-    "KB-020",
-    "KB-021",
-    "KB-028",
-    "KB-029",
-    "KB-030",
-    "KB-031"
-   ],
-   "acceptance": [
-    "FLOW-D1",
-    "FLOW-D2",
-    "FLOW-W1",
-    "FLOW-W2",
-    "TC-16.17"
-   ],
-   "implementation_state": "OPEN",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I046",
-    "I047"
-   ],
-   "work": "生产同配置跑四入口、故障矩阵/质量消融/并发5基线、迁移/备份恢复与权限审计；核心D1/D2先可独立验收，Wiki只有M3门禁通过才开放experimental构建。",
-   "done_when": "分里程碑分别出报告，四FLOW全通过才称全目标达成；不拿692局部PASS作生产验收；无实测RTO/RPO/容量不称高度可用。",
-   "scoped_reports": [
-    "evidence/flow-w1-pdf-2026-10-05.json",
-    "evidence/implementation-I047-2026-10-05.json"
-   ],
-   "latest_progress": "D1 Word、W1 三现代 Office 族、完整 schema strict 拒绝、真实 D2 index gate 新增实际证据；仍为 OPEN，不以合同 PASS 替代完整四 FLOW。"
-  },
-  {
-   "id": "KB-033",
-   "priority": "P3",
-   "features": [
-    "F12"
-   ],
-   "title": "JEV 式状态/决策 PoC",
-   "depends_on": [
-    "KB-023",
-    "KB-030",
-    "KB-031"
-   ],
-   "acceptance": [
-    "TC-12.1",
-    "TC-12.2",
-    "TC-12.3"
-   ],
-   "implementation_state": "PARTIAL",
-   "product_acceptance": "NOT_RUN",
-   "evidence": [
-    "I032"
-   ],
-   "work": "建立typesafe state/decision、abstain/needs_more_info与检查成本评测；区分互斥单故障和多故障；不默认采购/接入外部JEV。",
-   "done_when": "独立确认根因集报告Brier/ECE/可靠性与成本；校准前叫score，PoC不改权威知识且不阻塞核心交付。",
-   "scoped_reports": [
-    "evidence/parallel3-KB-033-2026-10-04.json"
-   ],
-   "latest_progress": "JEV 式状态/决策 PoC（openviking/jev）；状态机与决策路径单测通过"
-  }
- ],
- "flows": {
-  "FLOW-D1": "PARTIAL",
-  "FLOW-D2": "PARTIAL",
-  "FLOW-W1": "PARTIAL",
-  "FLOW-W2": "PARTIAL"
- },
- "status_policy": "PARTIAL is scoped implementation; DONE requires its exact done_when evidence, Feature PASS requires full TC family/quality/flow, not aggregate unit test count.",
- "latest_implementation": "I051",
- "latest_scoped_report": "evidence/implementation-I051-2026-10-05.json"
+  "status_policy": "PARTIAL is scoped implementation; DONE requires its exact done_when evidence, Feature PASS requires full TC family/quality/flow, not aggregate unit test count.",
+  "latest_implementation": "I077",
+  "latest_scoped_report": "evidence/implementation-I051-2026-10-05.json"
 }
