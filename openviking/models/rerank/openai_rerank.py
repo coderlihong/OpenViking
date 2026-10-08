@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 import httpx
 import openai
 
+from openviking.models.http_client import build_http_client
 from openviking.models.rerank.base import RerankBase
 from openviking_cli.utils import get_logger
 
@@ -163,6 +164,7 @@ class OpenAIRerankClient(RerankBase):
                 "api_key": self.api_key,
                 "base_url": self._client_base_url,
                 "timeout": self.timeout,
+                "http_client": build_http_client(self._client_base_url, timeout=self.timeout),
             }
             if self.extra_headers:
                 client_kwargs["default_headers"] = self.extra_headers

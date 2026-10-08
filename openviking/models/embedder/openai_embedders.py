@@ -16,6 +16,7 @@ from openviking.models.embedder.base import (
     HybridEmbedderBase,
     SparseEmbedderBase,
 )
+from openviking.models.http_client import build_http_client
 from openviking.models.vlm.registry import DEFAULT_AZURE_API_VERSION
 from openviking.telemetry import get_current_telemetry
 from openviking.utils.async_client_cache import LoopScopedAsyncClientCache
@@ -160,7 +161,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             if extra_headers:
                 self._client_kwargs["default_headers"] = extra_headers
             self.client = openai.AzureOpenAI(
-                http_client=openai.DefaultHttpxClient(limits=self._http_limits()),
+                http_client=build_http_client(self.api_base, limits=self._http_limits()),
                 **self._client_kwargs,
             )
         else:
@@ -169,7 +170,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             if extra_headers:
                 self._client_kwargs["default_headers"] = extra_headers
             self.client = openai.OpenAI(
-                http_client=openai.DefaultHttpxClient(limits=self._http_limits()),
+                http_client=build_http_client(self.api_base, limits=self._http_limits()),
                 **self._client_kwargs,
             )
         self._async_client_cache = LoopScopedAsyncClientCache()
@@ -355,7 +356,9 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
     def _get_async_client(self):
         def _build_async_client():
-            http_client = openai.DefaultAsyncHttpxClient(limits=self._http_limits())
+            http_client = build_http_client(
+                self.api_base, limits=self._http_limits(), is_async=True
+            )
             if self._provider == "azure":
                 return openai.AsyncAzureOpenAI(
                     http_client=http_client,

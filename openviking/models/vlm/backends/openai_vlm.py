@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
+from openviking.models.http_client import build_http_client
 from openviking.telemetry import tracer
 from openviking.utils.async_client_cache import LoopScopedAsyncClientCache
 from openviking.utils.message_format import format_messages, sanitize_openai_messages
@@ -45,6 +46,8 @@ def _build_openai_client_kwargs(
     api_version: str | None,
     extra_headers: Dict[str, str] | None,
     timeout: float = 600.0,
+    *,
+    is_async: bool = False,
 ) -> Dict[str, Any]:
     """Build kwargs dict shared by sync and async OpenAI/Azure client constructors."""
     if provider == "azure":
@@ -63,6 +66,8 @@ def _build_openai_client_kwargs(
     kwargs["max_retries"] = 0
     if extra_headers:
         kwargs["default_headers"] = extra_headers
+    if api_base:
+        kwargs["http_client"] = build_http_client(api_base, timeout=timeout, is_async=is_async)
     return kwargs
 
 
@@ -106,6 +111,7 @@ class OpenAIVLM(VLMBase):
             self.api_version,
             self.extra_headers,
             self.timeout,
+            is_async=True,
         )
         if self.provider == "azure":
             return openai.AsyncAzureOpenAI(**kwargs)
