@@ -28,6 +28,7 @@ from openviking.storage.expr import (
 )
 from openviking.storage.vectordb.collection.collection import Collection
 from openviking.storage.vectordb.collection.result import FetchDataInCollectionResult
+from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.utils import get_logger
 from openviking_cli.utils.config import get_openviking_config
 from openviking_cli.utils.config.vectordb_config import DEFAULT_INDEX_NAME
@@ -328,6 +329,16 @@ class CollectionAdapter(ABC):
             if key == "prefix" and field_name in self._URI_FIELD_NAMES:
                 normalized[key] = self._encode_uri_field_value(value)
                 continue
+
+            if key == "prefix" and field_name is not None:
+                # Prefix matching compiles to a path/URI scan; on any other
+                # field it silently disappeared and callers saw an empty
+                # result set instead of an error (I064 finding).
+                raise InvalidArgumentError(
+                    f"prefix filter is only supported on URI fields "
+                    f"{sorted(self._URI_FIELD_NAMES)}, got field {field_name!r}; "
+                    f"use op=must exact match for {field_name}"
+                )
 
             normalized[key] = self._normalize_filter_payload_for_write(value)
         return normalized

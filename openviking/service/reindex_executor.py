@@ -35,7 +35,7 @@ from openviking.indexing.publication import configured_store
 from openviking.server.dependencies import get_service
 from openviking.server.identity import RequestContext, Role
 from openviking.service.task_tracker import get_task_tracker
-from openviking.service.task_work_index import bind_task_context
+from openviking.service.task_work_index import bind_task_context, get_task_context
 from openviking.session.memory.utils.memory_file_utils import MemoryFileUtils
 from openviking.storage.abstract_overview import body_for_preview, embedding_text_for_body
 from openviking.storage.expr import And, Eq, Or, PathScope
@@ -569,6 +569,26 @@ class ReindexExecutor:
             return "viking://"
         return root.rstrip("/") + "/"
 
+    async def _update_stage(self, stage: str) -> None:
+        """Best-effort task stage update for observer visibility.
+
+        The reindex body runs under ``bind_task_context``, so the task id is
+        recoverable here; outside that context (dry_run, wait=True path) there
+        is nothing to update.
+        """
+        task_ctx = get_task_context()
+        if task_ctx is None:
+            return
+        try:
+            await get_task_tracker().update_stage(
+                task_ctx.task_id,
+                stage,
+                account_id=task_ctx.account_id,
+                user_id=task_ctx.user_id,
+            )
+        except Exception as exc:
+            get_logger().warning("Failed to update reindex task stage to %s: %s", stage, exc)
+
     @staticmethod
     def _apply_embedding_wait_status(
         counters: _ReindexCounters,
@@ -702,6 +722,7 @@ class ReindexExecutor:
                 lock=borrowed,
                 ingest_options=ingest_options,
             )
+            await self._update_stage(f"{mode}:{object_type}")
             if mode == "prune_orphans":
                 await self._prune_orphan_vectors(
                     uri=uri,
@@ -1249,6 +1270,7 @@ class ReindexExecutor:
             # semantic_and_vectors regenerates directory L0/L1 (and image
             # summaries) before the shared vector phase; vectors_only keeps the
             # published L0/L1 untouched.
+            await self._update_stage(f"semantic:{uri}")
             semantic_kwargs = {
                 "uri": uri,
                 "context_type": "resource",
@@ -1265,6 +1287,7 @@ class ReindexExecutor:
                 # walk upward, so refresh the affected ancestors explicitly to
                 # keep their L0/L1 consistent with the changed leaf.
                 await self._refresh_ancestor_semantics(uri=uri, run=run)
+        await self._update_stage(f"vectors:{uri}")
         await self._reindex_resource_vectors(
             **self._with_ingest_options(
                 vector_kwargs,

@@ -1,0 +1,24 @@
+{
+  "probe": "G1 trusted_entity_catalog persistence backbone (wiki-publication-gate-deps-I071 glue item G1)",
+  "date": "2026-10-06",
+  "verdict": "CLOSED_AT_BACKBONE_LEVEL",
+  "what_shipped": {
+    "registry_tables": "openviking/indexing/publication.py init adds wiki_entity_catalog(account,namespace_id,canonical_id PK; entity_type/schema_id/schema_version/schema_digest/aliases/source_uri/registered) and wiki_entity_aliases(account,namespace_id,alias PK -> canonical_id), inserted after wiki_collection_domains",
+    "registry_commands": "openviking/indexing/registry_domains.py RegistryDomains.wiki_entity_register/get/list; names appended to DOMAIN_COMMANDS so the Unix-socket authority dispatches them; register validates canonical_id candidate-<hex64>, 128-char identifier pattern for type/schema ids, hex64 schema digest, distinct non-empty untrimmed aliases, viking:// source URI; enforces single-owner alias per namespace via the aliases table (ConflictError on second owner), idempotent identical re-registration, ConflictError on content drift under the same canonical_id, NotFoundError when namespace is not in kb_namespaces",
+    "catalog_api": "openviking/wiki/catalog.py WikiCatalog.register_entities/get_entity/list_entities behind the existing _admin gate (root/admin role, no bypass_acl); register_entities additionally requires the knowledge namespace to resolve through NamespaceCatalog.get with READ action",
+    "http_surface": "POST /api/v1/kb/wiki/entities, GET /api/v1/kb/wiki/entities/{namespace_id}, GET /api/v1/kb/wiki/entities/{namespace_id}/{canonical_id} with EntityEntry strict pydantic models (extra=forbid, regex constraints mirroring registry validation)",
+    "sdk_surface": "sdk/python/openviking_sdk/kb.py AsyncKBNamespace.register_wiki_entities/get_wiki_entity/list_wiki_entities"
+  },
+  "tests": {
+    "new_suite": "tests/enterprise_kb/test_wiki_entity_catalog.py — 5 passed: round-trip persist across store reopen; alias single-owner immutability + idempotent re-register; batch self-collision rejected before any write (catalog left empty); unregistered namespace NotFoundError; malformed entry ValueError matrix (missing fields, non-hex digest, untrimmed alias)",
+    "http_contract": "test_wiki_http_sdk.py — 9 passed including new end-to-end SDK register/get/list over the real router and updated OpenAPI path-set assertion naming all three entity routes",
+    "regressions": "test_wiki_catalog 16 passed; test_wiki_namespaces 15 passed; test_wiki_identity_conservative_merge 14 passed; test_authority_wiki_catalog 15 passed; test_backup_restore 15 passed; test_write_recovery included in combined 76-passed run"
+  },
+  "truthful_boundaries": [
+    "This is the readable receipt storage G3 needs, not the gate itself: nothing in the publication path yet requires a catalog entry to exist.",
+    "Register accepts entries whose canonical_id was computed by openviking/wiki/identity.py resolve_candidate_identity, but does not recompute or verify the derivation — identity compiler output remains trusted-at-boundary input.",
+    "Alias ownership is enforced at write time only; pre-existing legacy rows are impossible (fresh tables), so no backfill/migration surface exists by design.",
+    "G2 (derived_access dependency keys on wiki contribution sources) and G3 (check_build_profile consuming real receipts) remain open before strict_diagnostic can flip diagnostic_publishable."
+  ],
+  "next": ["G2: extend derived_access manifest dependency keys beyond image_context_epochs to wiki contribution source sha/epoch", "G3: replace static WIKI_PUBLICATION_GATE_PENDING raise with real receipt-based adjudicator (G1 catalog + seven common gates + deny-set recomputation)"]
+}

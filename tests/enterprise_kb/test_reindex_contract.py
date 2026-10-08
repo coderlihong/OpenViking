@@ -678,3 +678,84 @@ async def test_run_result_surfaces_semantics_required_code(monkeypatch):
     assert result["status"] == "completed"
     assert result["semantics_required_records"] == 1
     assert result["code"] == "SEMANTICS_REQUIRED"
+
+
+# --------------------------------------------------------------------------- #
+# Task stage observability: stage transitions land in the task tracker
+# --------------------------------------------------------------------------- #
+
+
+async def test_resource_reindex_reports_semantic_and_vector_stages(monkeypatch):
+    e = None  # no environment needed; everything below is stubbed
+
+    class FakeAGFS:
+        async def pathlock_acquire_tree(self, path):
+            return {"id": "lease"}
+
+        async def pathlock_acquire_exact(self, path):
+            return {"id": "lease"}
+
+        async def pathlock_as_borrowed(self, lease):
+            return lease
+
+        async def pathlock_release(self, lease):
+            return None
+
+    class FakeFS:
+        _async_agfs = FakeAGFS()
+
+        def _uri_to_path(self, uri, ctx):
+            return "/local/acct/resources/manual"
+
+        async def stat(self, uri, ctx, skip_count=False):
+            return {"isDir": True}
+
+        async def exists(self, uri, ctx):
+            return True
+
+    stages: list[str] = []
+
+    class FakeTracker:
+        async def update_stage(self, task_id, stage, account_id=None, user_id=None, meta=None):
+            stages.append(stage)
+
+    from openviking.service import task_work_index as twi
+
+    monkeypatch.setattr(reindex, "get_service", lambda: SimpleNamespace(
+        viking_fs=FakeFS(), vikingdb_manager=SimpleNamespace(has_queue_manager=True)
+    ))
+    monkeypatch.setattr(reindex, "get_task_tracker", lambda: FakeTracker())
+    executor = reindex.ReindexExecutor()
+    executor._effective_file_vectorization_concurrency = lambda: 1
+    executor._run_semantic_processor = AsyncMock(return_value={})
+    executor._reindex_resource_vectors = AsyncMock()
+
+    ctx = RequestContext(user=UserIdentifier("acct", "writer"), role=Role.ADMIN)
+    with twi.bind_task_context("task-stage-1", "acct", "writer"):
+        await executor._reindex_resource(
+            uri="viking://resources/manual",
+            mode="semantic_and_vectors",
+            run=reindex._ReindexRunContext(
+                ctx=ctx, counters=reindex._ReindexCounters(), lock=None, ingest_options=None
+            ),
+        )
+
+    # semantic stage before L0/L1 regeneration, vector stage before rebuilds.
+    assert stages[0].startswith("semantic:")
+    assert stages[-1].startswith("vectors:")
+
+
+async def test_stage_update_without_task_context_is_noop(monkeypatch):
+    from openviking.service import task_work_index as twi
+
+    called = []
+
+    class FakeTracker:
+        async def update_stage(self, task_id, stage, **kwargs):
+            called.append((task_id, stage))
+
+    monkeypatch.setattr(reindex, "get_task_tracker", lambda: FakeTracker())
+    executor = reindex.ReindexExecutor()
+    with twi.detach_task_context():
+        await executor._update_stage("semantic:x")
+    assert called == []

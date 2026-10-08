@@ -6,6 +6,7 @@ import json
 
 from openviking.service.kb_job_service import KBJobService
 from openviking.storage.acl import AclAction
+from openviking.wiki.adjudication import service_adjudication
 from openviking.wiki.extraction import WikiDraftExtractor
 from openviking.wiki.policies import EXTRACTOR_VERSION, POLICY_VERSION, check_build_profile
 from openviking_cli.exceptions import ConflictError, InvalidArgumentError, NotFoundError
@@ -15,7 +16,8 @@ class WikiJobService:
     def __init__(self, planner, *, extractor=None):
         self.planner = planner
         self.extractor = extractor or WikiDraftExtractor(planner)
-        self.jobs = KBJobService(planner.fs, planner.registry)
+        self.jobs = KBJobService(planner.fs, planner.registry,
+                                 max_source_uris=planner.limits.documents)
 
     async def create(self, ctx, build_id, *, expected_plan_digest, idempotency_key, profile='draft'):
         plan = await self.planner.get(ctx, build_id)
@@ -24,7 +26,12 @@ class WikiJobService:
         body = json.loads(plan.manifest)
         pin = await self.planner.catalog.pin_collection(
             ctx, body['collection']['collection_id'], input_kind=body['input_kind'])
-        check_build_profile(pin.bundle, profile)
+        # strict_diagnostic reads the four registry receipts at submission time;
+        # draft keeps the cheap coverage walk with no adjudication object.
+        adjudication = (lambda: service_adjudication(self.planner.registry,
+                        account_id=ctx.account_id, collection_id=body['collection']['collection_id'],
+                        bundle=pin.bundle)) if profile == 'strict_diagnostic' else None
+        check_build_profile(pin.bundle, profile, adjudication=adjudication)
         await self.planner.authorize_inputs(ctx, build_id)
         _, model_profile = self.extractor._model()
         payload = {'build_id': build_id, 'plan_digest': plan.digest,

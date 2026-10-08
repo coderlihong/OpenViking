@@ -16,13 +16,14 @@ from test_wiki_namespaces import ContextStore
 
 from openviking.indexing.publication import configured_store, PublicationStore
 from openviking.server.auth import get_request_context
+from openviking.server.config import ServerConfig
 from openviking.server.identity import Role
 from openviking.server.models import ERROR_CODE_TO_HTTP_STATUS
 from openviking.server.routers import wiki, namespaces
 from openviking.storage.acl import AclManager
 from openviking.wiki.build_plan import WikiBuildPlanner
 from openviking.wiki.namespaces import NamespaceCatalog
-from openviking_cli.exceptions import OpenVikingError, ConflictError, PermissionDeniedError
+from openviking_cli.exceptions import OpenVikingError, ConflictError, PermissionDeniedError, FailedPreconditionError
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_sdk import AsyncHTTPClient, SyncHTTPClient
 from openviking_sdk.errors import ConflictError as SDKConflict, NotFoundError as SDKNotFound, FailedPreconditionError as SDKPrecondition
@@ -70,6 +71,7 @@ async def remote(environment, embedding, authority_setup, monkeypatch, request):
     e.fs._ensure_access = type(e.fs)._ensure_access.__get__(e.fs)
     context = [replace(e.ctx, role=Role.ADMIN)]
     app = FastAPI()
+    app.state.config = ServerConfig()
     app.include_router(wiki.router)
     app.include_router(namespaces.router)
     app.dependency_overrides[get_request_context] = lambda: context[0]
@@ -177,7 +179,7 @@ async def test_authority_plan_domain_command_rechecks_binding_epochs_and_idempot
         with pytest.raises(ConflictError, match='collection changed'):
             e.store.wiki_plan_persist('acct', 'wiki', 'forged-binding', json.dumps(body))
         token = e.store.begin_write('acct', ONE)
-        with pytest.raises(RuntimeError, match='in-flight'):
+        with pytest.raises(FailedPreconditionError, match='in-flight'):
             e.store.wiki_plan_persist('acct', 'wiki', 'during-write', row['manifest'])
         e.store.finish_write(token)
         with pytest.raises(ConflictError, match='input changed'):

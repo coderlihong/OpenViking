@@ -1,0 +1,30 @@
+{
+  "id": "I061",
+  "date": "2026-10-06",
+  "title": "sync SDK 与 async SDK 线级对齐契约测试",
+  "requirement": "flow-d1 验收清单残留项：sync SDK parity with async SDK —— 同一调用两代客户端必须发出相同的 method/path/payload，且解析路由选项（parse_backend 等）不被丢弃。",
+  "verdict": "CONTRACT_PINNED",
+  "mechanism": {
+    "structure": "SyncHTTPClient 每个方法都是 run_async(self._async_client.<method>(...)) 的纯委托，共享同一 TypedDict options（AddResourceOptions.parse_backend: local/mineru/auto/teleocr/logics）。",
+    "seam": "AsyncHTTPClient._request(method, url, **kwargs) 是唯一传输缝；测试在 _http 上挂 recording_post 捕获两代请求逐字节比较。",
+    "pin": "sdk/python/tests/test_sync_parity.py —— (1) add_resource(to=..., options={parse_backend:'teleocr', model_mode:'layout', section_target_tokens:4096, reason}) 同步/异步捕获相等，断言 POST /api/v1/resources 且 parse_backend/model_mode/section_target_tokens 完整进入 json 载荷；(2) search(中文查询, target_uri=..., limit=5, node_limit=8) 断言 POST /api/v1/search/search 两代相等；(3) 反射断言两代 add_resource/search 公开签名参数一致，防未来单侧加参。"
+  },
+  "test_results": {
+    "command": ".venv/bin/python -m pytest sdk/python/tests/test_sync_parity.py -q --no-cov",
+    "result": "3 passed",
+    "regression": ".venv/bin/python -m pytest sdk/python/tests/test_main_package_exports.py sdk/python/tests/test_async_client_behaviors.py -q --no-cov → 76 passed"
+  },
+  "closes": ["flow-d1 criteria_not_yet_covered: sync SDK parity with async SDK"],
+  "code_paths": [
+    "sdk/python/openviking_sdk/client.py:2233 (SyncHTTPClient.add_resource run_async 委托)",
+    "sdk/python/openviking_sdk/client.py:2598 (SyncHTTPClient.search run_async 委托)",
+    "sdk/python/openviking_sdk/client.py:717 (AsyncHTTPClient.add_resource → POST /api/v1/resources)",
+    "sdk/python/openviking_sdk/client.py:1386 (AsyncHTTPClient.search → POST /api/v1/search/search)",
+    "sdk/python/openviking_sdk/options.py:63-84 (AddResourceOptions 含 parse_backend Literal)",
+    "sdk/python/tests/test_sync_parity.py (新增契约测试)"
+  ],
+  "truthful_boundaries": [
+    "mock transport 合同证据：验证 wire 形状一致性，不含真机往返；add_resource/search 真机路径已分别由 I047（Word 上传→检索）与 I059/I060（真实检索探测）覆盖。",
+    "签名一致性用 inspect 断言，不校验 docstring/类型注解逐字相等。"
+  ]
+}

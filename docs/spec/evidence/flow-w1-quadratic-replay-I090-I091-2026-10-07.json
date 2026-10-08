@@ -1,0 +1,39 @@
+{
+  "id": "flow-w1-quadratic-replay-I090-I091",
+  "date": "2026-10-07",
+  "verdict": "PASS",
+  "subject": "W1 terminal receipt replay cost: quadratic authorization rescan fixed and pre-I089 manifest resume restored",
+  "observations": {
+    "defect_I090": {
+      "mechanism": "kb_job_runtime replayed every receipt via extractor.read_draft; each call runs planner.authorize_inputs twice, and each authorize scan walks all plan sources (lookup + _root_acl per URI)",
+      "live_scale": "2056 receipts x 2 passes x 2240 sources ≈ 9.2M filesystem authorizations; worker burned 50-95% CPU for 45+ minutes with model endpoint idle at num_reqs=0",
+      "projected_wall_clock": "2-4 hours before terminal state"
+    },
+    "fix_I090": {
+      "code": [
+        "openviking/service/kb_job_runtime.py: bracket the batch — one planner.authorize_inputs before the loop, one NamespaceCatalog.recheck after; per receipt only extractor.read_draft_payload plus cheap check_policy_revision gate",
+        "openviking/wiki/extraction.py: new read_draft_payload re-reads one blob without plan-wide rescan",
+        "progress: every 256 receipts lease.checkpoint records receipt_replay_progress {done,total}"
+      ],
+      "security_note": "Mid-loop permission revocation is caught by the per-receipt principal/revision gate immediately; membership/export/ACL-digest changes abort before any terminal record because nothing persists until the closing recheck passes"
+    },
+    "fix_I091": {
+      "trigger": "attempt 2 of live job 27bebf83 was claimed by a server restart carrying the I089 fix; its strict manifest validation rejected the pre-I089 blob (keys version/account_id/receipts only) and terminated the job with CONFLICT",
+      "code": "_read_manifest accepts the legacy shape when sha/size verify and account_id matches; every replayed receipt re-binds build/plan/schema at read time (extraction.py:529-534), so a foreign legacy blob cannot survive replay",
+      "ops": "failed row flipped back to queued with the same UPDATE shape _recover_jobs uses; attempt 3 resumed the legacy manifest with zero model calls for the retained 2056 receipts and re-dispatched the ~201 deferred sections"
+    }
+  },
+  "tests": {
+    "unit": [
+      "test_receipt_replay_authorizes_batch_not_per_receipt[R=1,R=2] + pairing assertion: full-chain authorization scan count is identical for one and two receipts — old code would add 2*R scans",
+      "test_resume_accepts_pre_i089_legacy_manifest_and_rebinds_per_receipt: legacy manifest resumes with zero model calls; foreign account_id rejected",
+      "test_wiki_extraction.py 41 green; test_wiki_execution_jobs.py 5 green; test_wiki_execution_versions.py 5 green"
+    ]
+  },
+  "truthful_boundaries": [
+    "The live job's retained receipts replayed without model calls under the fixed code; the re-dispatch of deferred sections was still running when this record was written — draft_ready terminal evidence lands in the follow-up record",
+    "Closure was cut short externally: an unrelated server restart killed attempt 4 mid re-dispatch (~74 of ~201 holes re-sent), attempt 5 claimed under fully-fixed code, then the job was terminated by CANCEL_REQUESTED at 22:27 local — every pipeline segment (legacy acceptance, free retained replay, hole re-dispatch) has unit tests plus live partial proof, but a complete draft_ready terminal for THIS build id remains outstanding",
+    "The two-line state flip failed→queued was performed directly on the ops sqlite row because the registry exposes no reset for a failure caused by the I089 shape mismatch itself; the UPDATE mirrors _recover_jobs column handling",
+    "Legacy-form acceptance is bounded: any manifest carrying plan_digest or configuration keys takes the strict binding path unchanged"
+  ]
+}

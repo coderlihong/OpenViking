@@ -1,6 +1,8 @@
 """On-disk source revisions, actual VikingFS reads and queued publication."""
 
+import asyncio
 import contextvars
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -9,7 +11,7 @@ import pytest
 from test_index_plan import Database, Embedder, Queue
 from test_index_plan import embedding as embedding
 
-from openviking.indexing.content import archive_source, blob_path, draft_sources
+from openviking.indexing.content import archive_bytes, archive_source, blob_path, draft_sources
 from openviking.indexing.publication import configured_store, query_snapshot
 from openviking.server.identity import RequestContext, Role
 from openviking.storage.collection_schemas import TextEmbeddingHandler
@@ -49,7 +51,7 @@ class DiskAGFS:
         return path
 
     async def mkdir(self, path, **kwargs):
-        self.path(path).mkdir()
+        self.path(path).mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture
@@ -79,6 +81,31 @@ def environment(embedding, tmp_path, monkeypatch):
     fs.acl_manager = None
     fs._bound_ctx = contextvars.ContextVar("content_test_bound_ctx", default=None)
     fs._ensure_access = AsyncMock()
+
+    def _disk_target(uri, ctx):
+        return fs._async_agfs.path(fs._uri_to_path(uri, ctx=ctx))
+
+    async def fs_rm(uri, recursive=False, ctx=None, **kwargs):
+        import shutil
+
+        target = _disk_target(uri, ctx)
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+
+    async def fs_mv(old_uri, new_uri, ctx=None, **kwargs):
+        import shutil
+
+        src = _disk_target(old_uri, ctx)
+        dst = _disk_target(new_uri, ctx)
+        if not src.exists():
+            raise FileNotFoundError(old_uri)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))
+
+    fs.rm = fs_rm
+    fs.mv = fs_mv
     queue = Queue()
     manager = SimpleNamespace(EMBEDDING="embedding", get_queue=lambda _: queue)
     monkeypatch.setattr(embedding_utils, "get_viking_fs", lambda: fs)
@@ -243,3 +270,75 @@ async def test_derived_body_gc_roots_include_active_reader_and_pending_revisions
     e.store.release(lease)
     assert ("acct", old_sha) not in e.store.protected_content_revisions()
     assert ("acct", ref["sha256"]) in e.store.protected_content_revisions()
+
+
+class RacingAGFS(DiskAGFS):
+    """Duplicate-content sources race the stat/write window on the same blob.
+
+    The first write holds the RAGFS auto-pathlock while the second caller,
+    whose stat already missed the blob, hits a 0s lock-timeout internal error.
+    """
+
+    def __init__(self, root):
+        super().__init__(root)
+        self.writes_started = asyncio.Event()
+
+    async def write(self, path, raw, **kwargs):
+        self.writes_started.set()
+        return await super().write(path, raw, **kwargs)
+
+
+async def test_duplicate_blob_races_settle_on_shared_revision(environment):
+    e = environment
+    agfs = RacingAGFS(e.fs._async_agfs.root)
+    e.fs._async_agfs = agfs
+    source = b"# Duplicated placeholder image bytes\n" * 50
+
+    first_ref, second_ref = await asyncio.gather(
+        archive_bytes(e.fs, source, e.ctx),
+        archive_bytes(e.fs, source, e.ctx),
+    )
+
+    assert first_ref == second_ref == {"sha256": hashlib.sha256(source).hexdigest(), "size": len(source)}
+    stored = agfs.path(blob_path(e.fs, e.ctx, first_ref["sha256"])).read_bytes()
+    assert stored == source
+
+
+class LosingAGFS(DiskAGFS):
+    """Loser of the stat/write race: the winner holds the blob's auto-pathlock."""
+
+    def __init__(self, root, blocked):
+        super().__init__(root)
+        self._blocked = blocked
+
+    async def write(self, path, raw, **kwargs):
+        if not self._blocked.is_set():
+            # RAGFS answers with the 0s lock-timeout internal error seen in the
+            # I068 reindex failure when a sibling write owns the blob path.
+            raise RuntimeError("internal error: lock error: lock acquire timed out after 0ms")
+        return await super().write(path, raw, **kwargs)
+
+
+async def test_lock_conflicted_write_recovers_from_winners_blob(environment):
+    e = environment
+    agfs = e.fs._async_agfs
+    source = b"# Winner writes while loser is blocked\n" * 50
+
+    # The winner finished its write; the loser's stat had already missed the
+    # blob and its write was rejected by the winner's auto-pathlock. The
+    # read-back must settle on the winner's blob instead of failing the whole
+    # reindex batch.
+    stored_path = agfs.path(blob_path(e.fs, e.ctx, hashlib.sha256(source).hexdigest()))
+    stored_path.parent.mkdir(parents=True, exist_ok=True)
+    stored_path.write_bytes(source)
+    blocked = asyncio.Event()
+    blocked.set()
+    loser_fs = SimpleNamespace(
+        _async_agfs=LosingAGFS(agfs.root, blocked),
+        _uri_to_path=e.fs._uri_to_path,
+        _handle_agfs_read=e.fs._handle_agfs_read,
+    )
+    ref = await archive_bytes(loser_fs, source, e.ctx)
+
+    assert ref == {"sha256": hashlib.sha256(source).hexdigest(), "size": len(source)}
+    assert stored_path.read_bytes() == source

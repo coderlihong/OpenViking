@@ -85,6 +85,13 @@ async def load_image_semantics(fs, uri, ctx):
         if not cache_ref:
             if reference.get("image_plan_version"):
                 raise ValueError("SEMANTICS_REQUIRED: published image has no occurrence cache")
+            # A joint build that failed before publication leaves the URI in
+            # desired with an image: member but out of every snapshot manifest.
+            # That is a semantics-requiring state, not "never published as
+            # joint": silently returning None would re-publish the stale
+            # text-only abstract as the joint input.
+            if registry.declared_image_plan(ctx.account_id, uri):
+                raise ValueError("SEMANTICS_REQUIRED: unpublished joint image plan for asset")
             return None
         # Authorization happens before reading a private cache; all sources are
         # then read with the caller context through collect_image_contexts.

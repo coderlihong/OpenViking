@@ -1027,10 +1027,12 @@ impl FileSystem for LocalFileSystem {
             }
         }
         let mut file = options.open(&local_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                Error::NotFound(path.to_string())
-            } else {
-                Error::plugin(format!("failed to open file: {}", e))
+            match e.kind() {
+                std::io::ErrorKind::NotFound => Error::NotFound(path.to_string()),
+                // Concurrent CreateNew on the same lock token file must surface
+                // as a conflict so the pathlock recovery chain can retry.
+                std::io::ErrorKind::AlreadyExists => Error::AlreadyExists(path.to_string()),
+                _ => Error::plugin(format!("failed to open file: {}", e)),
             }
         })?;
 

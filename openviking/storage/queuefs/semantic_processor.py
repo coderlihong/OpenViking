@@ -973,6 +973,39 @@ class SemanticProcessor(DequeueHandlerBase):
         except Exception as e:
             logger.error(f"[SyncDiff] Failed to rewrite image URIs for {target_uri}: {e}")
 
+    @staticmethod
+    def _heuristic_text_summary(content: str) -> str:
+        """Build a lossless-by-construction L1 digest from document structure.
+
+        Markdown and friends already carry their own outline: heading lines,
+        list markers, and the opening paragraphs. Concatenating them preserves
+        the author's own wording instead of a lossy 60-180 word VLM paraphrase.
+        """
+        lines = content.splitlines()
+        kept: List[str] = []
+        seen_first_para = False
+        body_paragraph_budget = 6
+        body_paragraphs = 0
+        for raw in lines:
+            line = raw.rstrip()
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
+                kept.append(line)
+                continue
+            if not seen_first_para:
+                kept.append(line)
+                if len(stripped) > 40:
+                    seen_first_para = True
+                continue
+            if body_paragraphs < body_paragraph_budget:
+                kept.append(line)
+                body_paragraphs += 1
+            else:
+                break
+        return "\n".join(kept).strip()
+
     async def _generate_text_summary(
         self,
         file_path: str,
@@ -980,7 +1013,12 @@ class SemanticProcessor(DequeueHandlerBase):
         llm_sem: asyncio.Semaphore,
         ctx: Optional[RequestContext] = None,
     ) -> Dict[str, Any]:
-        """Generate summary for a single text file (code, documentation, or other text)."""
+        """Generate summary for a single text file (code, documentation, or other text).
+
+        Documentation and plain-text files use the structural heuristic digest
+        (no model call); code files keep the skeleton extraction with an LLM
+        fallback only when the skeleton is unavailable.
+        """
         viking_fs = get_viking_fs()
         vlm = get_openviking_config().vlm
         active_ctx = ctx or self._default_ctx
@@ -1030,27 +1068,7 @@ class SemanticProcessor(DequeueHandlerBase):
                     summary = await vlm.get_completion_async(prompt)
             return result(summary.strip())
 
-        if not vlm.is_available():
-            logger.warning("VLM not available, using empty summary")
-            return result("")
-
-        from openviking.session.memory.utils.language import resolve_output_language
-
-        output_language = resolve_output_language(content, config=config)
-        if file_type == FILE_TYPE_DOCUMENTATION:
-            prompt_id = "semantic.document_summary"
-        else:
-            prompt_id = "semantic.file_summary"
-
-        prompt = render_prompt(
-            prompt_id,
-            {"file_name": file_name, "content": content, "output_language": output_language},
-        )
-
-        async with llm_sem:
-            with bind_telemetry_stage("resource_summarize"):
-                summary = await vlm.get_completion_async(prompt)
-        return result(summary.strip())
+        return result(self._heuristic_text_summary(content))
 
     async def _generate_single_file_summary(
         self,

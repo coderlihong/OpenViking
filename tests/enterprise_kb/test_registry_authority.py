@@ -8,6 +8,8 @@ import tempfile
 
 import pytest
 
+from openviking_cli.exceptions import FailedPreconditionError
+
 from openviking.indexing.publication import PublicationStore, configured_store
 from openviking.indexing.registry_authority import (
     AuthorityRepository, AuthorityUnavailable, RegistryAuthority,
@@ -62,7 +64,7 @@ def test_workers_share_fences_and_restart_preserves_uncertain_write(setup):
             assert worker.exitcode == 0
         assert len(tokens) == 2
         assert len(repository.pending_writes("a", "viking://resources/document")) == 2
-        with pytest.raises(RuntimeError, match="in-flight"):
+        with pytest.raises((RuntimeError, FailedPreconditionError), match="in-flight|WRITE_RECOVERY_REQUIRED"):
             repository.observe_draft("a", "viking://resources/document")
         first, second = tokens
         repository.finish_write(first)

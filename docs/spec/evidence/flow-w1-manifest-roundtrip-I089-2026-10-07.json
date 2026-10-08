@@ -1,0 +1,25 @@
+{
+  "id": "I089",
+  "date": "2026-10-07",
+  "title": "抽取 manifest blob 补齐 plan_digest/configuration 写入，receipts_ref 续跑全链 round-trip 打通",
+  "requirement": "I087 将逐批回执移出 checkpoint 后，真实崩溃场景下以 checkpoint 原始 payload（含 receipts_ref）续跑必须能通过 _read_manifest 全部校验并完成 key-set 续跑。",
+  "verdict": "PASS",
+  "run": {
+    "defect": "_write_manifest 只序列化 {version, account_id, receipts}，而 _read_manifest 校验 manifest['plan_digest']==plan.digest 且 manifest['configuration']==configuration，缺字段即 ConflictError('manifest does not match fixed execution configuration')——自产的 manifest 过不了自己的校验。",
+    "why_untests_caught": "test_wiki_extraction 的 manifest_partial 助手只取 manifest['receipts'] 展开回 legacy 内联形态，绕过 _read_manifest；且同时携带 receipts_ref 时 ref 形态优先，inline 变造对执行侧不可见。",
+    "fix": [
+      "openviking/wiki/extraction.py: _write_manifest 增加 plan_digest/configuration 两参并写入 blob（对称 _read_manifest 校验）",
+      "tests/enterprise_kb/test_wiki_extraction.py: 新增 test_resume_from_receipts_ref_round_trip——checkpoint 原始 ref 形态直接 resume，断言 0 次新增模型调用、回执键集合完整",
+      "manifest_partial 助手剥掉 receipts_ref 键（legacy 内联形态语义），forged 参数化拆成 inline/ref 双形态命中"
+    ],
+    "regression": "test_wiki_extraction.py 40 passed（含 round-trip 与 10 个伪造案）；test_wiki_build_plan+test_wiki_resolver 37 passed",
+    "live_context": "qwen 端点真机 job 27bebf83（2240 源）进行中：12:31 checkpoint 首次 flush——model_calls=261/cands=211/failed={EVIDENCE_MISSING:1,SCHEMA_VIOLATION:18}/ref_size=84397B；修复落在运行中服务之外，当前 job 用旧内存代码跑完无影响（其崩溃续跑才触及该路径）。"
+  },
+  "interpretation": "I087 引入的 manifest 结构在崩溃续跑主场景（I088 的存在理由）上是坏的：单测只走了 legacy 内联展开路径。本修复让写读两侧对称，round-trip 测试直接消费 checkpoint 原始形态封住这类盲区。",
+  "truthful_boundaries": [
+    "单测 model 为 fixture，不证明真实模型下的续跑质量",
+    "运行中的 qwen job 是修复前代码启动的，其终态不构成 I089 的运行时证明；崩溃续跑的 live 证明需未来真实中断场景",
+    "ref 优先于 inline 的语义是执行侧行为而非协议约定，legacy inline 通道保留仅为兼容旧 checkpoint"
+  ],
+  "next": "真机 job 27bebf83 到 draft_ready 后补 W1 全链终态证据"
+}

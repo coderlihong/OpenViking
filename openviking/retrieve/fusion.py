@@ -152,6 +152,7 @@ class Candidate:
     chunk_text: str = ""
     parent_text: str = ""
     namespace_id: str = ""
+    type: str = ""
     score: float = 0.0
     rank: int = 0
     score_components: Dict[str, float] = field(default_factory=dict)
@@ -191,6 +192,8 @@ class Candidate:
             data["parent_text"] = self.parent_text
         if self.namespace_id:
             data["namespace_id"] = self.namespace_id
+        if self.type:
+            data["type"] = self.type
         data.update(self.extra)
         return data
 
@@ -220,6 +223,7 @@ def candidate_from_result(
             "context_type",
             "abstract",
             "namespace_id",
+            "type",
             "_score",
             "_final_score",
             "score_components",
@@ -235,6 +239,7 @@ def candidate_from_result(
         chunk_text=str(result.get("chunk_text", "") or ""),
         parent_text=str(result.get("parent_text", "") or ""),
         namespace_id=str(result.get("namespace_id", "") or ""),
+        type=str(result.get("type", "") or ""),
         score=float(score) if _is_finite(score) else 0.0,
         rank=rank,
         score_components=score_components,

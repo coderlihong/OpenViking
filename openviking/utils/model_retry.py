@@ -251,6 +251,13 @@ def classify_api_error(error: Exception) -> str:
             if _pattern_matches(text_lower, text_compact, pattern):
                 return ERROR_CLASS_PERMANENT
 
+    # A named write-recovery fence never resolves by retrying: the same request
+    # re-raises until an operator recovers or clears the fence. Re-enqueueing it
+    # as an unknown error produced a live 96-attempt requeue loop.
+    for text in texts:
+        if "write_recovery_required" in text.lower():
+            return ERROR_CLASS_PERMANENT
+
     for text in texts:
         text_lower = text.lower()
         text_compact = text_lower.replace(" ", "")

@@ -1,0 +1,45 @@
+{
+  "id": "I071",
+  "date": "2026-10-06",
+  "title": "Wiki 发布门禁六项依赖可实现性拆解：五项已有硬实现，缺实体目录持久化+三件胶水",
+  "requirement": "policies.py:50-52 的六项 publication_pending（semantic_evidence_validation / schema_identity_resolution / trusted_entity_catalog / closed_relationships / derived_access_intersection / atomic_joint_publication）逐项判定实现差距，为 FLOW-W1/W2 最后一段开工。",
+  "verdict": "ASSEMBLY_JOB_NOT_ALGORITHM_JOB",
+  "per_gate_findings": {
+    "semantic_evidence_validation": {
+      "state": "IMPLEMENTED",
+      "evidence": "extraction.py:262-271 逐项校验 {claim,quote,source_uri}、quote 不在源文抛 EVIDENCE_MISSING；extraction.py:326-346 持久化回执复检；merge.py:197-210 固定源文本逐字引用再核"
+    },
+    "schema_identity_resolution": {
+      "state": "IMPLEMENTED_CONSERVATIVE",
+      "evidence": "identity.py:24-31 identity_tuple 六元组、:146-171 resolve_candidate_identity canonical_id（canonical JSON 哈希），缺证据返回 pending_identity 不猜测；自认 provisional/semantic_policy_pending"
+    },
+    "trusted_entity_catalog": {
+      "state": "HARD_GAP",
+      "evidence": "catalog.py 只持久化 schema/collection 绑定；canonical_id 与 alias_ownership 只活在 merge payload 内存/blob，无权威实体目录表——六项中唯一需要新骨架的"
+    },
+    "closed_relationships": {
+      "state": "IMPLEMENTED",
+      "evidence": "merge.py:354-375 同批先按 expected_kind 验证、已存在页过 _reinspects 复检，关闭『仅凭声明闭合』；派生反向边无实现（page_rules.py:204 明确禁止物化反向索引）"
+    },
+    "derived_access_intersection": {
+      "state": "IMPLEMENTED_ONE_GLUE_AWAY",
+      "evidence": "derived_access.py:13-56 三件套在册；_access.py:190-198 denied_derived_uris 接入全部 FS READ 通道；lexical_recall.py:37/44 为 TC-16.19 用法。胶水：manifest 依赖键只认 image_context_epochs（:28），需把 wiki 贡献源加入清单"
+    },
+    "atomic_joint_publication": {
+      "state": "FOUNDATION_EXISTS_ONE_GLUE_AWAY",
+      "evidence": "kb_job_runtime.py:26-33 七类权威证据门禁 job_publication_ready、indexing/batch.py:64 all-or-nothing、publication.py:353-530 批成员+receipts+epoch/hash fence。差距：merge.py:447-450 崩溃留部分页面靠幂等重放，wiki 发布尚未绑定七类门禁回执"
+    }
+  },
+  "glue_work_items": [
+    "G1 实体目录持久化：publication registry 新增权威实体目录存储（或复用 catalog），canonical_id/别名/namespace/type/schema 落盘",
+    "G2 derived_access manifest 依赖键扩容：wiki 贡献源加入 access.py 依赖键清单",
+    "G3 policies.check_build_profile 判定器化：静态 pending 列表改为读取 G1/G2+七类门禁真实回执的有据判定，全部在场才放行 strict_diagnostic"
+  ],
+  "truthful_boundaries": [
+    "本轮为代码考古非实现轮；strict_diagnostic 发布语义仍 False（policies.py:53）",
+    "闭环顺序 G1→G2→G3，G3 无真实回执可读前不得放行"
+  ],
+  "closes": [
+    "明确 FLOW-W1/W2 发布门禁从『未知规模』收敛为『三件已知胶水』，消除 I049 以来 118 规则模糊表述"
+  ]
+}

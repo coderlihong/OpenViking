@@ -1,0 +1,54 @@
+{
+  "id": "I097",
+  "date": "2026-10-08",
+  "title": "空队列服务器 94-99% CPU 燃烧根因处置：W1 抽取 per-receipt 全量 ACL 重授权风暴 + asyncio 心跳被事件循环饿死",
+  "trigger": "用户报『空队列下服务器仍 94-99% CPU，单文件 reindex 报 CONFLICT: lock acquire timed out after 0ms』，判定为 bug 要修根因（拍板：显然目前肯定是 bug 或者出问题了）。",
+  "symptom": {
+    "cpu": "队列已空、无外部请求时 openviking-server 持续 94-99% 单核",
+    "reindex": "单文件 reindex 立即 CONFLICT，报 'lock acquire timed out after 0ms'（pathlock 拿不到锁）",
+    "job_churn": "W1 作业 27bebf83411d4010845d8e62191d09fe attempt 持续自增（观察到 att=16→churn），lease 反复过期-重认领，~12.7h 一轮从不 commit"
+  },
+  "root_cause": [
+    "(1) ACL 重授权风暴：extract_wiki 每 attempt 对每条 receipt 走 resolve_context → _authorize → namespaces.authorize_sources / build_plan.check_source_use 的全量 ACL scroll；每次 _root_acl / _ensure_access 经 acl._scroll_all 触发 publication.capture（BEGIN IMMEDIATE + json.loads 全部快照 manifest + lease INSERT）。~2k 源 → 对『同一批 namespace roots』做 ~2k 次独占锁 capture。",
+    "(2) 事件循环饱和 → pathlock 饿死：上述 capture 是同步 store 工作却挂在 async 调用里、不真正 yield，事件循环被独占锁串行 capture 钉死 → 94-99% CPU，且 pathlock 的 0ms fail-fast acquire 永远抢不到 → reindex CONFLICT。",
+    "(3) asyncio-task 心跳被饿死 → 无限 churn：lease 续租原是 event-loop task（await asyncio.sleep + lease.assert_active）；事件循环饱和时该 task 永不被调度 → lease 过期 → recovery 重认领 → attempt++ → 从头 _plan_items → 永不 commit 的死循环。"
+  ],
+  "not_the_cause": [
+    "0ms pathlock 超时本身不是缺陷：是 I067/I068 有意的 fail-fast + 幂等回读运行时契约，未改动；CONFLICT 的真根因是事件循环饱和，饱和消除后同契约下 CONFLICT 不再出现。",
+    "模型调用未失控：_complete 走 asyncio.wait_for(timeout_seconds)，retry_async 用 except Exception 不吞 CancelledError，超时正确转 ExtractionError('MODEL_TIMEOUT')。",
+    "Task #16『handler 永久停摆』前提不成立（见 truthful_boundaries）。"
+  ],
+  "fix": {
+    "thread_heartbeat": "openviking/service/kb_job_executor.py：删除 asyncio _heartbeat task，改为 _start_heartbeat 起专用守护线程续租。job_heartbeat 是小 sqlite 写，GIL 在 I/O 与每个切换间隔释放，续租不受事件循环饱和影响；ValueError=STALE_OWNER（lease/fence 真没了）直接退出，其他瞬态 store 错误（如 BEGIN IMMEDIATE busy 期间的 'database is locked'）告警后下一 tick 重试。run_once finally 用 hb_stop.set() + hb_thread.join(timeout=5) 收口。",
+    "cheap_refresh": "openviking/service/kb_job_runtime.py：extract_wiki 的 refresh() 不再调 resolve_context（会重跑 _authorize → authorize_sources 全量 ACL），改调新增的轻量 _current_identity（只刷 identity registry/groups + has_user，返回 (role, group_ids)）；resolve_context 重构为 _current_identity + jobs._authorize(WRITE)，需要新授权的调用方仍走它。",
+    "acl_view_collapse": "openviking/wiki/namespaces.py authorize_sources + openviking/wiki/build_plan.py 授权批处理：整段包进 with _current_acl_view(ctx)，把 ~2k 次 publication.capture 折叠成对同一 namespace roots 的 1 次一致快照读。acl._current_acl_view 为 sync @contextmanager：ambient view 已存在则 renew 复用，否则 capture 一次并置 ContextVar，yield 后 renew、finally reset token。",
+    "namespace_bound": "openviking/wiki/namespaces.py：NamespaceCatalog 新增 max_source_uris（默认 2048，planner 可传 limits），authorize_sources 的源数量上界随计划规模走而非硬编码。"
+  },
+  "effect_measured": {
+    "cpu_before_after": "94-99% 单核 → 空队列 0.90% 单核（现 pid 53374，20s 采样 cpu-time 仅涨 0.18s）",
+    "job_outcome": "作业 27bebf83411d4010845d8e62191d09fe 停止 churn，最终 state=draft_ready / stage=wiki_validate / attempt=18 / model_calls=2302 / candidate_count=2134（终态门与可重投细节见 I095/I096 台账）",
+    "queue": "全库非终态作业（queued/backoff/running/write_recovery_required）= 0，队列排干",
+    "http": "服务器 HTTP 探针 2ms 响应",
+    "reindex_conflict": "CONFLICT 根因（事件循环饱和）已消除；0ms 锁契约保持不变"
+  },
+  "tests": {
+    "suite": "tests/enterprise_kb 全量 1147 passed / 1 skipped（458s），exit 0",
+    "commit_context": "branch deploy/wolf-viking @ 934c818d（改动为工作树未提交状态）"
+  },
+  "truthful_boundaries": [
+    "Task #16『W1 handler 永久停摆（mc 冻结 2148、lease 被心跳永续）』是采样假象，非真停摆：模型调用之间夹着未计时的 replay/ACL await，一个 batch 的多个 model 调用在飞行中时 mc 计数不动，看起来像冻住实则在推进；该作业自行到 draft_ready，无需重启即可收口，faulthandler/asyncio task-stack 探针未实际使用。",
+    "CPU 数字来自 ps cpu-time 增量采样，非受控基准测试。",
+    "服务器已重启过一次（旧 pid 43019 → 现 pid 53374）；诊断 wrapper 与 faultdump 临时文件已删除。",
+    "openviking/indexing/publication.py 的 _assert_not_writing 由 RuntimeError 改为 FailedPreconditionError('WRITE_RECOVERY_REQUIRED…')、model_retry.classify_api_error 把 'write_recovery_required' 归为 PERMANENT（消除 96 次 requeue 死循环）为本轮工作树内既有改动，非本次 CPU 根因修复的一部分；本次仅同步更新了 tests/enterprise_kb/test_source_write_fence.py 的 4 处断言（in-flight/uncertain fence 由 RuntimeError→FailedPreconditionError，3 处未变更路径仍断言 RuntimeError）。"
+  ],
+  "operational_lessons": [
+    "长跑作业的事件循环饱和会连带饿死同循环上的 asyncio-task 心跳 → lease 假过期 → 无限重认领 churn；CPU-bound/同步 store 工作的续租应放独立线程，与事件循环解耦。",
+    "『同一批 roots 的 N 次全量 ACL capture』是隐蔽的 O(N) 独占锁风暴：async 签名不等于真 yield，同步 BEGIN IMMEDIATE + json.loads 会串行钉死事件循环并饿死 pathlock。用 ambient ACL view 折叠成一次快照读。",
+    "per-receipt 重授权应走轻量 identity 刷新（role/group_ids），全量 authorize 只在真正需要新授权处（resolve_context）执行。"
+  ],
+  "ledger_impact": {
+    "backlog": "新增 I097 段落（CPU 燃烧 + 心跳 + ACL 风暴根因）",
+    "related": "I067（拥塞/pathlock 契约）、I095/I096（同作业 draft_ready 终态门与可重投）",
+    "feature_status": "无状态升降：本次为运行时根因修复，不改 FLOW-W1 判定；作业 27bebf83 维持 draft_ready。"
+  }
+}

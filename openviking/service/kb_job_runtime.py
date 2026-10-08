@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import asdict
 from pathlib import Path
 
 from openviking.indexing.publication import configured_store
@@ -46,21 +47,38 @@ class _DocumentPublicationBatch:
 
 
 class DocumentJobRuntime:
-    def __init__(self, service, repository, identity_manager, uploads, *, reindex=None):
+    def __init__(self, service, repository, identity_manager, uploads, *, reindex=None,
+                 wiki_limits=None):
         self.service, self.repository = service, repository
         self.identities, self.uploads = identity_manager, uploads
-        self.jobs = KBJobService(service.viking_fs, repository)
+        self.wiki_limits = wiki_limits
+        # W1/W2 authorize the plan's full source list; the bound must match the
+        # capture side so a real handbook tree survives submission and execution.
+        # wiki_limits arrives as the pydantic config section or a CaptureLimits.
+        documents = getattr(wiki_limits, 'documents', None) if wiki_limits is not None else None
+        self.jobs = KBJobService(service.viking_fs, repository,
+                                 **({'max_source_uris': documents} if documents is not None else {}))
         self.reindex = reindex or get_reindex_executor()
         self.executor = JobExecutor(repository, {'D1': self.ingest, 'D2': self.index,
-            'W1': self.extract_wiki, 'W2': self.extract_wiki}, self.resolve_context)
+            'W1': self.extract_wiki, 'W2': self.extract_wiki}, self.resolve_context,
+            # The store's BEGIN IMMEDIATE busy timeout is 30s, so one contended
+            # renewal can legally block for the whole old 30s lease. 120s keeps
+            # three renewal ticks of headroom under lock storms.
+            lease_seconds=120)
 
     async def extract_wiki(self, job, ctx, lease):
         from dataclasses import asdict
         from openviking.wiki.build_plan import WikiBuildPlanner
-        from openviking.wiki.extraction import WikiDraftExtractor
+        from openviking.wiki.extraction import ExtractionLimits, WikiDraftExtractor
         from openviking.wiki.policies import EXTRACTOR_VERSION, POLICY_VERSION
-        planner = WikiBuildPlanner(self.service.viking_fs, registry=self.repository)
-        extractor = WikiDraftExtractor(planner)
+        planner = WikiBuildPlanner(self.service.viking_fs, registry=self.repository,
+                                   limits=self.wiki_limits)
+        extraction = getattr(self.wiki_limits, 'extraction', None)
+        if extraction is not None:
+            fields = extraction.model_dump() if hasattr(extraction, 'model_dump') else asdict(extraction)
+            extractor = WikiDraftExtractor(planner, limits=ExtractionLimits(**fields))
+        else:
+            extractor = WikiDraftExtractor(planner)
         _, model_profile = extractor._model()
         configuration = job['effective_config']
         if (configuration.get('profile') != 'wiki_draft'
@@ -69,29 +87,88 @@ class DocumentJobRuntime:
                 or configuration.get('model_profile') != model_profile
                 or configuration.get('limits') != asdict(extractor.limits)):
             raise ConflictError('Wiki extraction configuration changed since job submission')
-        await lease.checkpoint('wiki_extract', job.get('checkpoint') or {})
+        prior = job.get('checkpoint') or {}
+        prior_receipt = prior.get('draft_receipt')
+        prior_config = (prior_receipt or {}).get('configuration') or {}
+        resume_complete = (isinstance(prior_receipt, dict)
+                           and prior_receipt.get('state') == 'draft_ready'
+                           and prior_receipt.get('private') is True
+                           and prior_receipt.get('diagnostic_publishable') is False
+                           and prior_receipt.get('build_id') == job['payload']['build_id']
+                           and prior_receipt.get('plan_digest') == job['payload']['plan_digest']
+                           and prior_config.get('extractor_version') == EXTRACTOR_VERSION
+                           and prior_config.get('policy_version') == POLICY_VERSION
+                           and prior_config.get('model_profile') == model_profile
+                           and prior_config.get('limits') == asdict(extractor.limits))
         async def refresh():
-            current = await self.resolve_context(job)
-            ctx.role, ctx.group_ids = current.role, current.group_ids
+            # Identity liveness + current role/groups only. This must NOT call
+            # resolve_context: that re-runs _authorize -> authorize_sources, a
+            # full ACL scroll over every plan source. In the receipt replay loop
+            # below that is O(sources) per receipt = quadratic, and it saturated
+            # the event loop (starving pathlock -> reindex CONFLICT). The batch
+            # is bracketed by authorize_inputs before and policy.recheck after,
+            # so per-receipt full re-authorization is redundant.
+            ctx.role, ctx.group_ids = await self._current_identity(job)
         async def checkpoint(progress):
             await refresh()
             await lease.checkpoint('wiki_extract', {'extraction_progress': progress})
-        receipt = await extractor.extract(ctx, job['payload']['build_id'],
-            expected_plan_digest=job['payload']['plan_digest'],
-            profile=configuration['extraction_profile'], checkpoint=checkpoint,
-            resume=(job.get('checkpoint') or {}).get('extraction_progress'))
+        if resume_complete:
+            # A prior attempt already produced a complete terminal receipt but the
+            # worker died (or the durable gate rejected it) before commit. Every
+            # candidate blob is content-addressed and durable, so re-authorize and
+            # re-commit that exact receipt in the replay loop below instead of
+            # re-running thousands of model calls from scratch.
+            receipt = prior_receipt
+        else:
+            await lease.checkpoint('wiki_extract', prior)
+            receipt = await extractor.extract(ctx, job['payload']['build_id'],
+                expected_plan_digest=job['payload']['plan_digest'],
+                profile=configuration['extraction_profile'], checkpoint=checkpoint,
+                resume=prior.get('extraction_progress'))
         # Read every server-written blob again under all current contributor
         # permissions before recording a terminal private candidate result.
-        for draft in receipt['receipts']:
-            await refresh()
-            await extractor.read_draft(ctx, job['payload']['build_id'],
-                expected_plan_digest=job['payload']['plan_digest'], receipt=draft)
+        # Authorization is bracketed once around the batch, not per receipt:
+        # each full-plan authorization scan is O(sources), so per-receipt
+        # re-authorization is quadratic and ground a 2k-source run for hours.
+        # Nothing terminal is recorded until the closing recheck passes.
+        from openviking.wiki.namespaces import NamespaceCatalog
         await refresh()
+        ticket = await planner.authorize_inputs(ctx, job['payload']['build_id'])
+        policy = NamespaceCatalog(self.service.viking_fs, registry=self.repository,
+                                  max_source_uris=getattr(self.wiki_limits, 'documents', None)
+                                  or planner.limits.documents)
+        # Fetch the fixed plan once for the whole replay batch. planner.get
+        # re-reads the plan row and re-runs _ensure_access for every source, so
+        # calling it per receipt made the terminal re-authorization quadratic at
+        # real scale; the batch is already bracketed by authorize_inputs above
+        # and policy.recheck below.
+        plan = await planner.get(ctx, job['payload']['build_id'])
+        binding = plan.body['collection']
+        total = len(receipt['receipts'])
+        for index, draft in enumerate(receipt['receipts']):
+            await refresh()
+            policy.check_policy_revision(ctx, ticket)
+            await extractor.read_draft_payload(ctx, job['payload']['build_id'],
+                expected_plan_digest=job['payload']['plan_digest'], receipt=draft, plan=plan)
+            if (index + 1) % 256 == 0 or index + 1 == total:
+                await lease.checkpoint('wiki_extract',
+                                       {'extraction_progress': job.get('checkpoint', {}).get('extraction_progress') or {},
+                                        'receipt_replay_progress': {'done': index + 1, 'total': total}})
+        await refresh()
+        policy.check_policy_revision(ctx, ticket)
+        await policy.recheck(ctx, ticket, target_uri=binding['target_uri'])
         await lease.checkpoint('wiki_validate', {'draft_receipt': receipt,
                                                'diagnostic_published': False})
         return {'state': 'draft_ready', 'receipt': receipt}
 
-    async def resolve_context(self, job):
+    async def _current_identity(self, job):
+        """Cheap identity liveness + current role/groups, WITHOUT authorization.
+
+        Returns ``(role, group_ids)``. Deliberately does not call _authorize:
+        that path re-runs authorize_sources (a full ACL scroll over every plan
+        source) which is far too expensive to repeat per receipt/checkpoint.
+        Callers that need a fresh authorization use resolve_context.
+        """
         if self.identities is None:
             raise PermissionDeniedError('Durable jobs require a current identity registry')
         account, principal = job['account'], job['principal']
@@ -99,10 +176,16 @@ class DocumentJobRuntime:
         await self.identities.ensure_account_groups_loaded(account)
         if not self.identities.has_user(account, principal):
             raise PermissionDeniedError('Job creator is no longer an active user')
+        return (Role(self.identities.get_user_role(account, principal)),
+                tuple(self.identities.get_user_group_ids(account, principal)))
+
+    async def resolve_context(self, job):
+        account, principal = job['account'], job['principal']
+        role, group_ids = await self._current_identity(job)
         ctx = RequestContext(
             user=UserIdentifier(account, principal),
-            role=Role(self.identities.get_user_role(account, principal)),
-            group_ids=tuple(self.identities.get_user_group_ids(account, principal)),
+            role=role,
+            group_ids=group_ids,
         )
         await self.jobs._authorize(ctx, job, AclAction.WRITE)
         return ctx
@@ -279,7 +362,8 @@ def start_document_job_worker(app, service, server_config):
     identities = getattr(app.state, 'api_key_manager', None)
     if repository is None or identities is None:
         return None
-    runtime = DocumentJobRuntime(service, repository, identities, TempUploadStore(server_config))
+    runtime = DocumentJobRuntime(service, repository, identities, TempUploadStore(server_config),
+                                 wiki_limits=server_config.wiki)
     app.state.kb_job_runtime = runtime
     return asyncio.create_task(runtime.run(), name='openviking-kb-document-jobs')
 

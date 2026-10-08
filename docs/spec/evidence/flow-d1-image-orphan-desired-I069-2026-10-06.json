@@ -1,0 +1,58 @@
+{
+  "id": "I069",
+  "date": "2026-10-06",
+  "title": "D1 图片语义残留全量定性：desired 残行=已删数据孤儿，活体图片 2616/2616 缓存齐备",
+  "requirement": "flow-d1 reindex 图片 VLM 摘要残留闭合：确认失败 joint 图片构建是否还需要重投，D1 是否达到零语义缺口径。",
+  "verdict": "CLOSED_NO_REDISPATCH_NEEDED",
+  "fix_shipped_this_round": {
+    "code": [
+      "openviking/indexing/publication.py declared_image_plan(): desired→builds 的 expected 含 image: 前缀成员即判定为 joint 意图",
+      "openviking/indexing/image_cache.py load_image_semantics(): manifest 未命中时若 declared_image_plan 为真抛 SEMANTICS_REQUIRED，交由既有 _regenerate_image_summary 路径重生成；纯图/无 desired 仍静默 None"
+    ],
+    "root_caused_gap": "joint 发布构建失败时 builds(expected 含 image: 成员)+desired 行已写入但 publish 未发生 → URI 不进任何 snapshot manifest → load_image_semantics 既无 image_semantics 也无 image_plan_version → 静默 return None → reindex 走旧空摘要 → vectorize_file 抛 SEMANTICS_REQUIRED 且重生成路径从不触发"
+  },
+  "targeted_redispatch_live_proof": {
+    "uris": [
+      "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh/images/b3e532529101e5d2421de5cd4b605b640e6d1f6e5099699d46103c09bec94957.jpg",
+      "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh/images/34da8c0bade2adb226331abcc2c692fa0761eff9231b68b47d423f627fa87a8d.jpg",
+      "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh/images/1c87c6a2942b89d6c37c55a5c2242a4bab107dab402b875976327e9317e4b415.png"
+    ],
+    "reindex_result": "3 x completed rebuilt=1 sem_req=0 failed=0（POST /api/v1/content/reindex, flowadmin user key）",
+    "post_state": "三 uri desired state=published，且均在 flowtest/resources 当前 head 75ed9d7b 快照 manifest 内、image_semantics 缓存齐备——新缓存 sha 不同于旧值，VLM 真实重生成"
+  },
+  "full_residual_sweep": {
+    "method": "publication.db 全量 desired JOIN builds vs 各 head snapshot manifest 对比 + 错误分组 + uri 存活探针",
+    "joint_image_desired_total": 2707,
+    "missing_from_head_manifest": {"joint_image": 91, "non_image": 86, "total": 177},
+    "single_batch_root": {
+      "batch_id": "441b332ec3ad48b980ecdebb89aaffc3",
+      "batch_members": 316,
+      "later_republished": 139,
+      "orphan_residual": 177,
+      "error_uniform": "Text batch producer did not complete successfully (openviking/indexing/batch.py:38)",
+      "creation_window_seconds": 12,
+      "uri_mix": "layerflow/mdflow/policy-raw 测试 fixture + legacy w1 切片名 + 手册目录"
+    },
+    "liveness_probe": "177 条孤儿 uri 用 flowadmin 租户 key 逐一 GET /api/v1/content/ls：404/404——含 viking://resources/raw 根本身，数据源已被物理删除（测试数据清理）",
+    "disposition": "不重投（无对象可投）；不做手工 sqlite 删除——physical_gc_prepare/execute (registry_gc.py:128-205) 明确把 physical deletion 置于 PHYSICAL_GC_CAPABILITY_REQUIRED 门禁后，trusted backend fence 未启用前禁止任何路径清 registry 行；孤儿行对读面零影响（capture 只走 head→snapshot manifest），重投已删 uri 会先撞文件不存在/tombstone 自然失败，不会静默发布旧摘要。留作 GC 能力上线时的自然回收对象。"
+  },
+  "live_integrity": {
+    "live_joint_image_entries_in_heads": 2616,
+    "with_image_semantics": 2616,
+    "plan_version_without_cache": 0
+  },
+  "closes": [
+    "flow-d1-2026-10-05.json remaining_for_full_FLOW_D1_acceptance 中 image semantic quality 残项的失败态定性：抽样 3 张定点重生成为真（rebuilt=1），扩量扫描证明失败态无生产活体，D1 图片语义无待重投项"
+  ],
+  "truthful_boundaries": [
+    "重投仅覆盖 3 张抽样验证图片；剩余 174 张 joint 失败行同属孤儿批次，与 3 张的区别仅在于源数据是否仍存活。",
+    "physical_gc 能力仍未启用，177 条残行的物理回收依赖未来 trusted backend fence 上线。",
+    "本条只断言 publication registry 口径零语义缺口；向量库终态仍以 I068 收口记录（rebuilt=4840/failed=0）为准。"
+  ],
+  "code_paths": [
+    "openviking/indexing/publication.py (declared_image_plan)",
+    "openviking/indexing/image_cache.py (load_image_semantics orphan-joint branch)",
+    "openviking/indexing/registry_gc.py:128-205 (physical GC capability gate)",
+    "openviking/indexing/batch.py:38 (uniform batch failure error)"
+  ]
+}

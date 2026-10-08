@@ -1,5 +1,6 @@
 """Published image summaries cannot escape contributor permissions."""
 from dataclasses import replace
+import hashlib
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,6 +15,21 @@ from openviking.storage.expr import RawDSL
 from openviking.storage.viking_vector_index_backend import VikingVectorIndexBackend
 
 IMAGE = WIKI + '/images/pump.png'
+PAGE = WIKI + '/entities/pump/Fault.md'
+TWO = RAW + '/manual/chapter/two.md'
+
+
+async def publish_wiki_page(e, *, contributors=(ONE,)):
+    body = '# Fault\n## 来源\nbody'
+    await e.fs.write_file_bytes(PAGE, body.encode(), ctx=e.ctx)
+    reference, _ = await archive_source(e.fs, PAGE, e.ctx)
+    reference['text_sha256'] = hashlib.sha256(body.encode()).hexdigest()
+    reference['wiki_contributors'] = list(contributors)
+    generation = e.store.begin(e.ctx.account_id, 'wiki', PAGE, 'wiki-page-plan', ['wiki:one'],
+                               source_ref=reference)
+    e.store.acknowledge(generation, 'wiki:one')
+    e.store.seal(generation)
+    assert e.store.state(generation)['state'] == 'published'
 
 
 async def publish_image(e):
@@ -77,3 +93,41 @@ async def test_fs_read_channels_apply_contributor_intersection(domains):
     assert access[ONE] is True and access[IMAGE] is False
     with pytest.raises(PermissionDeniedError):
         await e.fs._ensure_access(IMAGE, e.ctx)
+
+
+async def test_wiki_page_hides_when_any_contributor_loses_read(domains):
+    e, planner, policy, admin, backend = domains
+    await publish_wiki_page(e)
+    assert await denied_derived_uris(e.fs.acl_manager, e.ctx) == ()
+    backend.acl(TWO, [{'principal': 'user:user', 'level': 'read'}])
+    await publish_wiki_page(e, contributors=(ONE, TWO))
+    backend.acl(TWO, [{'principal': 'user:other', 'level': 'read'}])
+    assert await denied_derived_uris(e.fs.acl_manager, e.ctx) == (PAGE,)
+
+
+async def test_wiki_page_hides_on_contributor_tombstone_and_acl_disable(domains):
+    e, planner, policy, admin, backend = domains
+    await publish_wiki_page(e, contributors=(ONE, TWO))
+    member = replace(e.ctx, group_ids=('repair',))
+    backend.acl(RAW, [{'principal': 'group:repair', 'level': 'read'}])
+    assert await denied_derived_uris(e.fs.acl_manager, member) == ()
+    e.store.tombstone(e.ctx.account_id, TWO)
+    assert await denied_derived_uris(e.fs.acl_manager, member) == (PAGE,)
+    e.store.clear_tombstone(e.ctx.account_id, TWO)
+    e.fs.acl_manager.set_enabled(e.ctx.account_id, False)
+    assert await denied_derived_uris(e.fs.acl_manager, member) == (PAGE,)
+
+
+async def test_wiki_page_without_snapshot_stays_publicly_visible(domains):
+    e, planner, policy, admin, backend = domains
+    body = b'plain page'
+    await e.fs.write_file_bytes(PAGE, body, ctx=e.ctx)
+    reference = {'sha256': hashlib.sha256(body).hexdigest(), 'size': len(body),
+                 'text_sha256': hashlib.sha256(body).hexdigest()}
+    generation = e.store.begin(e.ctx.account_id, 'wiki', PAGE, 'plain-plan', ['plain:one'],
+                               source_ref=reference)
+    e.store.acknowledge(generation, 'plain:one')
+    e.store.seal(generation)
+    assert e.store.state(generation)['state'] == 'published'
+    backend.acl(RAW, [{'principal': 'user:other', 'level': 'read'}])
+    assert await denied_derived_uris(e.fs.acl_manager, e.ctx) == ()

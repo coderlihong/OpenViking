@@ -59,8 +59,8 @@
       "id": "I082",
       "symptom": "strict_diagnostic 提交侧接受后，执行侧 extraction.py:286 check_build_profile(bundle, profile) 不带 adjudication，静态六门名单再次整体拒绝（job 921ae60e failed@wiki_extract，error 为无 reason 的六门拼接）",
       "root_cause": "双调用点只有 submission 接了判定器，执行路径漏接",
-      "fix": "extraction.py extract() 同样以 service_adjudication 读证后再调 check_build_profile；58 项关联测试绿",
-      "status": "fix_in_tree，待服务重启后真机复投验证"
+      "fix": "extraction.py extract() 同样以 service_adjudication 读证后再调 check_build_profile（commit c4e7ac8f）；58 项关联测试绿",
+      "status": "closed，真机复验：2026-10-06 22:34-22:36 三连投 flow-w2-exec-i082 / i082b / i082b-strict 全部到达 draft_ready@wiki_validate（前次同类投递 921ae60e failed@wiki_extract）"
     }
   ],
   "design_observations": [
@@ -71,5 +71,5 @@
     "test_wiki_service_adjudication": "4 passed",
     "test_vector_transfer": "136 passed across transfer/migration/merge-binding suites"
   },
-  "conclusion": "私有发布链真机全通：业务约束 schema→草稿→合并（0 pending/2 valid）→G1 目录→发布落页带贡献章，每一步都有活库行/快照实读背书；三缺陷（I080 已提交、I081 已提交、I082 在树）沿途修复，strict 执行侧复验待 I082 重启后完成"
+  "conclusion": "私有发布链真机全通：业务约束 schema→草稿→合并（0 pending/2 valid）→G1 目录→发布落页带贡献章，每一步都有活库行/快照实读背书；三缺陷（I080/I081/I082 均已提交并真机复验）沿途修复，strict 执行侧复验已由 i082 三连投 draft_ready 收口"
 }

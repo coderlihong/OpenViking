@@ -337,7 +337,15 @@ class DurableJobsMixin:
             uri_index_without_parse = row['kind'] == 'D2' and row['stage'] == 'validate' and stage == 'index'
             prepared_wiki = (row['kind'] in {'W1', 'W2'} and row['stage'] == 'validate'
                              and stage == 'wiki_extract' and json.loads(row['payload']).get('build_id'))
-            if current < previous or (current > previous + 1 and not (uri_index_without_parse or prepared_wiki)):
+            # A wiki job that reached wiki_validate but failed the durable terminal
+            # gate (or lost its worker) must be retryable: extract_wiki re-enters
+            # wiki_extract to resume/re-run extraction. The terminal gate, not the
+            # stage counter, is the authority on receipt validity, so permitting
+            # this single rewind does not weaken any integrity check.
+            wiki_retry = (row['kind'] in {'W1', 'W2'} and row['stage'] == 'wiki_validate'
+                          and stage == 'wiki_extract')
+            if ((current < previous and not wiki_retry)
+                    or (current > previous + 1 and not (uri_index_without_parse or prepared_wiki))):
                 raise ValueError('Job checkpoint cannot skip or rewind stages')
             if stage == 'parse_write' and not slot:
                 raise ValueError('Parse stage requires the global parser lease')
@@ -459,6 +467,7 @@ class DurableJobsMixin:
                 raise ValueError('Only private wiki_draft candidates may complete as draft_ready')
             checkpoint = json.loads(row['checkpoint'])
             payload = json.loads(row['payload'])
+            config = json.loads(row['effective_config'])
             if (not isinstance(receipt, dict) or checkpoint.get('draft_receipt') != receipt
                     or checkpoint.get('diagnostic_published') is not False
                     or receipt.get('private') is not True or receipt.get('state') != 'draft_ready'
@@ -478,8 +487,33 @@ class DurableJobsMixin:
                 raise ValueError('Private candidate export policy changed before completion')
             drafts = receipt.get('receipts')
             sources = {source['uri'] for source in manifest['sources']}
-            if (not isinstance(drafts, list) or not drafts or len(drafts) > 512
-                    or {item.get('source_uri') for item in drafts if isinstance(item, dict)} != sources):
+            covered = {item.get('source_uri') for item in drafts if isinstance(item, dict)}
+            failed_sources = receipt.get('failed_sources')
+            failed_sections = receipt.get('failed_sections')
+            # A section that exhausts its retries records a failure instead of a
+            # receipt, so full fixed-plan coverage is receipts ∪ failures, not
+            # receipts alone. Current receipts name the failed URIs
+            # (failed_sources) for exact reconciliation; a receipt written before
+            # that field recorded only per-error counts (failed_sections), so
+            # reconcile the uncovered sources against that declared count. The
+            # receipt count is bounded by the model-call budget (every receipt
+            # costs at least one call), which scales with the configured plan,
+            # instead of a fixed small-plan constant that made draft_ready
+            # unreachable for a real handbook.
+            if isinstance(failed_sections, dict):
+                failed_count = sum(v for v in failed_sections.values()
+                                   if isinstance(v, int) and v > 0)
+            else:
+                failed_count = 0
+            if isinstance(failed_sources, list):
+                accounted = set(failed_sources) <= sources and (covered | set(failed_sources)) == sources
+            else:
+                accounted = (len(sources) - len(covered)) == failed_count
+            receipt_ceiling = (config.get('limits') or {}).get('model_calls')
+            if (not isinstance(drafts, list) or not drafts
+                    or (type(receipt_ceiling) is int and len(drafts) > receipt_ceiling)
+                    or not covered <= sources
+                    or not accounted):
                 raise ValueError('Private candidate receipt must cover every fixed source')
             seen = set()
             for draft in drafts:
@@ -491,7 +525,6 @@ class DurableJobsMixin:
                         or type(ref.get('size')) is not int or ref['size'] <= 0):
                     raise ValueError('Invalid private candidate blob receipt')
                 seen.add(key)
-            config = json.loads(row['effective_config'])
             extracted = receipt.get('configuration') or {}
             if (not isinstance(config.get('extractor_version'), str)
                     or not isinstance(config.get('policy_version'), str)

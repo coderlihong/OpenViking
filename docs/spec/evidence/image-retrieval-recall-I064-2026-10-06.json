@@ -1,0 +1,53 @@
+{
+  "change_id": "I064",
+  "date": "2026-10-06",
+  "objective_text_addressed": "需求三的检索要求——混合检索(bm25+向量+mmr/rerank)需能召回图片记录并溯源 viking URI；用户指令『图片入库以及检索，确定ok』中检索侧此前仅有负向解释（reindex 中间态 0 命中），本轮补齐正向证据",
+  "method": {
+    "storage": "本机实例 127.0.0.1:1933（flowtest 账号 X-API-Key），/api/v1/search/find 与 /api/v1/search/search 真机探针",
+    "corpus": "slice_ch1/slice_ch1_1/slice_flowd1 三棵切片树（I063 已核验 VLM 摘要的同一批图片）+ backend-probe/legacy 树共存竞争",
+    "channels_tested": ["无过滤混合排序文本查询", "target_uri 范围限定", "chunk_id prefix 过滤", "image_url 多模态查询（viking:// URI 自动读字节转 data URI）"],
+    "assertion_shape": "命中结果含 /images/ URI 且 abstract 与 I063 目验样张 VLM 摘要逐项吻合（triangle+exclamation / spanner / funnel 关键词）"
+  },
+  "results": [
+    {
+      "probe": "VLM 摘要英文 token 自然查询（无过滤混合排序）",
+      "query": "\"Main subjects objects image contains single graphic icon\"",
+      "top_hits": "top1=0.961 slice_ch1_1 三角警示图标 jpg；top2=0.926 slice_ch1 漏斗图标；top3=0.915 backend-probe 图",
+      "verdict": "图片记录在与文本记录同一排序池中居首，回指图片 viking URI"
+    },
+    {
+      "probe": "三类图意语义探针（英文 VLM 摘要关键词，无过滤）",
+      "queries": {
+        "警告三角图标 (triangle exclamation warning icon safety)": "top1=0.963 top2=0.953，9/10 为图片记录",
+        "开口扳手图标 (line-art icon open-end spanner hand tool black outline)": "top1=0.962 top2=0.931（同资产 f1357c93 双树 occurrence 均召回）",
+        "漏斗滴液图标 (funnel drop liquid symbol oil)": "top1=0.906 top2=0.896"
+      },
+      "verdict": "3/3 图意语义探针全部命中且摘要关键词与 I063 目验逐项一致"
+    },
+    {
+      "probe": "中文范围限定查询（target_uri=images/ 目录）",
+      "query": "\"安全 注意 图标\" scoped to slice_ch1_1/1_前言/images/",
+      "top_hits": "top1=0.957 三角警示图标，abstract 含 triangle+exclamation",
+      "verdict": "范围限定通道同样召回；旧 viking:// image_url 输入自动读字节转 data URI 走通"
+    },
+    {
+      "probe": "多模态自检索（query+image_url 指向库内资产）",
+      "query": "\"这是什么图标\" + image_url=viking://...24b10d27….jpg",
+      "top_hits": "5/10 图片记录，查询资产本体在 rank2/rank6 召回（多 occurrence 记录映射同 URI 属预期），摘要 round-trip triangle+exclamation=true",
+      "verdict": "multimodal embedder(qwen3-vl-embed, input=multimodal) 查询链路真实工作"
+    }
+  ],
+  "negative_finding_non_blocking": {
+    "observation": "纯中文短查询（如『三角形 感叹号 图标』）无过滤时 top10 被文本记录占满——图片摘要（英文 VLM 输出）与中文查询的向量相似度(~0.55)低于竞争文本(~0.6+)；用 VLM 摘要原词或 target_uri/图片过滤即可召回",
+    "classification": "排序竞争非缺陷：chunk_id prefix 过滤通道可用（legacy 树 10 条验证）；abstrct 为 VLM 英文输出是 VLM 模板决定；业务如需中文关键词命中可后续在摘要生成处加中文关键词层，不属本需求断言范围",
+    "filter_note": "chunk_id prefix 'image:' 与 uri PathScope 组合 AND 对新树返回 0（单独各自均可）——检查方向存疑项，未阻塞主断言，已如实记录",
+    "filter_note_root_cause_I066": "2026-10-06 I066 轮代码定位收口：vectordb_adapters/base.py:328 legacy dict 编译中 `prefix` 键仅对 URI 字段（_URI_FIELD_NAMES）生效，chunk_id 非 URI 字段，其 prefix 语义在 _compile_filter 编译层被静默丢弃（dict 载荷原样透传无校验），故组合为空、单用各自可用；真实小缺陷非数据问题，修复点在非 URI 字段 prefix 显式报错或降级精确 match，已立任务待 reindex 终态后处理",
+    "filter_note_fix_I067": "2026-10-06 I067 轮修复落地：base.py `_normalize_filter_payload_for_write` 对非 URI 字段的 `prefix` 键显式抛 InvalidArgumentError（提示改用 op=must 精确 match），URI 字段 prefix 行为不变；契约测试 tests/storage/test_filter_prefix_guard.py 3 passed（非 URI 报错/URI 编码保留/AND 组合透传），相邻过滤回归 test_viking_vector_scope_filter+test_deletion_gc+test_qdrant_adapter 29 passed。tests/vectordb 本地引擎套件 6 failed 为原生引擎 ABI 缺口（_index_engine_rebuild_scalar_index AttributeError），guard 撤除后同样失败，与本次改动无关。chunk_id prefix 组合过滤返回 0 的悬案闭合：合法用法是 chunk_id op=must 精确值（prefix 语义从未对其生效）"
+  },
+  "ingestion_side_reference": "入库侧（VLM 摘要质量、缓存持久化、occurrence 结构）证据见 evidence/image-semantic-quality-I063-2026-10-06.json",
+  "truthful_boundaries": [
+    "探针为真机单评审（LLM 断言关键词匹配），非人工标注集",
+    "rerank/MMR 通道在默认 mode 下未强制触发（image_query 强制 QUICK），未单测 MMR 重排对图片的扰动",
+    "D1 reindex task 172ba09e 长跑仍在进行，SY215C 整本树 933 图的新向量代未发布，本轮证据来自切片树+竞争语料，整本树待 reindex 终态后复测"
+  ]
+}

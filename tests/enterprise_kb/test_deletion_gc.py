@@ -143,6 +143,28 @@ async def test_rm_writes_tombstone_so_late_reads_fail(store, tmp_path):
         await fs.read_file(uri, ctx=ctx)
 
 
+async def test_recreate_after_tombstoned_rm_clears_tombstone_and_reads(store, tmp_path):
+    # A deleted tree leaves a tombstone on its ancestor directory; re-creating
+    # the source as current content is the documented clear_tombstone contract
+    # and must make reads succeed again.
+    uri = "viking://resources/manual/a.md"
+    parent = "viking://resources/manual"
+    fs = fs_with_tombstones(tmp_path, store)
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+    path = fs._uri_to_path(uri, ctx=ctx)
+
+    await fs.write(uri, b"body", ctx=ctx)
+    store.tombstone("acct", parent)
+    with pytest.raises(NotFoundError):
+        await fs.read_file(uri, ctx=ctx)
+
+    await fs.mkdir(parent, exist_ok=True, ctx=ctx)
+    await fs.write(uri, b"fresh", ctx=ctx)
+    assert not store.is_tombstoned("acct", uri)
+    assert not store.is_tombstoned("acct", parent)
+    assert await fs.read_file(uri, ctx=ctx) == "fresh"
+
+
 def test_dependents_mark_child_chunks_cache_and_sidecars(store):
     uri = "viking://resources/manual/a.png"
     ref = content_ref(b"asset")

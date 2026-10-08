@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from fastapi import FastAPI
-from test_wiki_extraction import execute_setup, candidate, response
+from test_wiki_extraction import execute_setup, candidate, response, ONE, TWO
 from test_wiki_namespaces import domains as domains, grant, RAW, WIKI
 from test_wiki_build_plan import prepared as prepared
 from test_content_publication import environment as environment
@@ -37,6 +37,7 @@ async def test_execute_separate_from_prepare_http_job_and_private_read(domains, 
     monkeypatch.setattr('openviking.wiki.extraction.WikiDraftExtractor', lambda _: extractor)
     runtime = DocumentJobRuntime(SimpleNamespace(viking_fs=e.fs), planner.registry, None, None)
     runtime.resolve_context = AsyncMock(return_value=e.ctx)
+    runtime._current_identity = AsyncMock(return_value=(e.ctx.role, e.ctx.group_ids))
     runtime.executor.context_resolver = runtime.resolve_context
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         prepared_response = await client.get('/api/v1/kb/wiki/builds/' + plan.build_id)
@@ -78,6 +79,64 @@ async def test_draft_receipt_cannot_be_self_declared_or_cross_plan(domains):
         with pytest.raises(ValueError, match='private candidate receipt'):
             planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', bad)
     assert planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', receipt)
+
+
+async def test_terminal_gate_reconciles_coverage_with_failed_sources(domains):
+    """I095: a section that exhausts its retries records a failure instead of a
+    receipt, so the terminal gate must treat fixed-plan coverage as
+    receipts ∪ failed_sources. An unaccounted gap still rejects; the same gap
+    recorded in failed_sources completes as a private draft."""
+    e, planner, policy, admin, backend, plan, model, extractor = await execute_setup(domains, uris=(ONE, TWO))
+    model.get_completion_async.return_value = response(candidate())
+    jobs = WikiJobService(planner, extractor=extractor)
+    job = await jobs.create(e.ctx, plan.build_id, expected_plan_digest=plan.digest, idempotency_key='coverage')
+    claim = planner.registry.job_claim('worker')
+    receipt = await extractor.extract(e.ctx, plan.build_id, expected_plan_digest=plan.digest)
+    # two.md's default candidate does not match its text, so it fails extraction
+    # and is recorded in failed_sources with no receipt: a genuine accounted gap.
+    sources = {s.uri for s in plan.sources}
+    covered = {r['source_uri'] for r in receipt['receipts']}
+    assert covered != sources and receipt['failed_sources']
+    assert covered | set(receipt['failed_sources']) == sources
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_extract', {})
+    unaccounted = dict(receipt, failed_sources=[])
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_validate',
+                                    {'draft_receipt': unaccounted, 'diagnostic_published': False})
+    with pytest.raises(ValueError, match='must cover every fixed source'):
+        planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', unaccounted)
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_validate',
+                                    {'draft_receipt': receipt, 'diagnostic_published': False})
+    assert planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', receipt)
+    assert planner.registry.job_get(e.ctx.account_id, job['job_id'])['state'] == 'draft_ready'
+
+
+async def test_terminal_gate_reconciles_legacy_receipt_by_failed_section_count(domains):
+    """I095 legacy branch: a receipt written before failed_sources existed carries
+    only per-error failed_sections counts. The gate reconciles the uncovered
+    sources against that declared count, so a count that does not account for the
+    gap rejects while a matching count completes as a private draft."""
+    e, planner, policy, admin, backend, plan, model, extractor = await execute_setup(domains, uris=(ONE, TWO))
+    model.get_completion_async.return_value = response(candidate())
+    jobs = WikiJobService(planner, extractor=extractor)
+    job = await jobs.create(e.ctx, plan.build_id, expected_plan_digest=plan.digest, idempotency_key='legacy-count')
+    claim = planner.registry.job_claim('worker')
+    receipt = await extractor.extract(e.ctx, plan.build_id, expected_plan_digest=plan.digest)
+    sources = {s.uri for s in plan.sources}
+    covered = {r['source_uri'] for r in receipt['receipts']}
+    gap = len(sources) - len(covered)
+    assert gap and receipt['failed_sources']  # two.md failed extraction, no receipt
+    legacy = {k: v for k, v in receipt.items() if k != 'failed_sources'}
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_extract', {})
+    bad = dict(legacy, failed_sections={'SCHEMA_VIOLATION': gap + 5})
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_validate',
+                                    {'draft_receipt': bad, 'diagnostic_published': False})
+    with pytest.raises(ValueError, match='must cover every fixed source'):
+        planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', bad)
+    legacy['failed_sections'] = {'SCHEMA_VIOLATION': gap}
+    planner.registry.job_checkpoint(job['job_id'], 'worker', claim['fence'], 'wiki_validate',
+                                    {'draft_receipt': legacy, 'diagnostic_published': False})
+    assert planner.registry.job_complete(job['job_id'], 'worker', claim['fence'], 'draft_ready', legacy)
+    assert planner.registry.job_get(e.ctx.account_id, job['job_id'])['state'] == 'draft_ready'
 
 
 @pytest.mark.parametrize('change', ['export', 'source'])

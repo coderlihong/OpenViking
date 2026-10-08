@@ -74,6 +74,21 @@ class AsyncKBNamespace:
             json={'expected_binding_digest': expected_binding_digest})
         return self._client._handle_response(response)
 
+    async def register_wiki_entities(self, namespace_id: str, entries: list[dict]):
+        response = await self._client._request('POST', '/api/v1/kb/wiki/entities',
+                                               json={'namespace_id': namespace_id, 'entries': entries})
+        return self._client._handle_response(response)
+
+    async def get_wiki_entity(self, namespace_id: str, canonical_id: str):
+        response = await self._client._request(
+            'GET', f'/api/v1/kb/wiki/entities/{quote(namespace_id, safe="")}/{quote(canonical_id, safe="")}')
+        return self._client._handle_response(response)
+
+    async def list_wiki_entities(self, namespace_id: str):
+        response = await self._client._request(
+            'GET', f'/api/v1/kb/wiki/entities/{quote(namespace_id, safe="")}')
+        return self._client._handle_response(response)
+
     async def build_wiki(self, *, source_uris: list[str], collection_id: str, recursive: bool = True,
                          idempotency_key: str):
         """Prepare immutable URI inputs; return a prepared plan, not a job.
@@ -111,6 +126,17 @@ class AsyncKBNamespace:
     async def get_wiki_draft(self, job_id: str, draft_index: int):
         response = await self._client._request('GET',
             f'/api/v1/kb/wiki/jobs/{quote(job_id, safe="")}/drafts/{draft_index}')
+        return self._client._handle_response(response)
+
+    async def prepare_wiki_merge(self, *, selections: list[dict]):
+        """Group private draft receipts into one merge; returns the sealed receipt."""
+        response = await self._client._request('POST', '/api/v1/kb/wiki/merges',
+                                               json={'selections': selections})
+        return self._client._handle_response(response)
+
+    async def publish_wiki_merge(self, *, reference: dict, revision: str):
+        response = await self._client._request('POST', '/api/v1/kb/wiki/merges/publish',
+                                               json={'reference': reference, 'revision': revision})
         return self._client._handle_response(response)
 
     async def register_namespace(self, *, namespace_id: str, root_uri: str):
@@ -194,6 +220,12 @@ class SyncKBNamespace:
 
     def get_wiki_draft(self, job_id: str, draft_index: int):
         return run_async(self._async.get_wiki_draft(job_id, draft_index))
+
+    def prepare_wiki_merge(self, *, selections: list[dict]):
+        return run_async(self._async.prepare_wiki_merge(selections=selections))
+
+    def publish_wiki_merge(self, *, reference: dict, revision: str):
+        return run_async(self._async.publish_wiki_merge(reference=reference, revision=revision))
 
     def get_namespace(self, namespace_id: str):
         return run_async(self._async.get_namespace(namespace_id))

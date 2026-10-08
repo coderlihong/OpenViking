@@ -281,7 +281,7 @@ DATA_JSON:\n''' + _json(payload)
         plan = await self.planner.get(ctx, build_id)
         if plan.digest != expected_plan_digest:
             raise ConflictError('Wiki execution expected plan digest does not match')
-        body = json.loads(plan.manifest)
+        body = plan.body
         pin = await self.planner.catalog.pin_collection(ctx, body['collection']['collection_id'], input_kind=body['input_kind'])
         bundle = SchemaBundle.freeze(pin.bundle.schema_id, pin.bundle.version, dict(pin.bundle.members))
         # Strict gates were already receipt-checked at submission; re-adjudicating
@@ -305,9 +305,14 @@ DATA_JSON:\n''' + _json(payload)
                     or resume.get('private') is not True or resume.get('state') != 'extracting'
                     or type(resume.get('authorization_revision')) is not int
                     or resume['authorization_revision'] != authorization.policy_revision
-                    or not isinstance(resume.get('receipts'), list)):
+                    or (not isinstance(resume.get('receipts'), list)
+                        and not isinstance(resume.get('receipts_ref'), dict))):
                 raise ConflictError('Wiki extraction resume does not match fixed execution configuration')
-            saved = resume['receipts']
+            # Receipt arrays no longer ride inside the durable job checkpoint
+            # (a real handbook run grew it past 650 KiB per batch); they live
+            # in one content-addressed manifest blob instead.
+            saved = (await self._read_manifest(ctx, plan, configuration, resume['receipts_ref'])
+                     if 'receipts_ref' in resume else resume['receipts'])
             if (type(resume.get('candidate_count')) is not int or resume['candidate_count'] < 0
                     or type(resume.get('model_calls')) is not int or resume['model_calls'] < 0
                     or (not saved and (resume['candidate_count'] or resume['model_calls']))):
@@ -315,78 +320,158 @@ DATA_JSON:\n''' + _json(payload)
             if len(saved) > self.limits.model_calls:
                 raise SchemaError('Wiki extraction resume exceeds receipt bound')
         receipts, calls, candidate_count, chunk_position = [], 0, 0, 0
+        self._manifest_len = 0
         # Decompose each source into heading-aligned, size-bounded sections, then
         # dispatch one extraction call per section. Every source character is
-        # covered exactly once; no truncation.
-        async for uri, text in self.planner.authorized_source_texts(ctx, build_id):
-            chunks = _section_texts(text, self.limits.source_chars)
-            fresh_chunks = max(0, len(chunks) - max(0, len(saved) - chunk_position))
-            if calls + fresh_chunks * (self.limits.retries + 1) > self.limits.model_calls:
-                raise ExtractionError('EXTRACTION_LIMIT', 'Source exceeds total extraction call bound')
-            source_receipts = []
-            for index, chunk in enumerate(chunks):
-                screened = _screen_kinds(tuple(schemas.values()), chunk)
-                prompt = self._prompt(bundle, tuple(screened), pin.collection.target_uri, uri, chunk)
-                prompt_digest = hashlib.sha256(prompt.encode()).hexdigest()
-                if chunk_position < len(saved):
-                    receipt = saved[chunk_position]
-                    if (not isinstance(receipt, dict) or receipt.get('source_uri') != uri
-                            or type(receipt.get('source_chunk')) is not int or receipt['source_chunk'] != index
-                            or receipt.get('state') != 'draft_ready' or receipt.get('private') is not True):
-                        raise ConflictError('Wiki extraction resume is not a sequential source/chunk prefix')
-                    await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
-                    payload = await self._read_payload(ctx, plan, receipt)
-                    if (payload.get('configuration') != configuration or payload.get('source_uri') != uri
-                            or payload.get('source_chunk') != index or payload.get('prompt_sha256') != prompt_digest
-                            or not isinstance(payload.get('candidates'), list)
-                            or type(payload.get('model_attempts')) is not int
-                            or not 1 <= payload['model_attempts'] <= self.limits.retries + 1
-                            or type(receipt.get('candidate_count')) is not int
-                            or receipt['candidate_count'] != len(payload['candidates'])):
-                        raise ConflictError('Wiki extraction resume receipt lacks matching content/configuration')
-                    for candidate in payload['candidates']:
-                        if not isinstance(candidate, dict):
-                            raise SchemaError('Invalid persisted candidate')
-                        # Independently repeat structural/evidence checks on persisted outputs.
-                        self._validate({'kind': candidate.get('kind'),
-                                        'relative_path': candidate.get('uri', '').removeprefix(pin.collection.target_uri + '/'),
-                                        'markdown': candidate.get('markdown'), 'evidence': candidate.get('evidence')},
-                                       schemas, pin.collection.target_uri, uri, chunk)
-                    await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
-                    source_receipts.append(receipt)
-                    candidate_count += len(payload['candidates'])
-                    calls += payload['model_attempts']
-                    chunk_position += 1
-                    if chunk_position == len(saved) and (calls != resume['model_calls'] or candidate_count != resume['candidate_count']):
-                        raise ConflictError('Wiki extraction resume counters do not match retained receipts')
-                    continue
-                await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
+        # covered exactly once; no truncation. Fresh sections overlap on the model
+        # endpoint through a bounded gather window (the wiki model section's
+        # max_concurrent), while a retained resume prefix replays strictly in
+        # order ahead of any fresh dispatch; counters and checkpoints settle on
+        # the main coroutine only.
+
+        async def _plan_items():
+            items = []
+            async for uri, text in self.planner.authorized_source_texts(ctx, build_id):
+                for index, chunk in enumerate(_section_texts(text, self.limits.source_chars)):
+                    items.append((uri, index, chunk))
+            return items
+
+        all_items = await _plan_items()
+        # Worst-case fresh-call spend is bounded before any model dispatch;
+        # replayed receipts carry their own already-spent attempts and the
+        # deferred remainder re-dispatches like fresh items.
+        fresh_items = max(0, len(all_items) - len(saved))
+        if (resume['model_calls'] if resume is not None else 0) + fresh_items * (self.limits.retries + 1) > self.limits.model_calls:
+            raise ExtractionError('EXTRACTION_LIMIT', 'Source exceeds total extraction call bound')
+
+        def _prompt_for(uri, chunk):
+            screened = _screen_kinds(tuple(schemas.values()), chunk)
+            prompt = self._prompt(bundle, tuple(screened), pin.collection.target_uri, uri, chunk)
+            return prompt, hashlib.sha256(prompt.encode()).hexdigest()
+
+        def _deferred(code):
+            return {'state': 'failed', 'error': code}
+
+        async def _extract_one(uri, index, chunk):
+            await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
+            prompt, digest = _prompt_for(uri, chunk)
+            try:
                 items, attempts = await self._complete(model, prompt)
-                calls += attempts
-                if candidate_count + len(items) > self.limits.candidates:
-                    raise ExtractionError('EXTRACTION_LIMIT', 'Candidate count exceeds extraction bound')
                 candidates = [self._validate(item, schemas, pin.collection.target_uri, uri, chunk) for item in items]
-                candidate_count += len(candidates)
-                # Recheck revoked permission/content/export before retaining generated data.
-                await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
-                payload = {'version': 1, 'account_id': ctx.account_id, 'build_id': build_id,
-                           'plan_digest': plan.digest, 'configuration': configuration,
-                           'source_uri': uri, 'source_chunk': index, 'candidates': candidates, 'model_attempts': attempts}
-                payload['prompt_sha256'] = prompt_digest
-                reference = await archive_bytes(self.fs, _json(payload).encode(), ctx)
-                receipt = {'source_uri': uri, 'source_chunk': index, 'candidate_count': len(candidates),
-                           'reference': reference, 'state': 'draft_ready', 'private': True}
-                source_receipts.append(receipt)
-                chunk_position += 1
-                if checkpoint is not None:
-                    await checkpoint({'build_id': build_id, 'plan_digest': plan.digest,
-                                      'configuration': configuration, 'receipts': receipts + source_receipts,
-                                      'candidate_count': candidate_count, 'model_calls': calls,
-                                      'state': 'extracting', 'private': True,
-                                      'authorization_revision': authorization.policy_revision})
-            receipts.extend(source_receipts)
-        if chunk_position < len(saved):
+            # A single malformed section must not destroy its sibling sections
+            # (same isolation the D1 semantic path gained in I056); the failure
+            # is surfaced in the run tallies instead of aborting the batch.
+            except ExtractionError as exc:
+                return _deferred(exc.code), None
+            # Recheck revoked permission/content/export before retaining generated data.
+            await policy.check_source_use(ctx, authorization, uri=uri, target_uri=pin.collection.target_uri)
+            payload = {'version': 1, 'account_id': ctx.account_id, 'build_id': build_id,
+                       'plan_digest': plan.digest, 'configuration': configuration,
+                       'source_uri': uri, 'source_chunk': index, 'candidates': candidates, 'model_attempts': attempts}
+            payload['prompt_sha256'] = digest
+            reference = await archive_bytes(self.fs, _json(payload).encode(), ctx)
+            return {'source_uri': uri, 'source_chunk': index, 'candidate_count': len(candidates),
+                    'reference': reference, 'state': 'draft_ready', 'private': True}, payload
+
+        async def _replay_one(uri, index, chunk, receipt):
+            if (not isinstance(receipt, dict) or receipt.get('source_uri') != uri
+                    or type(receipt.get('source_chunk')) is not int or receipt['source_chunk'] != index
+                    or receipt.get('state') != 'draft_ready' or receipt.get('private') is not True):
+                raise ConflictError('Wiki extraction resume is not a sequential source/chunk prefix')
+            # No per-receipt check_source_use here: resume replay is bracketed by
+            # authorize_inputs above and the post-extract recheck, same policy as
+            # the terminal receipt replay. Per-receipt rechecks ran 4 ACL reads
+            # (2 root stats + 2 _ensure_access LevelDB scrolls) × 2 calls × 2000+
+            # receipts, burning ~8 min of CPU per resume and stalling the event
+            # loop until worker leases expired (the attempt churn loop).
+            payload = await self._read_payload(ctx, plan, receipt)
+            if (payload.get('configuration') != configuration or payload.get('source_uri') != uri
+                    or payload.get('source_chunk') != index or payload.get('prompt_sha256') != _prompt_for(uri, chunk)[1]
+                    or not isinstance(payload.get('candidates'), list)
+                    or type(payload.get('model_attempts')) is not int
+                    or not 1 <= payload['model_attempts'] <= self.limits.retries + 1
+                    or type(receipt.get('candidate_count')) is not int
+                    or receipt['candidate_count'] != len(payload['candidates'])):
+                raise ConflictError('Wiki extraction resume receipt lacks matching content/configuration')
+            for candidate in payload['candidates']:
+                if not isinstance(candidate, dict):
+                    raise SchemaError('Invalid persisted candidate')
+                # Independently repeat structural/evidence checks on persisted outputs.
+                self._validate({'kind': candidate.get('kind'),
+                                'relative_path': candidate.get('uri', '').removeprefix(pin.collection.target_uri + '/'),
+                                'markdown': candidate.get('markdown'), 'evidence': candidate.get('evidence')},
+                               schemas, pin.collection.target_uri, uri, chunk)
+            return receipt, payload
+
+        all_items = await _plan_items()
+        # Deferred sections produce no receipt, so the retained prefix is a
+        # (uri, chunk) key set, not a positional prefix; match receipts to
+        # their planned items by key and re-dispatch whatever is missing.
+        saved_keys = {}
+        for receipt in saved:
+            if (not isinstance(receipt, dict) or type(receipt.get('source_uri')) is not str
+                    or type(receipt.get('source_chunk')) is not int):
+                raise ConflictError('Wiki extraction resume is not a sequential source/chunk prefix')
+            key = (receipt['source_uri'], receipt['source_chunk'])
+            if key in saved_keys:
+                raise ConflictError('Wiki extraction resume repeats one source/chunk key')
+            saved_keys[key] = receipt
+        replayed = 0
+        for uri, index, chunk in all_items:
+            if (uri, index) not in saved_keys:
+                continue
+            receipt, payload = await _replay_one(uri, index, chunk, saved_keys[(uri, index)])
+            receipts.append(receipt)
+            candidate_count += len(payload['candidates'])
+            calls += payload['model_attempts']
+            replayed += 1
+        if len(saved) != replayed or any((r.get('source_uri'), r.get('source_chunk')) not in
+                                        {(u, i) for u, i, _c in all_items} for r in saved):
             raise ConflictError('Wiki extraction resume contains extra sources or chunks')
+        if replayed and (calls != resume['model_calls'] or candidate_count != resume['candidate_count']):
+            raise ConflictError('Wiki extraction resume counters do not match retained receipts')
+        # Unknown model concurrency capability (injected test doubles) must
+        # serialize; the live wiki model section declares max_concurrent.
+        live_max = getattr(model, 'max_concurrent', None)
+        window = max(1, live_max if type(live_max) is int and live_max > 0 else 1)
+        failures = {}
+        failed_uris = set()
+        fresh = [item for item in all_items if (item[0], item[1]) not in saved_keys]
+        start = 0
+        while start < len(fresh):
+            batch = fresh[start:start + window]
+            outcomes = await asyncio.gather(*(_extract_one(uri, index, chunk) for uri, index, chunk in batch))
+            for (uri, index, _chunk), (outcome, payload) in zip(batch, outcomes):
+                if outcome['state'] == 'failed':
+                    failures[outcome['error']] = failures.get(outcome['error'], 0) + 1
+                    failed_uris.add(uri)
+                    continue
+                if candidate_count + len(payload['candidates']) > self.limits.candidates:
+                    raise ExtractionError('EXTRACTION_LIMIT', 'Candidate count exceeds extraction bound')
+                receipts.append(outcome)
+                candidate_count += len(payload['candidates'])
+                calls += payload['model_attempts']
+                chunk_position += 1
+            # Snapshot the counters; the receipt array itself only lands in a
+            # content-addressed manifest blob when the resume prefix has grown
+            # enough to be worth persisting. Writing 650 KiB inline per batch
+            # made a real handbook run spend minutes of JSON+SQLite work per
+            # batch at the tail.
+            if checkpoint is not None and (len(receipts) - self._manifest_len >= 256 or start + window >= len(fresh)):
+                self._manifest_len = len(receipts)
+                manifest_ref = await self._write_manifest(ctx, receipts, plan, configuration)
+                await checkpoint({'build_id': build_id, 'plan_digest': plan.digest,
+                                  'configuration': configuration, 'receipts_ref': manifest_ref,
+                                  'candidate_count': candidate_count, 'model_calls': calls,
+                                  'failed_sections': dict(failures),
+                                  'state': 'extracting', 'private': True,
+                                  'authorization_revision': authorization.policy_revision})
+            start += window
+        if failures and not receipts:
+            # Preserve the single original error code when it is unambiguous.
+            code = next(iter(failures)) if len(failures) == 1 else 'MODEL_FORMAT_ERROR'
+            raise ExtractionError(code,
+                                  f'All {sum(failures.values())} extracted sections failed model contract')
         if calls > self.limits.model_calls or candidate_count > self.limits.candidates:
             raise ExtractionError('EXTRACTION_LIMIT', 'Persisted extraction exceeds configured bounds')
         final_authorization = await self.planner.authorize_inputs(ctx, build_id)
@@ -394,7 +479,44 @@ DATA_JSON:\n''' + _json(payload)
                 'authorization_revision': final_authorization.policy_revision,
                 'knowledge_state': 'candidate' if candidate_count else 'empty_knowledge',
                 'candidate_count': candidate_count, 'model_calls': calls, 'receipts': receipts,
+                'failed_sections': dict(failures), 'failed_sources': sorted(failed_uris),
                 'configuration': configuration, 'coverage': coverage, 'diagnostic_publishable': False}
+
+    async def _write_manifest(self, ctx, receipts, plan, configuration):
+        manifest = {'version': 1, 'account_id': ctx.account_id, 'plan_digest': plan.digest,
+                    'configuration': configuration, 'receipts': receipts}
+        return await archive_bytes(self.fs, _json(manifest).encode(), ctx)
+
+    async def _read_manifest(self, ctx, plan, configuration, ref):
+        if (not isinstance(ref, dict) or set(ref) != {'sha256', 'size'} or type(ref['size']) is not int
+                or ref['size'] < 0 or ref['size'] > 1024 * 1024 * 64):
+            raise SchemaError('Invalid Wiki extraction receipt manifest reference')
+        try:
+            raw = self.fs._handle_agfs_read(await self.fs._async_agfs.read(blob_path(self.fs, ctx, ref['sha256'])))
+        except (FileNotFoundError, NotADirectoryError, IsADirectoryError) as exc:
+            raise ConflictError('Wiki extraction receipt manifest is missing') from exc
+        if len(raw) != ref['size'] or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+            raise ConflictError('Wiki extraction receipt manifest is missing or corrupted')
+        try:
+            manifest = json.loads(raw)
+        except (ValueError, TypeError):
+            raise ConflictError('Wiki extraction receipt manifest is not valid JSON')
+        if not isinstance(manifest, dict) or not isinstance(manifest.get('receipts'), list):
+            raise ConflictError('Wiki extraction receipt manifest does not match fixed execution configuration')
+        if 'plan_digest' in manifest or 'configuration' in manifest:
+            if (manifest.get('plan_digest') != plan.digest
+                    or manifest.get('configuration') != configuration
+                    or manifest.get('account_id') != ctx.account_id):
+                raise ConflictError('Wiki extraction receipt manifest does not match fixed execution configuration')
+        else:
+            # Legacy shape written before the manifest carried its own bindings.
+            # The blob is sha/size-verified above and account-checked here; every
+            # replayed receipt re-binds to build/plan/schema at read time, so a
+            # foreign or stale legacy blob cannot survive the replay.
+            if (manifest.get('version') != 1 or manifest.get('account_id') != ctx.account_id
+                    or set(manifest) != {'version', 'account_id', 'receipts'}):
+                raise ConflictError('Wiki extraction receipt manifest does not match fixed execution configuration')
+        return manifest['receipts']
 
     async def read_draft(self, ctx, build_id, *, expected_plan_digest, receipt):
         plan = await self.planner.get(ctx, build_id)
@@ -405,6 +527,21 @@ DATA_JSON:\n''' + _json(payload)
         payload = await self._read_payload(ctx, plan, receipt)
         await self.planner.authorize_inputs(ctx, build_id)
         return payload
+
+    async def read_draft_payload(self, ctx, build_id, *, expected_plan_digest, receipt, plan=None):
+        """Re-read one server-written draft blob WITHOUT re-authorizing the whole plan.
+
+        Callers that replay many receipts must bracket the batch with one
+        authorize_inputs before and a full recheck after instead of paying the
+        O(plan) authorization scan per receipt (quadratic at real scale). Pass the
+        already-fetched ``plan`` to also skip the per-receipt planner.get, which
+        re-reads the plan row and re-runs _ensure_access for every source.
+        """
+        if plan is None:
+            plan = await self.planner.get(ctx, build_id)
+        if plan.digest != expected_plan_digest:
+            raise ConflictError('Wiki draft belongs to another fixed plan')
+        return await self._read_payload(ctx, plan, receipt)
 
     async def _read_payload(self, ctx, plan, receipt):
         build_id = plan.build_id
@@ -422,8 +559,8 @@ DATA_JSON:\n''' + _json(payload)
             raise SchemaError('Invalid private Wiki draft payload')
         if (payload.get('account_id'), payload.get('build_id'), payload.get('plan_digest')) != (ctx.account_id, build_id, plan.digest):
             raise PermissionDeniedError('Private Wiki draft belongs to another account or plan')
-        if payload.get('configuration', {}).get('schema_digest') != json.loads(plan.manifest)['collection']['schema_digest']:
+        if payload.get('configuration', {}).get('schema_digest') != plan.body['collection']['schema_digest']:
             raise SchemaError('Private Wiki draft schema does not match fixed plan')
-        if payload.get('source_uri') not in {source.uri for source in plan.sources}:
+        if payload.get('source_uri') not in plan.source_uris:
             raise PermissionDeniedError('Private Wiki draft source is outside its plan')
         return payload

@@ -193,9 +193,18 @@ class TaskTracker:
     TTL_COMPLETED = 86_400  # 24 hours
     TTL_FAILED = 604_800  # 7 days
     CLEANUP_INTERVAL = 300  # 5 minutes
+    # I065/I067: a server restart orphans in-process RUNNING tasks. Records
+    # stamped with a previous process's runner epoch are settled at first sight
+    # (unless durable queue work survives); the TTL is the fallback for records
+    # written before epochs existed.
+    TTL_ACTIVE_STALE = 86_400 * 3  # 3 days without any update → orphaned
 
     def __init__(self, store: TaskStore, *, max_concurrent_store_io: int = 8) -> None:
         self._store = store
+        # Identity of the current runner process. An ACTIVE record stamped by a
+        # different epoch belongs to a dead in-process coroutine (e.g. a
+        # fire-and-forget _run_tracked killed by a server restart).
+        self._runner_epoch = uuid4().hex
         self._tasks: Dict[str, TaskRecord] = {}
         self._lock = threading.Lock()
         # The keyed registries provide process-local ordering. A deployment with
@@ -390,7 +399,7 @@ class TaskTracker:
             resource_id=resource_id,
             account_id=account_id,
             user_id=user_id,
-            meta=dict(meta or {}),
+            meta={"runner_epoch": self._runner_epoch, **(meta or {})},
             auth=dict(auth or {}),
         )
         return await self._dispatcher.run(lambda: self._create_on_owner(task, task_id is not None))
@@ -447,6 +456,38 @@ class TaskTracker:
             )
         )
 
+    def _runner_epoch_of(self, task: TaskRecord) -> Optional[str]:
+        value = task.meta.get("runner_epoch") if task.meta else None
+        return value if isinstance(value, str) and value else None
+
+    def _is_dead_runner_record(self, task: TaskRecord, now: float) -> bool:
+        """ACTIVE record owned by a process that no longer exists.
+
+        Epoch match means the stamping runner is this process, so liveness is
+        real. An unstamped record has no owner evidence at all — only the age
+        fallback can condemn it.
+        """
+        if task.status not in _ACTIVE_STATUSES:
+            return False
+        epoch = self._runner_epoch_of(task)
+        if epoch is None:
+            return now - task.updated_at > self.TTL_ACTIVE_STALE
+        return epoch != self._runner_epoch
+
+    async def _reconcile_stale_active_on_owner(self, loaded: List[TaskRecord]) -> None:
+        """Settle ACTIVE records whose runner is gone before they block dispatch.
+
+        Durable queue work (rebuilt QueueFS messages) keeps its record alive:
+        the rebooted work index still owns it and re-stamping happens when the
+        rebuilt processor starts.
+        """
+        for loaded_task in loaded:
+            if not self._is_dead_runner_record(loaded_task, time.time()):
+                continue
+            if self._work_index.has_work(loaded_task.task_id):
+                continue
+            await self._fail_orphaned(loaded_task)
+
     async def _create_if_no_running_on_owner(
         self,
         business_key: tuple[str, str, str, str],
@@ -456,15 +497,19 @@ class TaskTracker:
         user_id: str,
     ) -> Optional[TaskRecord]:
         async with self._business_locks.acquire(business_key):
+            # Reload from the store first, then reconcile staleness per record:
+            # the cache keeps the NEWEST copy, so a store-side stale timestamp is
+            # only visible by reading the store rows directly.
+            loaded = await self._load_all_from_store(account_id, user_id)
+            await self._reconcile_stale_active_on_owner(loaded)
             self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
 
-            tasks = self._cache_snapshot()
             has_active = any(
                 t.task_type == task_type
                 and t.resource_id == resource_id
                 and self._matches_owner(t, account_id, user_id)
                 and t.status in _ACTIVE_STATUSES
-                for t in tasks
+                for t in self._cache_snapshot()
             )
             if has_active:
                 return None
@@ -484,6 +529,30 @@ class TaskTracker:
             resource_id,
         )
         return self._copy(task)
+
+    async def _fail_orphaned(self, stale: TaskRecord) -> None:
+        """Settle an ownerless stale ACTIVE record as failed, bypassing the work index.
+
+        The caller passes the store-side row (the cache keeps the newest copy and
+        therefore hides the staleness this check is meant to detect); the settle
+        writes through that same stale row instead of re-reading the cache.
+        """
+        async with self._task_locks.acquire(stale.task_id):
+            if stale.status not in _ACTIVE_STATUSES:
+                return
+            updated = deepcopy(stale)
+            updated.status = TaskStatus.FAILED
+            updated.stage = TaskStatus.FAILED.value
+            if self._runner_epoch_of(stale) is not None:
+                updated.error = (
+                    "orphaned: owning server process exited; re-dispatch the operation"
+                )
+            else:
+                updated.error = "orphaned: no owner update within staleness window"
+            updated.updated_at = self._next_updated_at(stale)
+            updated.auth = {}
+            await self._persist_and_publish("update", updated, previous=stale)
+            logger.info("[TaskTracker] Settled orphaned task %s as failed", stale.task_id)
 
     async def start(
         self,
@@ -511,6 +580,10 @@ class TaskTracker:
                 updated.status = TaskStatus.RUNNING
                 if stage is not None:
                     updated.stage = stage
+                # Re-stamp on every start: a record adopted by the current
+                # process (e.g. recovered queue work) is alive again.
+                updated.meta = dict(updated.meta)
+                updated.meta["runner_epoch"] = self._runner_epoch
                 updated.updated_at = self._next_updated_at(task)
                 await self._persist_and_publish("update", updated, previous=task)
 
@@ -1123,7 +1196,11 @@ class TaskTracker:
         account_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> bool:
-        """Check if there is already a running task for the given type+resource."""
+        """Check if there is already a running task for the given type+resource.
+
+        Settles dead-runner ACTIVE records first, so a server restart cannot
+        leave a stale RUNNING blocking re-dispatch with CONFLICT.
+        """
         return await self._dispatcher.run(
             lambda: self._has_running_on_owner(
                 task_type,
@@ -1141,6 +1218,8 @@ class TaskTracker:
         user_id: Optional[str],
     ) -> bool:
         if account_id is not None:
+            loaded = await self._load_all_from_store(account_id, user_id)
+            await self._reconcile_stale_active_on_owner(loaded)
             self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
         tasks = self._cache_snapshot()
         return any(

@@ -1,7 +1,7 @@
 """Durable KB job submission, current-identity reads, queue listing and cancellation."""
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, model_validator
 
 from openviking.indexing.publication import configured_store
@@ -58,11 +58,11 @@ class JobRequest(BaseModel):
         return self
 
 
-def get_job_service():
+def get_job_service(request: Request):
     fs, repository = get_service().viking_fs, configured_store()
     if fs is None or repository is None:
         raise FailedPreconditionError('Durable jobs require initialized VikingFS and publication authority')
-    return KBJobService(fs, repository)
+    return KBJobService(fs, repository, max_source_uris=request.app.state.config.wiki.documents)
 
 
 # Waiting states are not yet claimed by a worker; they hold a real queue position.

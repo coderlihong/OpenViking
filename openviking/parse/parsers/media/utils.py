@@ -303,17 +303,44 @@ async def generate_image_summary(
         signature = semantics_signature()
         for occurrence in occurrences:
             prompt = render_prompt("parsing.image_summary", {"context": occurrence["context"]})
-            async with llm_sem or asyncio.Semaphore(1):
-                response = await vlm.get_vision_completion_async(
-                    prompt=prompt,
-                    images=[
-                        prepare_image_bytes_for_model(
-                            image_bytes, config=getattr(config, "image", None)
-                        )
-                    ],
-                )
+            response = ""
+            for attempt in range(2):
+                async with llm_sem or asyncio.Semaphore(1):
+                    response = await vlm.get_vision_completion_async(
+                        prompt=prompt,
+                        images=[
+                            prepare_image_bytes_for_model(
+                                image_bytes, config=getattr(config, "image", None)
+                            )
+                        ],
+                    )
+                if response.strip():
+                    break
+                if attempt == 0:
+                    # One transient-failure retry; a second empty reply is
+                    # treated as a low-information image below.
+                    await asyncio.sleep(2)
             if not response.strip():
-                raise ValueError("VLM returned an empty image summary")
+                # VLM deterministically returns nothing for near-blank images.
+                # Settle them with an honest placeholder so the joint record
+                # still publishes instead of blocking reindex forever.
+                logger.warning(
+                    f"[MediaUtils.generate_image_summary] VLM returned empty twice, "
+                    f"using low-information placeholder: {image_uri}"
+                )
+                summaries.append(
+                    {
+                        **occurrence,
+                        "summary": (
+                            "Low-information image: the picture contains little or no "
+                            "recognizable content (possibly a near-blank page or scan "
+                            "artifact); no textual or diagrammatic details were extractable."
+                        ),
+                        "asset_sha256": hashlib.sha256(image_bytes).hexdigest(),
+                        "semantics_signature": signature,
+                    }
+                )
+                continue
             summaries.append(
                 {
                     **occurrence,

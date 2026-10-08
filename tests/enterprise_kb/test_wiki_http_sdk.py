@@ -60,6 +60,21 @@ async def test_async_sdk_registers_and_reads_fixed_collection_over_http(api):
     finally:await c.close()
 
 
+async def test_sdk_registers_and_reads_entity_catalog_over_http(api):
+    app,e,ctx=api;c=client(app)
+    try:
+        canonical='candidate-'+'ab'*32
+        entry={'canonical_id':canonical,'entity_type':'Thing','schema_id':'business','schema_version':'1',
+               'schema_digest':'cd'*32,'aliases':['SY215C挖掘机'],'source_uri':'viking://resources/wiki/sany/Thing.md'}
+        registered=await c.kb.register_wiki_entities('sany-wiki',[entry])
+        assert registered=={'registered':1,'aliases':{'SY215C挖掘机':canonical}}
+        fetched=await c.kb.get_wiki_entity('sany-wiki',canonical)
+        assert fetched['canonical_id']==canonical and fetched['aliases']==['SY215C挖掘机']
+        rows=await c.kb.list_wiki_entities('sany-wiki')
+        assert [r['canonical_id'] for r in rows]==[canonical]
+    finally:await c.close()
+
+
 def test_sync_sdk_uses_same_http_routes_and_result_contract(api):
     app,e,ctx=api;c=SyncHTTPClient(url='http://test',api_key='',extra_headers={})
     c._async_client._http=httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test')
@@ -121,6 +136,21 @@ async def test_http_invalid_or_extra_fields_do_not_create_schema(api):
     with e.store.db() as db:assert db.execute('SELECT count(*) FROM wiki_schemas').fetchone()[0]==0
 
 
+async def test_merge_prepare_route_rejects_malformed_selections_over_http(api):
+    from openviking.server.routers import wiki as wiki_router
+    app,e,ctx=api
+    app.dependency_overrides[wiki_router.get_merger]=lambda: AsyncMock()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as c:
+        response=await c.post('/api/v1/kb/wiki/merges',json={'selections':[]})
+        assert response.status_code==422
+        response=await c.post('/api/v1/kb/wiki/merges',json={'selections':[{'build_id':'b','plan_digest':'xx','receipts':[{}]}]})
+        assert response.status_code==422
+        response=await c.post('/api/v1/kb/wiki/merges',json={'selections':[{'build_id':'b','plan_digest':'ab'*32,'receipts':[]}]})
+        assert response.status_code==422
+        response=await c.post('/api/v1/kb/wiki/merges',json={'selections':[{'build_id':'b','plan_digest':'ab'*32,'receipts':[{}],'extra':1}]})
+        assert response.status_code==422
+
+
 async def test_collection_get_enforces_existing_fs_permission(api):
     app,e,ctx=api;c=client(app)
     try:
@@ -141,7 +171,9 @@ def test_openapi_contains_preparation_routes_and_strict_request_models(api):
                               '/api/v1/kb/wiki/jobs/{job_id}/drafts/{draft_index}',
                               '/api/v1/kb/wiki/collections/{collection_id}/migrate-domains',
                               '/api/v1/kb/wiki/collections/{collection_id}/migration-inspection',
-                              '/api/v1/kb/wiki/merges/publish'}
+                              '/api/v1/kb/wiki/entities','/api/v1/kb/wiki/entities/{namespace_id}',
+                              '/api/v1/kb/wiki/entities/{namespace_id}/{canonical_id}',
+                              '/api/v1/kb/wiki/merges','/api/v1/kb/wiki/merges/publish'}
     assert spec['components']['schemas']['SchemaRequest']['additionalProperties'] is False
     assert 'account_id' not in spec['components']['schemas']['CollectionRequest']['properties']
     assert spec['components']['schemas']['BuildRequest']['additionalProperties'] is False

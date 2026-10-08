@@ -158,6 +158,26 @@ class _OpsMixin:
         if registry is not None:
             registry.tombstone(self._ctx_or_default(ctx).account_id, uri)
 
+    def _revive_tombstoned_uri(self, uri: str, ctx: Optional[RequestContext]) -> None:
+        """Re-creating a source as current content clears its deletion tombstone.
+
+        The tombstone matched the URI or an ancestor directory; every ancestor
+        tombstone between the URI and the root must fall for the write to be
+        readable again.
+        """
+        registry = self._tombstone_registry()
+        if registry is None:
+            return
+        account = self._ctx_or_default(ctx).account_id
+        normalized = uri.rstrip("/") or "viking://"
+        prefix = "" if normalized == "viking://" else normalized[len("viking://") :]
+        while True:
+            registry.clear_tombstone(account, normalized)
+            if not prefix:
+                break
+            prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
+            normalized = "viking://" + prefix
+
     # ========== AGFS Basic Commands ==========
 
     async def read(
@@ -213,6 +233,7 @@ class _OpsMixin:
     ) -> str:
         """Write file"""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
+        self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         if isinstance(data, str):
             data = data.encode("utf-8")
@@ -231,6 +252,7 @@ class _OpsMixin:
     ) -> None:
         """Create directory."""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
+        self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         # Always ensure parent directories exist before creating this directory
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)

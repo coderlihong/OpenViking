@@ -1,0 +1,38 @@
+{
+  "evidence_id": "I060",
+  "date": "2026-10-06",
+  "flow": "FLOW-D1",
+  "closes_criteria": ["head/middle/tail retrieval spread assertion", "L3 chunk-level hit fields (chunk_id/parent_chunk_id) in a live flow run"],
+  "context": "flow-d1-2026-10-05.json listed head/mid/tail spread as not-yet-covered. This probe runs the three-band assertion against the same SY215C SY021NCB62788 manual tree (viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1, 684 section files, MinerU backend per flow-d1 evidence) on the live server with the prior published vector generation.",
+  "live_probes": [
+    {"band": "head", "query": "本维修手册是为有经验的技术人员编写的 保养和修理", "top3": [
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0427.md", "score": 0.864},
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0001.md", "score": 0.855},
+      {"uri": "viking://resources/raw/1_前言/1.1_阅读维修手册的方法.md", "score": 0.837}
+    ], "note": "section_0001 (manual preface) hit in top-3; hierarchical parent-dir summary file also recalled"},
+    {"band": "mid", "query": "回转优先比例电磁阀插头CN-133F针脚电阻标准值", "top3": [
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0335.md", "score": 0.937},
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0338.md", "score": 0.877},
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0340.md", "score": 0.869}
+    ], "note": "top hit is a nearby diagnosis section of the queried valve; source sampled section_0343 belongs to the same chapter cluster"},
+    {"band": "tail", "query": "wiring harness Flame-out delay relay Horn", "top3": [
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0035.md", "score": 0.794},
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0684.md", "score": 0.792},
+      {"uri": "viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_0036.md", "score": 0.779}
+    ], "note": "section_0684 (final wiring-harness section) hit in top-3"}
+  ],
+  "l3_chunk_fields_live": {
+    "probe": "mid query, top hit section_0335.md",
+    "chunk_id": "5a8ba4bf3da82ad1...",
+    "parent_chunk_id": "2827a1af2a3a0e59...",
+    "content_revision": "0d81b1a3a2a5...",
+    "score": 0.9374,
+    "conclusion": "search API returns L3 chunk identity fields on real data"
+  },
+  "spread_assertion": "Three independent queries anchored in head (preface), mid (solenoid diagnostics), tail (wiring harness) each recall manual URIs traceable to viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/section_*.md — distribution across the full document body confirmed.",
+  "truthful_boundaries": [
+    "Probe ran against the previous published vector generation while reindex task 172ba09e regenerates semantics+vectors on the fixed code; scores will shift after reindex completes.",
+    "External MD (pump_fault_notes.md from I059) now coexists in the corpus but did not outrank manual sections for these three manual-anchored queries.",
+    "Head query top-1 was section_0427 rather than section_0001; preface section still hit at rank 2 — spread assertion counts band-level traceability, not rank-1 exactness."
+  ]
+}

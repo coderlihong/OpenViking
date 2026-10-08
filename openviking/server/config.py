@@ -309,6 +309,35 @@ class TempUploadConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class WikiExtractionLimitsConfig(BaseModel):
+    """Bounds for one wiki extraction run. A real handbook tree decomposes into
+    thousands of per-section model calls, so the defaults must be raiseable
+    without a code change."""
+    source_chars: int = Field(12000, ge=1)
+    model_calls: int = Field(256, ge=1)
+    candidates: int = Field(512, ge=1)
+    response_bytes: int = Field(1024 * 1024, ge=1)
+    prompt_bytes: int = Field(4 * 1024 * 1024, ge=1)
+    timeout_seconds: float = Field(120, gt=0, le=3600)
+    retries: int = Field(1, ge=0, le=2)
+
+    model_config = {"extra": "forbid"}
+
+
+class WikiCaptureConfig(BaseModel):
+    """Wiki source capture limits. Documents counts a real parsed handbook tree
+    (a 1072-page PDF expands to ~2900 chapter/page Markdown files), so the
+    defaults must be raiseable without a code change."""
+    documents: int = Field(2048, ge=1)
+    entries: int = Field(16384, ge=1)
+    depth: int = Field(64, ge=1)
+    document_bytes: int = Field(8 * 1024 * 1024, ge=1)
+    total_bytes: int = Field(64 * 1024 * 1024, ge=1)
+    extraction: WikiExtractionLimitsConfig = Field(default_factory=WikiExtractionLimitsConfig)
+
+    model_config = {"extra": "forbid"}
+
+
 class ToolOutputExternalizationConfig(BaseModel):
     """External storage controls for oversized tool outputs."""
 
@@ -374,6 +403,7 @@ class ServerConfig(BaseModel):
     public_base_url: Optional[str] = None
     upload_signed_ttl_seconds: int = 600
     temp_upload: TempUploadConfig = Field(default_factory=TempUploadConfig)
+    wiki: WikiCaptureConfig = Field(default_factory=WikiCaptureConfig)
     user_config_defaults: UserConfig = Field(default_factory=UserConfig)
     agent_evolution: AgentEvolutionConfig = Field(default_factory=AgentEvolutionConfig)
     tool_output_externalization: ToolOutputExternalizationConfig = Field(

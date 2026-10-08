@@ -1,0 +1,28 @@
+{
+  "id": "I076",
+  "date": "2026-10-06",
+  "title": "FLOW-W1 真机全链重跑（I075 staged commit 之后）：upload→materialize→execute→draft_ready 八断言全过",
+  "requirement": "FLOW-W1 完成条件在 G3 服务接线+整树替换落地后的当前代码上复验：HTTP 上传 Markdown → 共享物化 → draft profile 抽取作业 → draft_ready 私有候选，证据逐字可溯源且草稿 URI 在目标 namespace 下。",
+  "verdict": "PASS",
+  "server": "local OpenViking 127.0.0.1:1933, flowtest account flowadmin key",
+  "run": {
+    "script": "tests/enterprise_kb/flows/flow_w1.py --ingest-key flow-w1-ingest-i076 --exec-key flow-w1-exec-i076",
+    "assertions": {
+      "assert_plan_prepared": true,
+      "assert_materialized": true,
+      "assert_job_kind_w1": true,
+      "assert_draft_ready": true,
+      "assert_has_candidate": true,
+      "candidate_count": 1,
+      "assert_source_traceable": true,
+      "assert_evidence_verbatim": true,
+      "assert_draft_under_target": true
+    }
+  },
+  "interpretation": "I047 轮 W1 真机证据未被后续 G 链（POLICY_VERSION v3、publication_adjudication 服务接线）与 I075 staged commit 改动破坏：draft profile 零判定器开销路径仍然畅通。",
+  "truthful_boundaries": [
+    "本轮为 draft profile 真机链；strict_diagnostic 发布语义仍是门禁 False（六发布门禁业务启用未做，见 I070/I074 口径）",
+    "首轮撞 IDEMPOTENCY_CONFLICT（历史 flow-w1-exec key 绑定旧输入）后换 -i076 后缀 key 重跑成功——幂等键跨输入版本复用被正确拒绝，属设计行为"
+  ],
+  "next": ["FLOW-W2 真机重跑进行中", "strict profile 六发布门禁的业务回执启用仍留作业务侧任务"]
+}

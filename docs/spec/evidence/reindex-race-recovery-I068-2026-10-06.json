@@ -1,0 +1,68 @@
+{
+  "id": "I068",
+  "date": "2026-10-06",
+  "title": "D1 reindex 向量阶段批失败毒化根因闭环：archive_bytes 同 sha blob 并发写撞 RAGFS 0s auto-pathlock",
+  "trigger": "task 42c9a071（semantic_and_vectors，I067 重投）语义阶段 4839 节点 13:53 全部完成后，向量阶段 rebuilt=0/failed=5344 终态 failed，需要根因解释与修复。",
+  "symptom_timeline": {
+    "13:53": "语义阶段归零（目录 L0/L1 + 933 图 VLM 摘要全部完成），进入向量阶段",
+    "13:55:28.646": "单条 lock-timeout 错误：'internal error: lock error: lock acquire timed out after 0ms'，blob 16332fc6….bin 的 mtime 13:55:28.645995 与错误同秒——赢家正在写同一路径",
+    "13:55:47 起": "9 条 SEMANTICS_REQUIRED（dspark defer 的图重生成失败，单独计数）+ 10 条 Deferred image summary；随后队列错误级联 5343 条",
+    "15:44": "任务终态 failed：rebuilt=0 / failed_records=5344 / duration_ms=11161881（约 3.1h，其中语义阶段占 ~2.7h）"
+  },
+  "root_cause_chain": [
+    "L1 触发面：D1 树存在重复内容文件（PDF 占位图/标题切片），多个并发 process_file（≤64）对同一 sha256 内容同时走 archive_bytes",
+    "L2 缺陷：archive_bytes 的 stat→write 窗口非原子——输家 stat 未命中 blob 后发起 write，而赢家正持有该路径的 RAGFS auto-pathlock；RAGFS 运行时等待超时固定 0.0 秒（agfs_config.py lock_timeout_secs deprecated 强制回 0.0），输家立即收到 lock-timeout 内部错误",
+    "L3 放大器：异常计入 file_counters.failed_records（reindex_executor.py）",
+    "L4 批毒化：text_publication_batch.finish(success=False) → fail_batch 把同批 4830 个 build 全标 failed（all-or-nothing 批粒度，成员拿不到 ack 就不能发布半代）",
+    "L5 级联：在途/队列消息 can_write=False（state∈{building,queued} 且 desired==generation 门禁按设计拒绝）→ guarded write BEGIN 拒绝 → 5343 队列错误 → 任务 failed"
+  ],
+  "not_the_cause": [
+    "write guard/can_write 门禁本身——按设计工作，阻止了半代发布",
+    "VLM 并发拥塞——语义阶段本轮正常完成（I067 处置生效），故障面完全不同",
+    "8 条 SEMANTICS_REQUIRED——单独计数不进 failed_records，是 dspark defer 的次生面非根因"
+  ],
+  "fix_landed": {
+    "code": "openviking/indexing/content.py archive_bytes：新增 _is_lock_conflict 谓词；mkdir/write 的 except 分支识别 RAGFS 0s lock-timeout 与 FileExistsError 后放行，落到 read-back 验证（stored != raw → RuntimeError verification）——同 sha 内容的输家直接复用赢家的 blob，无需自己写成功",
+    "regression": "tests/enterprise_kb/test_content_publication.py 新增 2 条：test_duplicate_blob_races_settle_on_shared_revision（gather 两个同内容 archive_bytes 收敛到同一 revision）、test_lock_conflicted_write_recovers_from_winners_blob（预置赢家 blob 后 loser 经 read-back 兜底）；9 passed + 相邻回归 test_source_write_fence/test_index_plan 25 passed"
+  },
+  "design_decision": {
+    "batch_granularity": "保留 all-or-nothing 批粒度不改——receipts 完整性要求成员拿不到 ack 就不能发布半代；修掉 L2 竞态后触发面消失",
+    "pathlock_timeout": "不改回非零等待——0s 固定值是 I067 后的运行时契约，竞态由幂等 read-back 兜底而非阻塞等待"
+  },
+  "redispatch": {
+    "previous_task": "42c9a071（failed，保留作验收反例）",
+    "new_task": "76ffbae7-cfcc-4a8e-85d8-713a1e4355f9（flowadmin 键投递，root 键禁租户 API 是既有约束）",
+    "early_signal": "重启后服务日志零错误签名；Semantic-Nodes DAG 51→134 done/90s（~55 节点/分），failed 恒 0"
+  },
+  "final_receipt": {
+    "task_status": "completed",
+    "duration_ms": 9370403,
+    "scanned_records": 4839,
+    "rebuilt_records": 4840,
+    "failed_records": 0,
+    "deleted_records": 0,
+    "unsupported_records": 0,
+    "semantics_required_records": 4,
+    "warnings": "4 条 SEMANTICS_REQUIRED（图片摘要当前性依赖，单独计数不阻塞任务终态）",
+    "builds_new_generation": "4835 行全 published（06:48 落库 queued → 09:01 前 翻转完成），对比失败轮 42c9a071 的 5344 failed 全翻转",
+    "batches_channel": "published:106+ / failed:17（历史代累计）/ queued 清空"
+  },
+  "single_point_verification": {
+    "type_backfill": "基线三组全空（must text/image/not image 均 returned 0）→ 终态后 type=text must 8 命中全文本 chunk、type=image must 8 命中全 images/*.png 路径——filter 组合过滤对新代向量真实生效",
+    "i060_probe": {
+      "head_中文开篇": "top1 维修手册主文档 0.920，PDF 视觉图 chunk 进入 top5",
+      "mid_CN133F电阻标准值": "top1/top2 精准命中 H031/H033 回转优先比例阀故障代码条目（0.917/0.906）",
+      "tail_英文探针": "section_0035 等英文段落命中，score 梯度合理"
+    }
+  },
+  "residual_items": [
+    "checkpoint 续跑（长跑中断不整批重来）仍是待办，本轮未动",
+    "4 条 SEMANTICS_REQUIRED 图片定点处置中（I069）：1c87c6a2.png 系近空白页 VLM 确定性空响应（重试仍空），34da8c0b/b13d71f2/b3e53252 三张 jpg 内容丰富属瞬时失败正在定点重投"
+  ],
+  "evidence_files": [
+    "/tmp/ov-reindex-42c9a071-final.json（失败终态回执）",
+    "/tmp/ov-reindex-76ffbae7-final.json（成功终态回执）",
+    "/private/tmp/ov-server-type.log（13:55:28 lock-timeout + 级联拒绝时序）",
+    "tests/enterprise_kb/test_content_publication.py（竞态回归测试）"
+  ]
+}

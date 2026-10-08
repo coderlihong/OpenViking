@@ -14,6 +14,7 @@ measured with the real model tokenizer when one is configured.
 
 import hashlib
 import json
+import logging
 import posixpath
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlsplit
@@ -21,7 +22,10 @@ from urllib.parse import unquote, urlsplit
 from markdown_it import MarkdownIt
 
 from openviking.indexing.content import draft_sources
+from openviking_cli.exceptions import NotFoundError
 from openviking.utils.token_estimation import estimate_text_tokens
+
+logger = logging.getLogger(__name__)
 
 VERSION = "image-context-v3"
 
@@ -309,7 +313,13 @@ async def collect_image_contexts(
                 if registry and getattr(ctx, "account_id", None)
                 else None
             )
-            content = await fs.read_file(source_uri, ctx=ctx)
+            try:
+                content = await fs.read_file(source_uri, ctx=ctx)
+            except NotFoundError:
+                # A source listed before deletion (or blocked by a tombstone on a
+                # re-created tree) must not abort the chapter's remaining images.
+                logger.warning("Skipping vanished image context source: %s", source_uri)
+                continue
             if isinstance(content, bytes):
                 content = content.decode("utf-8")
             found = extract_occurrences(

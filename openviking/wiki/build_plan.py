@@ -7,12 +7,13 @@ extraction, domain validation and publication must still run before execution.
 Only derived Markdown is archived; source citations keep their original URI.
 """
 from dataclasses import asdict, dataclass
+from functools import cached_property
 import hashlib
 import json
 from pathlib import Path
 
 from openviking.indexing.content import archive_bytes, blob_path, draft_sources
-from openviking.storage.acl import AclAction
+from openviking.storage.acl import AclAction, _current_acl_view
 from openviking.wiki.catalog import WikiCatalog, _json, _key
 from openviking.wiki.schema import SchemaError
 from openviking.wiki.validation import source_uri
@@ -26,9 +27,11 @@ class CaptureLimits:
     depth: int = 64
     document_bytes: int = 8 * 1024 * 1024
     total_bytes: int = 64 * 1024 * 1024
+    extraction: dict | None = None
 
     def __post_init__(self):
-        if any(type(value) is not int or value < 1 for value in asdict(self).values()):
+        if any(type(value) is not int or value < 1
+               for key, value in asdict(self).items() if key != 'extraction'):
             raise ValueError('Wiki capture limits must be positive integers')
 
 
@@ -47,16 +50,52 @@ class WikiBuildPlan:
     manifest: str
     state: str = 'prepared'
 
+    @cached_property
+    def body(self):
+        """Decoded manifest, parsed once per plan instance.
+
+        A real handbook plan carries a ~470 KiB manifest; replaying thousands of
+        receipts re-decoded it on every ``.sources`` access and every inline
+        ``json.loads(plan.manifest)``, burning minutes of main-thread JSON work
+        per attempt and starving the event loop. The manifest is immutable for a
+        fixed plan, so one decode is cached and shared.
+        """
+        return json.loads(self.manifest)
+
     @property
     def sources(self):
-        return tuple(CapturedSource(**item) for item in json.loads(self.manifest)['sources'])
+        return tuple(CapturedSource(**item) for item in self.body['sources'])
+
+    @cached_property
+    def source_uris(self):
+        """Membership set of plan source URIs, built once per plan instance.
+
+        Receipt replay checks ``source_uri in plan.sources`` per receipt; without
+        this cache each check rebuilt the full CapturedSource tuple and a fresh
+        set, compounding the per-receipt manifest cost at real scale.
+        """
+        return frozenset(item['uri'] for item in self.body['sources'])
 
 
 class WikiBuildPlanner:
     def __init__(self, fs, *, registry=None, limits=None):
         self.catalog = WikiCatalog(fs, registry=registry)
         self.fs, self.registry = fs, self.catalog.registry
-        self.limits = limits or CaptureLimits()
+        # Capture limits may arrive as the server pydantic config section or a
+        # CaptureLimits; normalize so the frozen dataclass contract holds.
+        if limits is None:
+            self.limits = CaptureLimits()
+        elif isinstance(limits, CaptureLimits):
+            self.limits = limits
+        else:
+            fields = {key: getattr(limits, key) for key in ('documents', 'entries', 'depth',
+                                                            'document_bytes', 'total_bytes')
+                      if getattr(limits, key, None) is not None}
+            extraction = getattr(limits, 'extraction', None)
+            if extraction is not None:
+                fields['extraction'] = (extraction.model_dump() if hasattr(extraction, 'model_dump')
+                                        else dict(extraction))
+            self.limits = CaptureLimits(**fields)
 
     @staticmethod
     def _context(ctx):
@@ -212,7 +251,7 @@ class WikiBuildPlanner:
         # Reject already-bound keys before changing the working source. The
         # final persistence check still handles concurrent preparation requests.
         old = self.registry.wiki_plan_find(ctx.account_id, pin.collection.namespace_id, idempotency_key)
-        prior = json.loads(self._decode(old).manifest) if old else None
+        prior = self._decode(old).body if old else None
         if prior is not None:
             sources = prior['sources']
             if prior['input_kind'] != 'upload' or prior['binding_digest'] != pin.binding_digest \
@@ -276,7 +315,7 @@ class WikiBuildPlanner:
         old = self.registry.wiki_plan_find(ctx.account_id, pin.collection.namespace_id, idempotency_key)
         if old:
             prior = self._decode(old)
-            body = json.loads(prior.manifest)
+            body = prior.body
             if (body.get('upload_source') != identity or body['input_kind'] != 'upload'
                     or body['binding_digest'] != pin.binding_digest or body['roots'] != [root]):
                 raise ConflictError('Wiki idempotency key already names different input revisions or parameters')
@@ -286,15 +325,62 @@ class WikiBuildPlanner:
         if await self.fs.exists(root, ctx=ctx):
             if update_policy == 'fail':
                 raise ConflictError('Wiki upload target exists; replace requires update_policy=replace')
-            # The shared parser currently overlays an existing tree. That can
-            # retain chapters/images absent from the new upload; destructive
-            # pre-delete would also lose the old source on parser failure.
-            raise FailedPreconditionError(
-                'WIKI_REPLACEMENT_GATE_PENDING: document replacement requires a staged whole-tree commit; '
-                'use an unchanged prepared plan or a new source filename')
-        await materialize(root)
+            self._reject_pinned_replacement(ctx.account_id, pin.collection.namespace_id, root,
+                                            idempotency_key)
+            # The shared parser overlays whatever tree it is pointed at, so it
+            # must never run against the live source: parse into a sibling
+            # staging tree first and promote by rename, keeping the old tree
+            # recoverable until the new one is fully in place.
+            await self._stage_tree_replacement(ctx, root, materialize, idempotency_key)
+        else:
+            await materialize(root)
         return await self.prepare_sources(ctx, collection_id, [root], input_kind='upload',
                                           idempotency_key=idempotency_key, upload_source=identity)
+
+    def _reject_pinned_replacement(self, account, namespace, root, active_key):
+        """Refuse to swap a tree that some surviving prepared plan pins.
+
+        Execution reads planned files through their prepared revision set; a
+        live-tree rename would break those reads. Only the caller's own key is
+        exempt because matching replays resolve above this gate.
+        """
+        with self.registry.db() as db:
+            rows = db.execute('SELECT manifest FROM wiki_build_plans WHERE account=? AND namespace=?',
+                              (account, namespace)).fetchall()
+        for row in rows:
+            if any(root == uri or uri.startswith(root + '/')
+                   for uri in json.loads(row['manifest']).get('roots', [])):
+                raise FailedPreconditionError(
+                    'Wiki replacement would invalidate a prepared build plan pinned to the same tree')
+
+    async def _stage_tree_replacement(self, ctx, root, materialize, idempotency_key):
+        """Parse the replacement into a hidden staging tree, then promote by rename.
+
+        The shared parser overlays whatever tree it is pointed at, so it must
+        never run against the live source. Promote order keeps the old tree
+        recoverable until the staged one is fully in place; every scratch name
+        is keyed to this idempotency key and cleaned before reuse.
+        """
+        parent, stem = root.rsplit('/', 1)
+        staging = f'{parent}/.{stem}.staging-{idempotency_key}'
+        retired = f'{parent}/.{stem}.retired-{idempotency_key}'
+        for scratch in (staging, retired):
+            await self.fs.rm(scratch, recursive=True, ctx=ctx)
+        try:
+            await materialize(staging)
+            if not await self.fs.exists(staging, ctx=ctx):
+                raise SchemaError('Wiki document replacement requires the parser to write the derived Markdown tree')
+            await self.fs.mv(root, retired, ctx=ctx)
+        except BaseException:
+            await self.fs.rm(staging, recursive=True, ctx=ctx)
+            raise
+        try:
+            await self.fs.mv(staging, root, ctx=ctx)
+        except BaseException:
+            await self.fs.rm(root, recursive=True, ctx=ctx)
+            await self.fs.mv(retired, root, ctx=ctx)
+            raise
+        await self.fs.rm(retired, recursive=True, ctx=ctx)
 
     def _persist_plan(self, ctx, pin, input_kind, roots, recursive, captured, directories, idempotency_key,
                       *, upload_source=None):
@@ -322,7 +408,7 @@ class WikiBuildPlanner:
         self._context(ctx)
         _key(build_id)
         plan = self._decode(self.registry.wiki_plan_get(ctx.account_id, build_id))
-        body = json.loads(plan.manifest)
+        body = plan.body
         pin = await self.catalog.pin_collection(ctx, body['collection']['collection_id'], input_kind=body['input_kind'])
         if pin.binding_digest != body['binding_digest']:
             raise ConflictError('Stored Wiki plan collection binding changed')
@@ -337,7 +423,7 @@ class WikiBuildPlanner:
         source = next((source for source in plan.sources if source.uri == uri), None)
         if source is None:
             raise NotFoundError(uri, 'Wiki plan source')
-        return await self._read_captured(ctx, source, json.loads(plan.manifest)['collection']['target_uri'])
+        return await self._read_captured(ctx, source, plan.body['collection']['target_uri'])
 
     async def _read_captured(self, ctx, source, target):
         await self.fs._ensure_access(source.uri, ctx)
@@ -355,7 +441,7 @@ class WikiBuildPlanner:
         corpus text is retained here; only the current captured body is yielded.
         """
         plan = await self.get(ctx, build_id)
-        target = json.loads(plan.manifest)['collection']['target_uri']
+        target = plan.body['collection']['target_uri']
         for source in plan.sources:
             yield source.uri, await self._read_captured(ctx, source, target)
 
@@ -366,7 +452,7 @@ class WikiBuildPlanner:
         future publisher must repeat dependency/ACL checks in its commit fence.
         """
         plan = await self.get(ctx, build_id)
-        body = json.loads(plan.manifest)
+        body = plan.body
         expected = (tuple(source.uri for source in plan.sources),
                     tuple(tuple(item) for item in body['directories']))
         roots, target = body['roots'], body['collection']['target_uri']
@@ -392,8 +478,9 @@ class WikiBuildPlanner:
         """
         from openviking.wiki.namespaces import NamespaceCatalog
         plan = await self.check_current_inputs(ctx, build_id)
-        binding = json.loads(plan.manifest)['collection']
-        return await NamespaceCatalog(self.fs, registry=self.registry).authorize_sources(
+        binding = plan.body['collection']
+        return await NamespaceCatalog(self.fs, registry=self.registry,
+                                      max_source_uris=self.limits.documents).authorize_sources(
             ctx, target_namespace_id=binding['namespace_id'], target_uri=binding['target_uri'],
             source_uris=[source.uri for source in plan.sources])
 
@@ -404,12 +491,22 @@ class WikiBuildPlanner:
         """
         from openviking.wiki.namespaces import NamespaceCatalog
         plan = await self.get(ctx, build_id)
-        target = json.loads(plan.manifest)['collection']['target_uri']
-        policy = NamespaceCatalog(self.fs, registry=self.registry)
-        ticket = await self.authorize_inputs(ctx, build_id)
-        for source in plan.sources:
-            await policy.check_source_use(ctx, ticket, uri=source.uri, target_uri=target)
-            text = await self._read_captured(ctx, source, target)
-            await policy.check_source_use(ctx, ticket, uri=source.uri, target_uri=target)
-            yield source.uri, text
+        target = plan.body['collection']['target_uri']
+        policy = NamespaceCatalog(self.fs, registry=self.registry, max_source_uris=self.limits.documents)
+        # Pin ONE current-ACL publication view across the whole stream. Without
+        # it, every per-source check_source_use re-runs publication.capture
+        # (BEGIN IMMEDIATE + json.loads of every snapshot manifest); at ~2k
+        # sources that is ~4k exclusive-lock captures in a tight loop with no
+        # model waits, which saturated the event loop, lapsed the job heartbeat
+        # and re-triggered lease recovery in a vicious cycle. The view renews
+        # its lease on each reuse, so the stream stays consistent and cheap.
+        # recheck() runs OUTSIDE the pinned view on purpose: it must take a
+        # fresh capture to detect any ACL/export change made during the stream.
+        with _current_acl_view(ctx):
+            ticket = await self.authorize_inputs(ctx, build_id)
+            for source in plan.sources:
+                await policy.check_source_use(ctx, ticket, uri=source.uri, target_uri=target)
+                text = await self._read_captured(ctx, source, target)
+                await policy.check_source_use(ctx, ticket, uri=source.uri, target_uri=target)
+                yield source.uri, text
         await policy.recheck(ctx, ticket, target_uri=target)

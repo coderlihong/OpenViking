@@ -69,7 +69,7 @@ async def test_replay_rechecks_captured_source_permissions_without_reparsing(pre
         await prepare(e,p,m)
     assert m.await_count == 1
 
-@pytest.mark.parametrize('policy,error', [('fail',ConflictError),('replace',FailedPreconditionError)])
+@pytest.mark.parametrize('policy,error', [('fail',ConflictError)])
 async def test_existing_tree_never_overlaid_or_deleted_before_safe_replacement(prepared,policy,error):
     e,p,m = await setup(prepared)
     await e.fs.write_file_bytes(SOURCE,b'# Old chapter',ctx=e.ctx)

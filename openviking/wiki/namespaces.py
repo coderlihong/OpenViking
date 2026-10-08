@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import hashlib
 
 from openviking.indexing.content import draft_sources
-from openviking.storage.acl import AclAction, AclMode, acl_principals, normalize_acl_principal
+from openviking.storage.acl import AclAction, AclMode, _current_acl_view, acl_principals, normalize_acl_principal
 from openviking.wiki.catalog import WikiCatalog, _json, _key
 from openviking.wiki.resolver import ReferenceBinding
 from openviking.wiki.schema import SchemaError
@@ -37,9 +37,14 @@ class SourceAuthorization:
 
 
 class NamespaceCatalog:
-    def __init__(self, fs, *, registry=None):
+    def __init__(self, fs, *, registry=None, max_source_uris=2048):
         catalog = WikiCatalog(fs, registry=registry)
         self.fs, self.registry = fs, catalog.registry
+        # Source authorization accepts the same volume the capture stage admits;
+        # the static default stays for callers without a planner's limits.
+        if type(max_source_uris) is not int or max_source_uris < 1:
+            raise SchemaError('Namespace source URI bound must be a positive integer')
+        self.max_source_uris = max_source_uris
 
     @staticmethod
     def _context(ctx):
@@ -120,25 +125,33 @@ class NamespaceCatalog:
 
     async def authorize_sources(self, ctx, *, target_namespace_id, target_uri, source_uris):
         self._context(ctx)
-        if not isinstance(source_uris, (tuple, list)) or not source_uris or len(source_uris) > 2048:
+        if not isinstance(source_uris, (tuple, list)) or not source_uris or len(source_uris) > self.max_source_uris:
             raise SchemaError('A bounded nonempty source URI list is required')
-        target_uri = source_uri(target_uri)
-        target = await self.get(ctx, target_namespace_id, action=AclAction.WRITE)
-        if not self._inside(target.root_uri, target_uri):
-            raise PermissionDeniedError('Wiki output does not belong to its configured namespace')
-        await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
-        bindings = tuple([(uri, await self.lookup(ctx, uri)) for uri in sorted({source_uri(uri) for uri in source_uris})])
-        roots = {target.namespace_id: target, **{root.namespace_id: root for _, root in bindings}}
-        acl_digests = tuple([(name, await self._root_acl(ctx, root, AclAction.WRITE if name == target.namespace_id else AclAction.READ))
-                             for name, root in sorted(roots.items())])
-        principals = tuple(sorted(acl_principals(ctx)))
-        revision = self.registry.namespace_authorize_exports(
-            ctx.account_id, target.namespace_id,
-            [root.namespace_id for _, root in bindings], principals)
-        # Recheck child ACLs after resolving roots/export policy.
-        for uri, _ in bindings:
-            await self.fs._ensure_access(uri, ctx)
-        await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
+        # Pin ONE current-ACL publication view for the whole authorization. Each
+        # _root_acl/_ensure_access below resolves through acl._scroll_all, which
+        # otherwise re-runs publication.capture (BEGIN IMMEDIATE + json.loads of
+        # every snapshot manifest) per call. With ~2k sources that was ~2k
+        # exclusive-lock captures for the SAME namespace roots: it saturated the
+        # event loop and starved pathlock (reindex CONFLICT). A single ambient
+        # view makes the batch read one consistent snapshot and capture once.
+        with _current_acl_view(ctx):
+            target_uri = source_uri(target_uri)
+            target = await self.get(ctx, target_namespace_id, action=AclAction.WRITE)
+            if not self._inside(target.root_uri, target_uri):
+                raise PermissionDeniedError('Wiki output does not belong to its configured namespace')
+            await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
+            bindings = tuple([(uri, await self.lookup(ctx, uri)) for uri in sorted({source_uri(uri) for uri in source_uris})])
+            roots = {target.namespace_id: target, **{root.namespace_id: root for _, root in bindings}}
+            acl_digests = tuple([(name, await self._root_acl(ctx, root, AclAction.WRITE if name == target.namespace_id else AclAction.READ))
+                                 for name, root in sorted(roots.items())])
+            principals = tuple(sorted(acl_principals(ctx)))
+            revision = self.registry.namespace_authorize_exports(
+                ctx.account_id, target.namespace_id,
+                [root.namespace_id for _, root in bindings], principals)
+            # Recheck child ACLs after resolving roots/export policy.
+            for uri, _ in bindings:
+                await self.fs._ensure_access(uri, ctx)
+            await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
         return SourceAuthorization(ctx.account_id, ctx.user.user_id, principals, target.namespace_id,
                                    bindings, revision, acl_digests)
 
@@ -168,9 +181,14 @@ class NamespaceCatalog:
         if not self._inside(target.root_uri, target_uri):
             raise PermissionDeniedError('Target is outside the authorized knowledge namespace')
         digests = dict(authorization.root_acl_digests)
-        for root, action in ((source, AclAction.READ), (target, AclAction.WRITE)):
-            if await self._root_acl(ctx, root, action) != digests[root.namespace_id]:
-                raise ConflictError('Knowledge root ACL changed during source use')
-        await self.fs._ensure_access(uri, ctx)
-        await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
+        # One ambient view for this source's four ACL reads (source root, target
+        # root, source child, target child) instead of four separate
+        # publication.capture round-trips. The view is scoped to this call only,
+        # so each streamed source still re-reads current ACLs.
+        with _current_acl_view(ctx):
+            for root, action in ((source, AclAction.READ), (target, AclAction.WRITE)):
+                if await self._root_acl(ctx, root, action) != digests[root.namespace_id]:
+                    raise ConflictError('Knowledge root ACL changed during source use')
+            await self.fs._ensure_access(uri, ctx)
+            await self.fs._ensure_access(target_uri, ctx, action=AclAction.WRITE)
         self.check_policy_revision(ctx, authorization)

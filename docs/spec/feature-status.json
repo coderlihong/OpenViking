@@ -2,8 +2,8 @@
   "version": "0.15",
   "date": "2026-10-06",
   "change_id": "CR-019",
-  "baseline": "I079",
-  "latest_scoped_tests": "I079 私有发布全链真机回归：test_wiki_service_adjudication 4 绿（I081 resources-head 读证修正）、test_vector_transfer+test_vector_migration+test_transfer_merge_binding 136 绿（I080 搬运剥离）、test_wiki_publication_adjudication+page_rules+path_policy 58 绿（I082 执行侧判定器接线）。前值：I078 strict 判定器真机探针 4+9 绿。",
+  "baseline": "I088",
+  "latest_scoped_tests": "I087/I088 抽取持久化修复真机回归：test_wiki_extraction.py 39 绿——I087 回执出 checkpoint 改 content-addressed manifest blob（旧作业 651,358B 内联 → 新作业 874B 计数+ref，真实手册工作负载实拍），I088 key-set 续跑（空窗重派+伪造案覆盖）。前值：I079 私有发布全链真机回归 4+136+58 绿（I080/I081/I082）。",
   "full_repository_tests": "I053e（2026-10-06）两项落点：①章节布局图片质量门——书册解析落盘阶段对每张本地图片先过 is_valid_image 质量门，不达标图跳过引用并写结构化 info 条目 CHAPTER_IMAGE_QUALITY_SKIPPED，解析照常成功；缺文件/viking:// 与远程引用仍硬失败；修复部署侧保全模块 undersized 源 PDF 裁片致 1072 页手册整本中止的阻塞（章节管线+契约硬化 63 回归通过）。②KB-027 补强已在前序 I053/I053b/I053c/I053d 完成：私有候选树发布→整批预检→共享 D1 索引管线→写入途中崩溃重放治愈全批（65 回归）。I052 七类共同发布覆盖门禁读取已提交权威证据并在 ready 路径强制执行。当前 FLOW-D1 真册验收进行中：362MB/1072 页 SY215C 维修手册已上传（temp_upload 通过），D1 持久 job semantic_and_vectors 已入队 parse_write。模型图片语义与章节归属质量未验收。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
   "features": [
     {
@@ -130,10 +130,11 @@
         "KB-029",
         "KB-030"
       ],
-      "latest_round": "I079",
-      "round_updated": "2026-10-06",
+      "latest_round": "I096",
+      "round_updated": "2026-10-07",
       "latest_scoped_tests": [
-        "I079: FLOW-W2 publish 链真机：merge(pending=0,valid=2)→G1 2 行→publish 2 页/6 chunk→strict 提交被受理；strict 执行失败根因 I082 已修待复验"
+        "I079: FLOW-W2 publish 链真机：merge(pending=0,valid=2)→G1 2 行→publish 2 页/6 chunk→strict 提交被受理；strict 执行失败根因 I082 已修待复验",
+        "I095/I096: KB-024 真实 379MB 维修手册(2240 源)W1 落 draft_ready 终态——job 27bebf83 attempt18、candidate_count2134/model_calls2302、覆盖2223源+17失败section=2240、authorization_revision18 一致；HTTP drafts/0 经 flowadmin 键返真手册候选。终态门禁修 len>512 硬上限+failed_sections 未对账(I095)，阶段机放行 wiki_validate→wiki_extract 回退+extract_wiki 复用完整持久收据免重抽(I096)。单测25绿。[evidence/flow-w1-draft-ready-terminal-I095-I096-2026-10-07.json]"
       ]
     },
     {
@@ -1054,17 +1055,18 @@
         "TC-10.2",
         "TC-16.11"
       ],
-      "implementation_state": "PARTIAL",
-      "product_acceptance": "NOT_RUN",
+      "implementation_state": "DONE",
+      "product_acceptance": "PASS",
       "evidence": [
         "I034",
         "I035",
         "I046",
-        "I047"
+        "I047",
+        "evidence/flow-w1-quadratic-replay-I090-I091-2026-10-07.json"
       ],
       "work": "W1/W2使用同一授权固定来源流与完整模板，bounded structured output/有限重试/逐源checkpoint；知识文档仅当数据，模型不执行其中工具指令。",
       "done_when": "真实模型产实体与来源URI，不凑八实体；空知识、格式错误、无证据、超时分别记录；未验证产物只入私有draft不算ready。",
-      "latest_progress": "Wiki v3 强制提示从 source.text 原样复制 quote、从生成正文原样复制 claim，修复 PPT 引文标题级别漂移；提交/执行/权威完成绑定 extractor_version/policy_version，旧未版本化执行需新 execution key。三现代 Office 族私有草稿及逐字引文通过；完整诊断 schema/publish 仍待完成。 I070：118 规则中 110 已编译为 page_rules 执行器、8 条委托 path/pipeline 家；strict_diagnostic 对冻结 SANY 包作业可创建至 draft_ready。",
+      "latest_progress": "Wiki v3 强制提示从 source.text 原样复制 quote、从生成正文原样复制 claim，修复 PPT 引文标题级别漂移；提交/执行/权威完成绑定 extractor_version/policy_version，旧未版本化执行需新 execution key。 I070：118 规则中 110 已编译为 page_rules 执行器、8 条委托 path/pipeline 家。 I087/I088/I089（2026-10-07）：逐批 checkpoint 全量回执序列化改为 content-addressed manifest blob——checkpoint 只留计数+ref（真实手册负载 651,358B→874B），回执随 ≥256 新增或末批落盘；续跑改 key-set 对账（uri,chunk 幂等重派+伪造案拒绝）；I089 补 manifest 写读对称（blob 携带 plan_digest/configuration）+receipts_ref 原始形态 round-trip 测试。单测 test_wiki_extraction.py 41 绿（+I091 legacy manifest 续跑）。 I090/I091（2026-10-07 晚）：真机重放期实测终态前逐条 read_draft 每条两次全计划授权扫描=O(N²)（2056 收据×2×2240 源≈920 万次 fs 校验，worker 空转 2-4h、模型端点空闲）；修法授权抬出循环——批前一次 authorize_inputs+批后 recheck 对比，循环内只做 blob 重读+廉价 check_policy_revision 门，每 256 条写 receipt_replay_progress checkpoint；R=1/R=2 参数化两轮全链授权扫描数恒等配对断言。 I089 校验拒旧格式 manifest 致 attempt2 终态 failed→_read_manifest 接受 legacy 形（version1+account_id+receipts，逐条绑定靠重放期 read_draft_payload），failed 行按 _recover_jobs 形态翻回 queued 复活：2056 收据免模型回放成功，~201 暂缓 section 重派进行中，draft_ready 终态证据后补。 收口波折（2026-10-07 深夜）：attempt3 因服务器进程 20:33 启动快照早于 I091 落盘（无热重载）再次 CONFLICT failed→重启服务器加载新代码；attempt4 真机通过 legacy manifest 零模型回放并重派 ~74/201 洞（calls 2118/cands 1923/暂缓仅2），后服务器又遭外部重启腰斩（attempt5）；最终该 job 于 22:27 被外部 CANCEL_REQUESTED 终止——重放链路各环节代码侧均有单测与真机分段实证，完整 draft_ready 终态留待下轮重投。 I095/I096（2026-10-07 深夜→10-08 01:42 终态达成）：重投后 job 27bebf83 在 wiki_validate 终态门禁 failed——根因二：(a) jobs.py 硬编码 len(drafts)>512 上限对 2240 源计划不可达（每 (source,chunk) 一条收据=2240 条），(b) 门禁要求 set(receipt.source_uri)==全部固定源，但 17 个 section 重试耗尽只记 failed_sections 计数不产收据，等式永不成立。修法：上限改 config.limits.model_calls（随计划缩放，每收据≥1 调用）；extraction 终态收据新增 failed_sources（耗尽 URI 排序表）；门禁对账改 收据∪failed_sources==固定源，旧形收据（无 failed_sources）按计数对账 (len(sources)-len(covered))==sum(failed_sections)。再投又撞 I096：到达 wiki_validate 但终态门禁 failed 的 W1 job 不可重试——extract_wiki 每次都重入 wiki_extract，而阶段机禁 wiki_validate→wiki_extract 回退；且 wiki_validate checkpoint 只存 {draft_receipt,diagnostic_published} 丢了 extraction_progress，即便放行也要从零重抽 2240 源(~6.7h 模型)。修法：阶段机为 W1/W2 放行这一条回退（终态门禁才是收据有效性权威，不弱化任何校验）；extract_wiki 若 checkpoint 已有完整 draft_receipt（state/private/diagnostic_publishable/build_id/plan_digest/extractor_version/policy_version/model_profile/limits 全配）则经既有重放循环重新授权+重提交该收据，不再重抽。重投后 ~30s 零模型调用（2240 blob 重读+policy recheck）落 draft_ready：candidate_count=2134、model_calls=2302、knowledge_state=candidate、failed_sections={EVIDENCE_MISSING:2,MODEL_TIMEOUT:3,SCHEMA_VIOLATION:12}、覆盖 2223 源+17 失败=2240、authorization_revision=18 与实时策略修订一致；HTTP GET /kb/wiki/jobs/{id}/drafts/0 经 flowadmin 租户键返 200 真手册候选（Source_PDF_image_page_1000 逐字 quote/claim+SHA-256），diagnostic_publishable 恒 False。单测 test_wiki_execution_jobs(6)+test_durable_jobs(19)=25 绿。KB-024 done_when 全met（真实模型产实体+源URI、空知识/格式错/无证据/超时分类记录、未验证产物只入私有 draft 不算 ready），下游 publication_pending 六门（semantic_evidence_validation/schema_identity_resolution/trusted_entity_catalog/closed_relationships/derived_access_intersection/atomic_joint_publication）属 KB-025+ 范围。",
       "implementation_reports": [
         "evidence/implementation-I034-2026-10-05.json",
         "evidence/parallel3-wiki-extraction-2026-10-05.json",
@@ -1072,7 +1074,11 @@
       ],
       "scoped_reports": [
         "evidence/flow-w1-pdf-2026-10-05.json",
-        "evidence/implementation-I047-2026-10-05.json"
+        "evidence/implementation-I047-2026-10-05.json",
+        "evidence/flow-w1-checkpoint-bloat-I087-2026-10-07.json",
+        "evidence/flow-w1-keyset-resume-I088-2026-10-07.json",
+        "evidence/flow-w1-manifest-roundtrip-I089-2026-10-07.json",
+        "evidence/flow-w1-draft-ready-terminal-I095-I096-2026-10-07.json"
       ]
     },
     {

@@ -16,7 +16,7 @@ from openviking.indexing.content import blob_path
 from openviking.indexing.publication import PublicationStore
 from openviking.wiki.build_plan import CaptureLimits, WikiBuildPlanner
 from openviking.wiki.schema import SchemaError
-from openviking_cli.exceptions import ConflictError, NotFoundError, PermissionDeniedError
+from openviking_cli.exceptions import ConflictError, NotFoundError, PermissionDeniedError, FailedPreconditionError
 from openviking_cli.session.user_id import UserIdentifier
 
 RAW = 'viking://resources/raw'
@@ -181,10 +181,10 @@ async def test_source_write_after_archive_is_rejected_at_save(prepared, monkeypa
 async def test_inflight_or_uncertain_source_write_is_never_captured(prepared):
     e, p = prepared
     token = e.store.begin_write('acct', ONE)
-    with pytest.raises(RuntimeError, match='in-flight'):
+    with pytest.raises(FailedPreconditionError, match='in-flight'):
         await prepare(p, e.ctx)
     e.store.uncertain_write(token)
-    with pytest.raises(RuntimeError, match='uncertain'):
+    with pytest.raises(FailedPreconditionError, match='uncertain'):
         await prepare(p, e.ctx)
 
 

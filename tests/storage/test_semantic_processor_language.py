@@ -420,7 +420,7 @@ class TestGenerateTextSummaryOutputLanguage:
     async def test_e2e_code_output_language(
         self, temp_multilang_files, file_key, file_name, expected_lang
     ):
-        """端到端测试：文件 -> 语言检测 -> 生成对应语言摘要"""
+        """端到端测试：md 文件走启发式摘要，不调用 VLM，保留原文标题行"""
         from openviking.storage.queuefs.semantic_processor import SemanticProcessor
 
         content = Path(temp_multilang_files[file_key]).read_text()
@@ -445,21 +445,23 @@ class TestGenerateTextSummaryOutputLanguage:
             processor = SemanticProcessor()
             processor._current_ctx = MagicMock()
 
+            mock_vlm.prompts_received.clear()
             result = await processor._generate_text_summary(
                 file_path=temp_multilang_files[file_key],
                 file_name=file_name,
                 llm_sem=asyncio.Semaphore(1),
             )
 
-            prompt_sent = mock_vlm.prompts_received[0]
-            assert f"Output Language: {expected_lang}" in prompt_sent, (
-                f"{file_name}: Prompt missing Output Language: {expected_lang}"
+            assert mock_vlm.prompts_received == [], (
+                f"{file_name}: heuristic md summary must not call the VLM"
             )
-
             assert _verify_content_language(result["summary"], expected_lang), (
                 f"{file_name}: Content language mismatch. Expected {expected_lang}, got: {result['summary']}"
             )
-            assert "content" not in result
+            heading = content.splitlines()[0]
+            assert heading in result["summary"], (
+                f"{file_name}: heuristic summary must keep the original heading line"
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

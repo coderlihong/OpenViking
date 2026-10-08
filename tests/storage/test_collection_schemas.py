@@ -666,11 +666,13 @@ async def test_embedding_handler_preserves_parent_uri_for_backend_upsert_logic(m
     assert result.error is None
     assert result.value == {
         **queue_data["context_data"],
+        "type": "text",
         "id": vector_record_id("default", "viking://resources/sample", 2),
         "vector": [0.1, 0.2],
     }
     assert "data" in captured
     assert captured["data"]["parent_uri"] == "viking://resources"
+    assert captured["data"]["type"] == "text"
 
 
 @pytest.mark.asyncio

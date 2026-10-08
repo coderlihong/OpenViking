@@ -190,3 +190,34 @@ class WikiCatalog:
         self.registry.wiki_collection_domain_check(ctx.account_id, collection_id)
         await self._domains(ctx, binding, action=AclAction.READ)
         return PinnedSchema(binding,bundle,hashlib.sha256(_json(asdict(binding)).encode()).hexdigest(),state)
+
+    async def register_entities(self,ctx,namespace_id,entries):
+        """Persist canonical identities produced by the identity compiler; no synthesis here."""
+        self._admin(ctx)
+        _key(namespace_id)
+        if not isinstance(entries,list) or not entries:
+            raise SchemaError('Entity registration requires a non-empty entry list')
+        result=self.registry.wiki_entity_register(ctx.account_id,namespace_id,entries)
+        from openviking.wiki.namespaces import NamespaceCatalog
+        domains=NamespaceCatalog(self.fs,registry=self.registry)
+        try:
+            await domains.get(ctx,namespace_id,action=AclAction.READ)
+        except NotFoundError as exc:
+            raise FailedPreconditionError('Entity catalog requires a registered knowledge namespace') from exc
+        return result
+
+    async def get_entity(self,ctx,namespace_id,canonical_id):
+        self._admin(ctx)
+        _key(namespace_id)
+        if not isinstance(canonical_id,str) or not re.fullmatch(r'candidate-[0-9a-f]{64}',canonical_id):
+            raise SchemaError('Invalid canonical entity identity')
+        row=self.registry.wiki_entity_get(ctx.account_id,namespace_id,canonical_id)
+        return {**row,'aliases':json.loads(row['aliases'])}
+
+    async def list_entities(self,ctx,namespace_id):
+        self._admin(ctx)
+        _key(namespace_id)
+        rows=self.registry.wiki_entity_list(ctx.account_id,namespace_id)
+        for row in rows:
+            row['aliases']=json.loads(row['aliases'])
+        return rows

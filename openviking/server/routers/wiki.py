@@ -47,6 +47,23 @@ class CollectionDomainMigrationRequest(BaseModel):
     expected_binding_digest: StrictStr = Field(pattern=r'^[0-9a-f]{64}$')
 
 
+class EntityEntry(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    canonical_id: StrictStr = Field(pattern=r'^candidate-[0-9a-f]{64}$')
+    entity_type: StrictStr = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9_.+\-]+$')
+    schema_id: StrictStr = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9_.+\-]+$')
+    schema_version: StrictStr = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9_.+\-]+$')
+    schema_digest: StrictStr = Field(pattern=r'^[0-9a-f]{64}$')
+    aliases: list[StrictStr] = Field(min_length=1, max_length=256)
+    source_uri: StrictStr = Field(min_length=1, max_length=4096)
+
+
+class EntityRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    namespace_id: StrictStr = Field(min_length=1, max_length=128)
+    entries: list[EntityEntry] = Field(min_length=1, max_length=4096)
+
+
 class BuildRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     source_uris: list[StrictStr] = Field(min_length=1, max_length=2048)
@@ -76,6 +93,18 @@ class MergeReference(BaseModel):
     size: int = Field(ge=0)
 
 
+class DraftReceiptSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    build_id: StrictStr
+    plan_digest: StrictStr = Field(pattern=r'^[0-9a-f]{64}$')
+    receipts: list[dict] = Field(min_length=1)
+
+
+class PrepareMergeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    selections: list[DraftReceiptSelection] = Field(min_length=1, max_length=256)
+
+
 class PublishMergeRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     reference: MergeReference
@@ -90,12 +119,13 @@ def get_catalog():
     return WikiCatalog(fs, registry=registry)
 
 
-def get_planner():
+def get_planner(request: Request):
     fs = get_service().viking_fs
     registry = configured_store()
     if fs is None or registry is None:
         raise FailedPreconditionError('Wiki build requires initialized VikingFS and embedding.chunking.publication_path')
-    return WikiBuildPlanner(fs, registry=registry)
+    from dataclasses import asdict
+    return WikiBuildPlanner(fs, registry=registry, limits=request.app.state.config.wiki)
 
 
 def get_temp_upload_store(request: Request) -> TempUploadStore:
@@ -103,13 +133,34 @@ def get_temp_upload_store(request: Request) -> TempUploadStore:
 
 
 def get_wiki_jobs(planner: WikiBuildPlanner = Depends(get_planner)):
-    return WikiJobService(planner)
+    from openviking.wiki.extraction import ExtractionLimits, WikiDraftExtractor
+    extraction = getattr(planner.limits, 'extraction', None)
+    if extraction is not None:
+        fields = extraction.model_dump() if hasattr(extraction, 'model_dump') else dict(extraction)
+        limits = ExtractionLimits(**fields)
+    else:
+        limits = None
+    return WikiJobService(planner, extractor=WikiDraftExtractor(planner, limits=limits))
 
 
 def get_merger(planner: WikiBuildPlanner = Depends(get_planner)):
     from openviking.wiki.extraction import WikiDraftExtractor
     from openviking.wiki.merge import PrivateWikiMerger
     return PrivateWikiMerger(WikiDraftExtractor(planner))
+
+
+@router.post('/merges')
+async def prepare_merge(body: PrepareMergeRequest,
+                        ctx: RequestContext = Depends(get_request_context),
+                        merger=Depends(get_merger)):
+    from openviking.wiki.merge import DraftSelection
+    selections = [DraftSelection(item.build_id, item.plan_digest, tuple(item.receipts))
+                  for item in body.selections]
+    try:
+        result = await merger.merge(ctx, selections)
+    except SchemaError as exc:
+        raise InvalidArgumentError(str(exc)) from exc
+    return Response(status='ok', result=result)
 
 
 @router.post('/merges/publish')
@@ -210,6 +261,25 @@ async def migrate_collection_domains(collection_id: str, body: CollectionDomainM
     except SchemaError as exc:
         raise InvalidArgumentError(str(exc)) from exc
     return Response(status='ok', result=asdict(binding))
+
+
+@router.post('/entities')
+async def register_entities(body: EntityRegistrationRequest, ctx: RequestContext = Depends(get_request_context),
+                            catalog: WikiCatalog = Depends(get_catalog)):
+    result = await catalog.register_entities(ctx, body.namespace_id, [entry.model_dump() for entry in body.entries])
+    return Response(status='ok', result=result)
+
+
+@router.get('/entities/{namespace_id}')
+async def list_entities(namespace_id: str, ctx: RequestContext = Depends(get_request_context),
+                        catalog: WikiCatalog = Depends(get_catalog)):
+    return Response(status='ok', result=await catalog.list_entities(ctx, namespace_id))
+
+
+@router.get('/entities/{namespace_id}/{canonical_id}')
+async def get_entity(namespace_id: str, canonical_id: str, ctx: RequestContext = Depends(get_request_context),
+                     catalog: WikiCatalog = Depends(get_catalog)):
+    return Response(status='ok', result=await catalog.get_entity(ctx, namespace_id, canonical_id))
 
 
 @router.post('/builds')

@@ -1,0 +1,43 @@
+{
+  "id": "I070",
+  "date": "2026-10-06",
+  "title": "需求2 Wiki 能力现状复扫：I049 三缺口两已闭合，剩余收敛为发布门禁+替换门禁",
+  "requirement": "flow-w1/w2 完成条件复核：I049 记录的 (a) PDF/Office 完整 W1 调度、(b) strict_diagnostic 完整 schema 118 规则拒绝无作业、(c) 整树替换提交，在 I051/I052 轮与 graph-knowledge core 提交（2a5da2ec, cbe9a1ba, d18d9885）后是否仍是缺口。",
+  "verdict": "GAPS_NARROWED_TWO_OF_THREE_CLOSED_BY_CODE",
+  "findings": {
+    "w1_pdf_office_scheduling": {
+      "status": "CLOSED_AT_DRAFT_READY_LEVEL",
+      "evidence": "openviking/server/routers/wiki.py:226-265 prepare_ingestion 接收 PDF/doc/docx/xls/xlsx/ppt/pptx 七后缀，_document_materializer（:268-278）回调 D1 共享解析器物化 MD 树；wiki_job_service create→kb_job_runtime extract_wiki 真实执行抽取到 draft_ready 私有候选。测试：test_wiki_execution_jobs.py:22-53 W1 全链 queued→draft_ready；test_wiki_ingestion_http.py:151-185 七后缀 materializer 合同；test_wiki_materialized_replay.py 8 用例。",
+      "residual": "文档替换整树提交仍 WIKI_REPLACEMENT_GATE_PENDING（build_plan.py:292）"
+    },
+    "strict_diagnostic_118": {
+      "status": "NARROWED",
+      "evidence": "118 条 prose 规则中 110 条编译进 page_rules.py:116 compile_page_rules 执行器（八 SANY 实体+审计锁），8 条委托 path/pipeline 家；对冻结 SANY 包 strict_diagnostic 不再 SCHEMA_POLICY_PENDING，作业可创建并走到 draft_ready，抛点前移为 WIKI_PUBLICATION_GATE_PENDING（policies.py:76-86，六发布门禁仍拒，发布语义 False policies.py:53）。外来包仍 require_executable_rules 全拒（schema.py:211-291）。",
+      "tests": "test_wiki_path_policy.py:40-57 断言 original=118 且新包 strict 进 publication gate；test_wiki_page_rules.py:192-195；test_wiki_extraction.py:94-105；flows/flow_wiki_strict_gate.py:60",
+      "interpretation": "I049 台账「完整 schema strict API 拒绝 118 待执行规则」措辞过时：现状是拒绝面从「整个 profile 不可用」收敛为「发布动作被门禁拦」，draft 链路已可用"
+    },
+    "publication_gate": {
+      "status": "REMAINING_GAP",
+      "scope": "六发布门禁（trusted 身份/关系/共同发布回执等）未启用，strict_diagnostic profile 发布语义为 False——这是 I052 七类共同发布门禁读取侧权威证据（已在 ready 路径强制执行）之后的最后一段"
+    }
+  },
+  "regression": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_wiki_page_rules.py test_wiki_path_policy.py test_wiki_materialized_replay.py test_wiki_ingestion_http.py test_wiki_execution_jobs.py -q --no-cov",
+    "result": "83 passed"
+  },
+  "closes": [
+    "更新 FLOW-W1/W2 与 KB-024/KB-028 的现状口径：PDF/Office W1 调度与 strict_diagnostic profile 可用性不再是『待完成』表述所暗示的从零状态"
+  ],
+  "truthful_boundaries": [
+    "本轮为代码+契约测试复扫，非新真机 E2E；W1 PDF 真机链路 I046 已有（真实 PDF 上传物化 44 片段抽取），Office 真机 I047 已有",
+    "发布门禁与替换门禁仍待启用，不改变 FLOW-W1/W2 PARTIAL 总评级"
+  ],
+  "code_paths": [
+    "openviking/server/routers/wiki.py:226-301",
+    "openviking/wiki/policies.py:53,76-86",
+    "openviking/wiki/build_plan.py:247-297",
+    "openviking/wiki/page_rules.py:116",
+    "openviking/service/wiki_job_service.py:20-47",
+    "openviking/service/kb_job_runtime.py:57-92"
+  ]
+}

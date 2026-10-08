@@ -33,6 +33,7 @@ from openviking.indexing.jobs import DurableJobsMixin
 from openviking.indexing.write_recovery import WriteRecoveryMixin
 from openviking.storage.expr import And, Eq, Or, RawDSL
 from openviking.storage.vector_ids import publication_member_id
+from openviking_cli.exceptions import FailedPreconditionError
 
 _view = ContextVar("text_index_query_view", default=None)
 
@@ -82,6 +83,15 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                   account TEXT, collection_id TEXT, state TEXT NOT NULL,
                   target_root TEXT, raw_namespace TEXT, raw_root TEXT,
                   PRIMARY KEY(account,collection_id));
+                CREATE TABLE IF NOT EXISTS wiki_entity_catalog (
+                  account TEXT, namespace_id TEXT, canonical_id TEXT,
+                  entity_type TEXT NOT NULL, schema_id TEXT NOT NULL,
+                  schema_version TEXT NOT NULL, schema_digest TEXT NOT NULL,
+                  aliases TEXT NOT NULL, source_uri TEXT NOT NULL, registered REAL NOT NULL,
+                  PRIMARY KEY(account,namespace_id,canonical_id));
+                CREATE TABLE IF NOT EXISTS wiki_entity_aliases (
+                  account TEXT, namespace_id TEXT, alias TEXT, canonical_id TEXT NOT NULL,
+                  PRIMARY KEY(account,namespace_id,alias));
                 CREATE TABLE IF NOT EXISTS kb_namespaces (
                   account TEXT, namespace TEXT, root_uri TEXT,
                   PRIMARY KEY(account,namespace), UNIQUE(account,root_uri));
@@ -185,6 +195,12 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 for uri, epoch in deps.items()
             ):
                 raise ValueError("Invalid image context dependencies")
+            contributors = source_ref.get("wiki_contributors", [])
+            if not isinstance(contributors, list) or any(
+                not isinstance(uri, str) or not uri.startswith("viking://resources/")
+                for uri in contributors
+            ):
+                raise ValueError("Invalid wiki contributor dependencies")
         if semantic_refs is not None:
             if not semantic_refs or set(semantic_refs) - {"0", "1"}:
                 raise ValueError("Invalid semantic source levels")
@@ -299,7 +315,13 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
     @staticmethod
     def _assert_not_writing(db, account, uri):
         if db.execute("SELECT 1 FROM source_writes WHERE account=? AND uri=?", (account, uri)).fetchone():
-            raise RuntimeError("Source has an in-flight or uncertain write; retry after verified completion")
+            # Point-named so queue workers settle the message permanently instead
+            # of re-enqueueing an unknown error forever (observed live: a single
+            # unbacked uncertain fence re-enqueued one sidecar write 96 times).
+            raise FailedPreconditionError(
+                "WRITE_RECOVERY_REQUIRED: source has an in-flight or uncertain write; "
+                "retry after verified recovery or operator fence clear"
+            )
 
     def begin_write(self, account, uri, backend_ref=None):
         if backend_ref is not None and (
@@ -400,7 +422,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
     def _invalid_reason(self, db, row):
         try:
             self._assert_not_writing(db, row["account"], row["uri"])
-        except RuntimeError as exc:
+        except FailedPreconditionError as exc:
             return str(exc)
         desired = db.execute(
             "SELECT generation FROM desired WHERE account=? AND namespace=? AND uri=?",
@@ -416,7 +438,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             for source_uri, epoch in reference.get("image_context_epochs", {}).items():
                 try:
                     self._assert_not_writing(db, row["account"], source_uri)
-                except RuntimeError as exc:
+                except FailedPreconditionError as exc:
                     return str(exc)
                 draft = db.execute(
                     "SELECT epoch FROM drafts WHERE account=? AND uri=?", (row["account"], source_uri)
@@ -444,7 +466,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 )
                 try:
                     self._assert_not_writing(db, row["account"], sidecar)
-                except RuntimeError as exc:
+                except FailedPreconditionError as exc:
                     return str(exc)
                 draft = db.execute(
                     "SELECT epoch,sha FROM drafts WHERE account=? AND uri=?",
@@ -590,6 +612,22 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
     def state(self, generation):
         with self.db() as db:
             return dict(self._build(db, generation))
+
+    def declared_image_plan(self, account, uri):
+        """True when the current desired generation for this URI was built by the
+        joint image producer (an ``image:`` member was declared at begin time).
+
+        A failed joint build never reaches a snapshot manifest, so callers that
+        only read the manifest would mistake a jointly-intended image for one
+        that was never published as joint.
+        """
+        with self.db() as db:
+            row = db.execute(
+                "SELECT b.expected FROM desired d JOIN builds b ON b.generation=d.generation "
+                "WHERE d.account=? AND d.uri=?",
+                (account, uri),
+            ).fetchone()
+        return bool(row) and any(child.startswith("image:") for child in json.loads(row[0]))
 
     def capture(self, account, ttl=120):
         with self.db() as db:

@@ -1,0 +1,38 @@
+{
+  "round": "I078",
+  "date": "2026-10-06",
+  "title": "strict_diagnostic 判定器真机单点验证：空回执点名拒绝 + G1 行注册后如实前进，六发布门禁代码面收口",
+  "target": "I077 残余『六发布门禁业务启用』中可在代码面核掉的最后一块：G3 四读取器判定器（adjudication.py service_adjudication + policies.py publication_adjudication）此前仅有单测证据（I074 4 绿），未上过运行中服务器",
+  "probes": {
+    "negative_path": {
+      "setup": "活库实况：wiki_entity_catalog 0 行、sany-wiki namespace 无 heads、目标树 target_uri=viking://resources/wiki/sany 在 resources head 快照下仅 1 条无 wiki_contributors 的条目——三门回执真实缺位",
+      "action": "向运行中实例 (127.0.0.1:1933) POST /kb/wiki/builds/{id}/execute with profile=strict_diagnostic（build key flow-w2-build-i078s）",
+      "verdict": {
+        "http": "400 InvalidArgumentError",
+        "message": "WIKI_PUBLICATION_GATE_PENDING: atomic_joint_publication: incomplete durable gates: head, closed_relationships: admitted merge graph is absent, derived_access_intersection: no wiki contribution sources stamped for the derived-access gate, schema_identity_resolution: no resolved canonical identity in catalog, trusted_entity_catalog: entity catalog carries no registered entities",
+        "named_gates": ["atomic_joint_publication", "closed_relationships", "derived_access_intersection", "schema_identity_resolution", "trusted_entity_catalog"]
+      },
+      "meaning": "四读取器在真服务器上读真库（registry SQLite + snapshots manifest），非单测假件；拒绝逐门点名而非静态 pending 列表"
+    },
+    "positive_path": {
+      "setup": "经 POST /kb/wiki/entities 注册一条 schema 身份匹配的 G1 实体行（canonical_id=candidate-16c1…2a5d，schema_id=business/1，digest 与 collection binding 一致；flowadmin 键），SDK register_wiki_entities 返回 registered=1",
+      "action": "重投 strict_diagnostic（build key flow-w2-build-i078p）",
+      "verdict": {
+        "http": "400 InvalidArgumentError",
+        "message": "WIKI_PUBLICATION_GATE_PENDING: atomic_joint_publication: incomplete durable gates: head, closed_relationships: admitted merge graph is absent, derived_access_intersection: no wiki contribution sources stamped for the derived-access gate",
+        "cleared_gates": ["trusted_entity_catalog", "schema_identity_resolution"],
+        "remaining_gates": ["atomic_joint_publication", "closed_relationships", "derived_access_intersection"]
+      },
+      "meaning": "回执在场即读证放行：判定器对齐身份行后如实把两门转为在场，仅剩的缺门是真实的发布态缺口（无已发布成员页/无 admit merge 图/无贡献源章），行为与『拒绝是默认、点名缺门』的设计一致"
+    }
+  },
+  "regression": {
+    "test_wiki_service_adjudication": "4 passed",
+    "test_wiki_http_sdk": "9 passed"
+  },
+  "interpretation": {
+    "code_face": "六发布门禁中 trusted_entity_catalog/schema_identity_resolution 两门经 G1 目录 API 真机读证放行成立；其余三门是发布态（需要先有 admitted merge+发布页+贡献章），由 FLOW 真机的 draft→publish 链路供给，非判定器代码缺口",
+    "business_enablement_residual": "业务侧启用=把 publish 动作接入生产运维流程（I070/I074 口径），属运营决策项非代码缺陷"
+  },
+  "conclusion": "G3 strict 判定器真机读证双向验证通过（空回执逐门点名 / G1 行在场即放行两门），FLOW-W1/W2 发布门禁链代码面收口"
+}

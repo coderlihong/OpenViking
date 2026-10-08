@@ -16,7 +16,7 @@ from test_index_plan import embedding as embedding
 from openviking.indexing.controlled_write_backend import ControlledLocalWriteBackend
 from openviking.indexing.publication import PublicationStore
 from openviking.indexing.registry_authority import RegistryAuthority, AuthorityRepository
-from openviking_cli.exceptions import ConflictError, FailedPreconditionError, PermissionDeniedError
+from openviking_cli.exceptions import ConflictError, FailedPreconditionError, NotFoundError, PermissionDeniedError
 
 URI = 'viking://resources/raw/document.md'
 
@@ -520,3 +520,48 @@ def test_terminal_backend_record_without_readable_source_cannot_release_fence(se
         registry.write_recovery_execute('a', intent['id'], 'admin')
     assert registry.pending_writes('a', URI)[0]['id'] == token
     assert registry.write_recovery_get('a', intent['id'])['state'] == 'prepared'
+
+
+def test_operator_fence_clear_settles_unbacked_uncertain_fences(tmp_path):
+    registry = PublicationStore(str(tmp_path / 'registry.db'))
+    registry.namespace_register('a', 'raw', 'viking://resources/raw')
+    token = registry.begin_write('a', URI)
+    registry.uncertain_write(token)
+    result = registry.write_fence_clear('a', URI, 'admin', 'local AGFS backend stopped; host restart verified')
+    assert result['state'] == 'cleared'
+    assert [f['id'] for f in result['cleared_fences']] == [token]
+    assert registry.pending_writes('a', URI) == []
+    with registry.db() as db:
+        audit = dict(db.execute('SELECT * FROM source_fence_clears').fetchone())
+        assert audit['actor'] == 'admin' and audit['old_epoch'] + 1 == audit['new_epoch']
+        assert json.loads(audit['fences'])[0]['id'] == token
+    # Draft epoch bumped: stale drafts must not resurrect pre-clear content.
+    assert registry.observe_draft('a', URI) >= 1
+
+
+def test_operator_fence_clear_rejects_writing_backed_and_missing(tmp_path):
+    root = tmp_path / 'controlled'
+    root.mkdir(mode=0o700)
+    backend = ControlledLocalWriteBackend(root)
+    registry = PublicationStore(str(tmp_path / 'registry.db'))
+    registry.namespace_register('a', 'raw', 'viking://resources/raw')
+
+    with pytest.raises(NotFoundError):
+        registry.write_fence_clear('a', URI, 'admin', 'nothing pending')
+
+    in_flight = registry.begin_write('a', URI)
+    with pytest.raises(FailedPreconditionError, match='only fully uncertain fences'):
+        registry.write_fence_clear('a', URI, 'admin', 'still writing')
+    registry.uncertain_write(in_flight)
+
+    backed, ref = _uncertain(registry, backend)
+    with pytest.raises(FailedPreconditionError, match='verified backend recovery'):
+        registry.write_fence_clear('a', URI, 'admin', 'backed fence needs a verifier')
+    assert registry.pending_writes('a', URI) and {w['id'] for w in registry.pending_writes('a', URI)} == {in_flight, backed}
+    with registry.db() as db:
+        assert db.execute('SELECT count(*) FROM source_fence_clears').fetchone()[0] == 0
+
+    with pytest.raises(ValueError):
+        registry.write_fence_clear('a', URI, '', 'no actor')
+    with pytest.raises(ValueError):
+        registry.write_fence_clear('a', URI, 'admin', '   ')

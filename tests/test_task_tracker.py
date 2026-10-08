@@ -7,6 +7,7 @@ import asyncio
 import json
 import time
 from copy import deepcopy
+from unittest.mock import patch
 
 import pytest
 
@@ -964,3 +965,130 @@ async def test_process_events_respect_owner_and_terminal_boundaries(tracker):
     assert (
         await tracker.get(task.task_id, **_owner_kwargs())
     ).execution_events == cancelled.execution_events
+
+
+async def test_create_if_no_running_settles_stale_orphaned_running(tracker: TaskTracker):
+    """I065: a RUNNING record whose owner process died must not block re-dispatch forever."""
+    orphan = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/demo", **_owner_kwargs()
+    )
+    assert orphan is not None
+    await tracker.start(orphan.task_id)
+    # Simulate a restart: the store row still carries the dead process's epoch
+    # while the live tracker has a fresh one. The store copy is authoritative
+    # for create_if_no_running (it reloads from the store).
+    current = await tracker.get(orphan.task_id, **_owner_kwargs())
+    stale = deepcopy(current)
+    stale.meta["runner_epoch"] = "dead-runner-epoch"
+    await tracker._store.update(stale)
+
+    redispatched = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/demo", **_owner_kwargs()
+    )
+
+    assert redispatched is not None
+    assert redispatched.task_id != orphan.task_id
+    settled = await tracker.get(orphan.task_id, **_owner_kwargs())
+    assert settled.status == TaskStatus.FAILED
+    assert "orphaned" in settled.error
+
+
+async def test_create_if_no_running_settles_age_old_unstamped_running(tracker: TaskTracker):
+    """Pre-epoch records fall back to the staleness window."""
+    orphan = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/legacy", **_owner_kwargs()
+    )
+    assert orphan is not None
+    await tracker.start(orphan.task_id)
+    current = await tracker.get(orphan.task_id, **_owner_kwargs())
+    stale = deepcopy(current)
+    del stale.meta["runner_epoch"]
+    stale.updated_at = time.time() - (tracker.TTL_ACTIVE_STALE + 60)
+    await tracker._store.update(stale)
+
+    redispatched = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/legacy", **_owner_kwargs()
+    )
+
+    assert redispatched is not None
+    settled = await tracker.get(orphan.task_id, **_owner_kwargs())
+    assert settled.status == TaskStatus.FAILED
+    assert "orphaned" in settled.error
+
+
+async def test_has_running_settles_dead_runner_epoch(tracker: TaskTracker):
+    """A restart-stale RUNNING must not make wait=true reindex CONFLICT forever."""
+    orphan = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/wait", **_owner_kwargs()
+    )
+    assert orphan is not None
+    await tracker.start(orphan.task_id)
+    current = await tracker.get(orphan.task_id, **_owner_kwargs())
+    stale = deepcopy(current)
+    stale.meta["runner_epoch"] = "dead-runner-epoch"
+    await tracker._store.update(stale)
+
+    assert not await tracker.has_running(
+        "admin_reindex", "viking://resources/wait", **_owner_kwargs()
+    )
+    settled = await tracker.get(orphan.task_id, **_owner_kwargs())
+    assert settled.status == TaskStatus.FAILED
+    assert "owning server process exited" in settled.error
+
+
+async def test_alive_same_epoch_running_blocks_dispatch(tracker: TaskTracker):
+    active = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/epoch", **_owner_kwargs()
+    )
+    assert active is not None
+    await tracker.start(active.task_id)
+    assert (
+        await tracker.create_if_no_running(
+            "admin_reindex", "viking://resources/epoch", **_owner_kwargs()
+        )
+        is None
+    )
+    assert await tracker.has_running(
+        "admin_reindex", "viking://resources/epoch", **_owner_kwargs()
+    )
+
+
+async def test_durable_queue_work_survives_epoch_reconciliation(tracker: TaskTracker):
+    """Rebuilt QueueFS work keeps its record; epoch alone must not settle it."""
+    orphan = await tracker.create_if_no_running(
+        "add_resource", "viking://resources/queue-work", **_owner_kwargs()
+    )
+    assert orphan is not None
+    await tracker.start(orphan.task_id)
+    current = await tracker.get(orphan.task_id, **_owner_kwargs())
+    stale = deepcopy(current)
+    stale.meta["runner_epoch"] = "dead-runner-epoch"
+    await tracker._store.update(stale)
+    # Rebuilt queue work still references this task: tracker.has_work() is true.
+    with patch.object(
+        tracker._work_index,
+        "has_work",
+        side_effect=lambda task_id: task_id == orphan.task_id,
+    ):
+        assert (
+            await tracker.create_if_no_running(
+                "admin_reindex", "viking://resources/queue-work", **_owner_kwargs()
+            )
+            is not None
+        )
+        settled = await tracker.get(orphan.task_id, **_owner_kwargs())
+        assert settled.status == TaskStatus.RUNNING
+
+
+async def test_create_if_no_running_still_rejects_fresh_running(tracker: TaskTracker):
+    active = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/live", **_owner_kwargs()
+    )
+    assert active is not None
+    await tracker.start(active.task_id)
+    assert (
+        await tracker.create_if_no_running(
+            "admin_reindex", "viking://resources/live", **_owner_kwargs()
+        )
+        is None
+    )

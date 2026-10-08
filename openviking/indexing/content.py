@@ -59,6 +59,20 @@ async def archive_source(fs, uri, ctx):
     return reference, raw
 
 
+def _is_lock_conflict(exc: Exception) -> bool:
+    # RAGFS auto-pathlock runs with a fixed 0s wait, so a concurrent writer on
+    # the same blob path surfaces as an immediate lock-timeout internal error.
+    # "file exists" covers the legacy CreateNew EEXIST leak before it maps to
+    # a native AlreadyExists conflict.
+    message = str(exc).lower()
+    return "lock" in message and (
+        "timed out" in message
+        or "conflict" in message
+        or "busy" in message
+        or "file exists" in message
+    )
+
+
 async def archive_bytes(fs, raw, ctx):
     """Archive private derived metadata through the same account AGFS stack."""
     sha = hashlib.sha256(raw).hexdigest()
@@ -68,13 +82,24 @@ async def archive_bytes(fs, raw, ctx):
             await fs._async_agfs.mkdir(directory)
         except Exception as exc:
             if "already exists" not in str(exc).lower() and not isinstance(exc, FileExistsError):
-                raise
+                if not _is_lock_conflict(exc):
+                    raise
+                # A sibling mkdir holds the directory lock; the blob write below
+                # re-verifies the final state, so proceed without the mkdir.
     try:
         await fs._async_agfs.stat(path)
     except Exception as exc:
         if not is_not_found_error(exc) and not isinstance(exc, FileNotFoundError):
             raise
-        await fs._async_agfs.write(path, raw)
+        try:
+            await fs._async_agfs.write(path, raw)
+        except Exception as exc:
+            # Duplicate-content sources (e.g. repeated PDF placeholder images)
+            # race here: the winner's write creates the blob while this caller
+            # is between stat and write. The read-back below decides whether
+            # this caller still needs its own write.
+            if not _is_lock_conflict(exc) and not isinstance(exc, FileExistsError):
+                raise
     stored = fs._handle_agfs_read(await fs._async_agfs.read(path))
     if stored != raw:
         raise RuntimeError("Immutable source revision failed verification")

@@ -1,0 +1,33 @@
+{
+  "id": "I075",
+  "date": "2026-10-06",
+  "title": "W1 文档替换整树 staged commit 落地：暂存树+换名晋升，旧树在晋升完成前可恢复",
+  "requirement": "I070 台账 residual「文档替换整树提交仍 WIKI_REPLACEMENT_GATE_PENDING（build_plan.py:292）」：update_policy='replace' 时 PDF/Office 上传须能在不丢旧树的前提下替换已存在的解析目录。",
+  "verdict": "CLOSED",
+  "design": {
+    "problem": "共享解析器对目标树是 overlay 语义：直接对旧树解析会保留旧章节/图片；破坏性预删又会在解析器失败时丢掉唯一旧源。",
+    "solution": "prepare_materialized_upload 在 root 已存在且 update_policy='replace' 时走 _stage_tree_replacement：materialize 到同层隐藏暂存树 .{stem}.staging-{key} → 校验暂存树非空 → mv 旧树到 .{stem}.retired-{key} → mv 暂存树到 root → 删 retired；materialize 抛错删 staging 保旧树，promote 失败删残 root 并把 retired 换名回来。暂存名绑定 idempotency key，重放同 key 前先清 scratch。",
+    "guard": "新 _reject_pinned_replacement：root 下存在其它 prepared build plan（wiki_build_plans rows 按 roots 前缀匹配）时拒绝替换——执行侧读的是 prepared 固定修订集，换树会破坏这些读取；仅豁免当前 key（同 key 字节重放在上文 check_current_inputs 分支已短路）。"
+  },
+  "evidence": {
+    "code": "openviking/wiki/build_plan.py:_stage_tree_replacement/_reject_pinned_replacement；原 WIKI_REPLACEMENT_GATE_PENDING 分支删除",
+    "tests": "tests/enterprise_kb/test_wiki_replacement_commit.py 6 用例：replace 成功换树且暂存/retired 清理、materialize 失败旧树字节不变、promote 失败 retired 换名恢复、fail 策略仍 ConflictError 且不触发解析器、pinned plan 阻断换树且旧 plan check_current_inputs 仍通过、空解析产物 SchemaError 拒绝",
+    "fixture": "test_content_publication.environment 补 fs.rm/fs.mv 磁盘 stub（_uri_to_path 映射），viking FS 内部 rm/mv 语义另有生产测试覆盖"
+  },
+  "regression": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_wiki_replacement_commit.py test_wiki_materialized_replay.py test_wiki_ingestion_http.py test_wiki_build_plan.py -q --no-cov && .venv/bin/python -m pytest tests/enterprise_kb/test_wiki_catalog.py test_wiki_execution_jobs.py test_wiki_path_policy.py test_wiki_page_rules.py -q --no-cov",
+    "result": "59 passed + 66 passed"
+  },
+  "truthful_boundaries": [
+    "replay 测试原断言『replace 也抛 FailedPrecondition』按新语义改写为仅 fail 策略拒绝——这是行为升级不是回归，pinned-plan 保护由新用例单独验收",
+    "测试底座的 fs.mv/fs.rm 是磁盘 stub；真实 AGFS pathlock/vector-store 联动不在此轮证明（与 I046/I047 真机链路互补）",
+    "已 prepared 但尚未执行的 plan 若正好 pin 住被换树会硬拒——操作者需先消费或以新文件名上传，属保守取舍而非缺陷"
+  ],
+  "closes": [
+    "I070 findings.w1_pdf_office_scheduling.residual 清零：WIKI_REPLACEMENT_GATE_PENDING 从代码库移除"
+  ],
+  "code_paths": [
+    "openviking/wiki/build_plan.py:286-345",
+    "tests/enterprise_kb/test_wiki_replacement_commit.py"
+  ]
+}

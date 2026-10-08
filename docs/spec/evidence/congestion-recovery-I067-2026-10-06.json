@@ -1,0 +1,83 @@
+{
+  "id": "I067",
+  "date": "2026-10-06",
+  "title": "D1 reindex 语义阶段拥塞根因处置：VLM 并发×服务端 KV 容量错配",
+  "trigger": "用户问『摘要生产为什么这么慢？是逻辑问题还是数量问题』，重投任务 c70364c0 的 VLM 完成速率持续衰减需要根因解释。",
+  "symptom_timeline": {
+    "vlm_call_rate_per_min": [
+      {"time": "10:05", "cum_calls": 2156, "rate": "~68", "note": "切dspark后1h内"},
+      {"time": "10:11", "cum_calls": 2333, "rate": "~30"},
+      {"time": "10:19", "cum_calls": 2567, "rate": "~30→13"},
+      {"time": "10:24", "cum_calls": 2621, "rate": "~13"},
+      {"time": "10:32", "cum_calls": 2672, "rate": "~6.4"},
+      {"time": "10:44", "cum_calls": 2714, "rate": "~4.2"}
+    ],
+    "timeout_failures": "6 个语义节点 Request timed out（ov.conf vlm.timeout=600s）",
+    "embedding_calls": "41 恒定——向量阶段未开始，符合 semantic_and_vectors 两段式顺序"
+  },
+  "root_cause": [
+    "(1) vlm.max_concurrent=32 与服务端真实容量错配：dspark 容器（sglang qwen3.8-27b FP8-DSpark, tp=2, max-running-requests 48）在 KV cache 满时实际并行仅 ~2；",
+    "(2) dspark 容器 Up 4 天未回收 radix cache（full token usage 常态 0.92~0.99，逐出缓慢），进一步压缩有效 KV；",
+    "(3) 客户端 32 并发 → sglang queue-req 钉死 36 → 单请求排队分钟级 → 撞 600s 超时 → 空转重试加剧拥塞，恶性循环。"
+  ],
+  "not_the_cause": [
+    "语义 DAG 逻辑（defer/兄弟不阻塞/父聚合均正常工作）",
+    "节点数量（~3600 个是恒定量，健康调度下吞吐恒定）",
+    "embedding 不动属两段式设计：semantic_and_vectors 先语义后向量（reindex_executor.py:1259-1267），image_summaries 齐了才进向量阶段"
+  ],
+  "remediation": {
+    "step1": "正规 cancel c70364c0（cancelling 状态落盘）→ kill 本地 openviking-server（PID 13592）",
+    "step2": "docker restart qwen38-27b-dspark（10.147.254.3，t-wanghai 账号）清 radix 积压，约 5 分钟加载就绪",
+    "step3": "ov.conf vlm.max_concurrent 32→8（备份 ~/.openviking/ov.conf.bak.202610061046），重启本地服务 PID 29653",
+    "step4": "重投遇 CONFLICT：c70364c0 卡 CANCELLING 永久冻结（owner 已死，_finalize_task_on_owner 等 work_index 归零永不发生）→ 定点 patch 任务记录 JSON 收口 cancelled（含终态事件补写）",
+    "step5": "重投成功 → task 42c9a071-568d-43f5-9607-15d57d82e2ff accepted"
+  },
+  "effect_measured": {
+    "before_vs_after": {
+      "vlm_rate": "~4.2 次/分 → ~75 次/分（18 倍）",
+      "sglang_queue": "queue-req 36 → 0",
+      "kv_usage": "0.92~0.99 → 0.02",
+      "gen_throughput": "435 tok/s → 1855 tok/s",
+      "timeouts": "6 → 0",
+      "running_req": "2 → 7"
+    },
+    "eta_semantic_phase": "剩余 ~3100 节点 @75/分 ≈ 40 分钟（采样 10:59）"
+  },
+  "operational_lessons": [
+    "长跑推理容器的 radix cache 需要周期性回收或定期重启；4 天积压让 KV 常年满水位",
+    "客户端 VLM 并发应按服务端真实并行容量配置（此实例 ~8），而非固定 32",
+    "task tracker 孤儿态自愈缺口再添一证：CANCELLING 与 RUNNING 一样无 owner 时永久冻结（见 I065 待办，需统一修）",
+    "观测盲区仍在：task 记录 stage=None、metrics exporter 未启用，语义 DAG 进度只能靠 VLM 调用计数间接推断（待办 #3）"
+  ],
+  "same_round_fixups_landed": {
+    "stage_observability": {
+      "root_cause": "task_tracker.update_stage API 早已存在（task_tracker.py:517）但 reindex executor 从不调用——任务记录 stage=None 根因，不是 tracker 缺功能",
+      "fix": "reindex_executor._update_stage 经 bind_task_context 恢复 task_id 打点：_run 入口打 {mode}:{object_type}，_reindex_resource 语义/向量阶段边界打 semantic:<uri>/vectors:<uri>；dry_run/wait 路径无 task context 自动 no-op",
+      "dag_progress_clarification": "/observer/queue 的 Semantic-Nodes 行本就实时透出 DAG done/pending/in_progress/total（此前台账记录『DAG stats 无 API 透出』过时），监控直接用该行即可",
+      "tests": "tests/enterprise_kb/test_reindex_contract.py 新增 2 条（阶段打点序列+无 task context no-op），文件 23 passed；tests/test_task_tracker.py 61 passed"
+    },
+    "prefix_filter_guard": {
+      "root_cause": "vectordb_adapters/base.py _normalize_filter_payload_for_write 中 prefix 键仅 URI 字段生效，非 URI 字段（如 chunk_id）静默丢弃——I064 『chunk_id prefix 组合过滤返回 0』悬案根因",
+      "fix": "非 URI 字段 prefix 显式抛 InvalidArgumentError（提示 op=must 精确 match）；URI 字段行为不变",
+      "tests": "新增 tests/storage/test_filter_prefix_guard.py 3 passed；相邻过滤回归（test_viking_vector_scope_filter+test_deletion_gc+test_qdrant_adapter）29 passed",
+      "unrelated_failures": "tests/vectordb 6 failed 为原生引擎 ABI 缺口（_ov_engine_backend._index_engine_rebuild_scalar_index AttributeError），guard stash 前后同样失败，非本次引入"
+    },
+    "stage_progress_live_readings": [
+      {"time": "11:27", "done": 1901, "pending": 1286},
+      {"time": "11:29", "done": 1935, "pending": 1252, "rate": "~17/min"},
+      {"time": "11:36", "done": 2034, "pending": 1153, "rate": "~14/min"},
+      {"time": "11:45", "done": 2058, "pending": 1129, "rate": "~2.7/min（长尾重节点段）"},
+      {"time": "11:46", "done": 2211, "pending": 976, "rate": "~25/min（恢复）"},
+      {"note": "三条目录摘要 VLM 偶发超时 defer 重试（11:23/11:29/11:30），I056 修复路径正常工作，零 error 计数"}
+    ]
+  },
+  "truthful_boundaries": [
+    "切端点到 8121 (bc-qwen38-27b, vllm) 的备选被否：探针显示 chat template 异常输出裸文本，不满足摘要质量要求，维持 dspark 端点",
+    "8998 (sanypqe-vlm) 需鉴权密钥且非本项目配置栈，未启用",
+    "速率数字来自 observer/models 调用计数与 sglang 日志，非受控基准测试"
+  ],
+  "ledger_impact": {
+    "backlog": "新增 I067 段落",
+    "feature_status": "无状态升降：拥塞处置不改变 PARTIAL/OPEN 判定；FLOW-D1 与 KB-020 维持原判，等 42c9a071 终态"
+  }
+}

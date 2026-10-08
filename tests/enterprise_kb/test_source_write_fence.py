@@ -11,6 +11,7 @@ from test_semantic_content_publication import ROOT, directory
 
 from openviking.indexing.content import archive_source
 from openviking.indexing.publication import PublicationStore
+from openviking_cli.exceptions import FailedPreconditionError
 
 
 @pytest.mark.parametrize("method", ["write", "write_file", "write_file_bytes", "append_file"])
@@ -40,7 +41,7 @@ async def test_each_standard_write_blocks_capture_until_storage_confirms(environ
         raise
     try:
         assert e.store.pending_writes("acct", URI)[0]["state"] == "writing"
-        with pytest.raises(RuntimeError, match="in-flight"):
+        with pytest.raises(FailedPreconditionError, match="in-flight"):
             await archive_source(e.fs, URI, e.ctx)
     finally:
         release.set()
@@ -57,7 +58,7 @@ def test_multiple_writers_and_registry_restart_preserve_all_fences(tmp_path):
     a, b = store.begin_write("acct", URI), store.begin_write("acct", URI)
     restarted = PublicationStore(store.path)
     restarted.finish_write(a)
-    with pytest.raises(RuntimeError, match="in-flight"):
+    with pytest.raises(FailedPreconditionError, match="in-flight"):
         store.observe_draft("acct", URI)
     assert [x["id"] for x in store.pending_writes("acct", URI)] == [b]
     assert store.observe_draft("other", URI) == 0
@@ -88,7 +89,7 @@ async def test_uncertain_write_keeps_old_public_version_and_blocks_new_capture(e
     restarted = PublicationStore(e.store.path)
     writes = restarted.pending_writes("acct", URI)
     assert len(writes) == 1 and writes[0]["state"] == "uncertain"
-    with pytest.raises(RuntimeError, match="uncertain"):
+    with pytest.raises(FailedPreconditionError, match="uncertain"):
         await archive_source(e.fs, URI, e.ctx)
     with pytest.raises(RuntimeError, match="confirmed"):
         restarted.finish_write(writes[0]["id"])
@@ -100,7 +101,7 @@ async def test_write_started_after_capture_rejects_begin_and_final_publication(e
     await e.fs.write(URI, "body", ctx=e.ctx)
     ref, _ = await archive_source(e.fs, URI, e.ctx)
     token = e.store.begin_write("acct", URI)
-    with pytest.raises(RuntimeError, match="in-flight"):
+    with pytest.raises(FailedPreconditionError, match="in-flight"):
         e.store.begin("acct", "resources", URI, "plan", ["member"], source_ref=ref)
     e.store.finish_write(token)
     with pytest.raises(RuntimeError, match="changed"):

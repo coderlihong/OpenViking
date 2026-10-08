@@ -15,7 +15,9 @@ from openviking_cli.exceptions import ConflictError, NotFoundError, PermissionDe
 
 DOMAIN_COMMANDS = (
     'wiki_schema_get', 'wiki_schema_check', 'wiki_schema_register', 'wiki_schema_refresh',
-    'wiki_collection_register', 'wiki_collection_get', 'wiki_collection_domain_check', 'wiki_collection_migrate', 'namespace_get', 'namespace_list',
+    'wiki_collection_register', 'wiki_collection_get', 'wiki_collection_domain_check', 'wiki_collection_migrate',
+    'wiki_entity_register', 'wiki_entity_get', 'wiki_entity_list',
+    'namespace_get', 'namespace_list',
     'namespace_registration_check', 'namespace_register', 'namespace_set_export',
     'namespace_authorize_exports', 'namespace_check_revision',
     'wiki_plan_get', 'wiki_plan_find', 'wiki_plan_persist', 'wiki_plan_check_epochs',
@@ -125,6 +127,89 @@ class RegistryDomains:
                     raise ConflictError('Legacy collection conflicts with another collection; revise before migration')
             db.execute("INSERT OR REPLACE INTO wiki_collection_domains VALUES (?,?,'registered',?,?,?)", (account, collection_id, *roots))
             return roots
+
+    _CANONICAL_ID = re.compile(r'candidate-[0-9a-f]{64}')
+    _HEX64 = re.compile(r'[0-9a-f]{64}')
+
+    @staticmethod
+    def _entity_entry(account, namespace_id, entry):
+        if not isinstance(entry, dict):
+            raise ValueError('Entity catalog entry must be an object')
+        expected = {'canonical_id', 'entity_type', 'schema_id', 'schema_version', 'schema_digest', 'aliases', 'source_uri'}
+        if set(entry) != expected:
+            raise ValueError('Entity catalog entry requires exactly: ' + ', '.join(sorted(expected)))
+        canonical_id = entry['canonical_id']
+        if not isinstance(canonical_id, str) or not RegistryDomains._CANONICAL_ID.fullmatch(canonical_id):
+            raise ValueError('Invalid canonical entity identity')
+        for key in ('entity_type', 'schema_id', 'schema_version'):
+            if not isinstance(entry[key], str) or not re.fullmatch(r'[A-Za-z0-9_.+\-]{1,128}', entry[key]):
+                raise ValueError('Invalid entity catalog ' + key)
+        digest = entry['schema_digest']
+        if not isinstance(digest, str) or not RegistryDomains._HEX64.fullmatch(digest):
+            raise ValueError('Invalid entity schema digest')
+        aliases = entry['aliases']
+        if (not isinstance(aliases, list) or not aliases or len(set(aliases)) != len(aliases)
+                or any(not isinstance(alias, str) or not alias.strip() or alias != alias.strip() for alias in aliases)):
+            raise ValueError('Entity aliases must be distinct non-empty display names')
+        source_uri = entry['source_uri']
+        if not isinstance(source_uri, str) or not source_uri.startswith('viking://'):
+            raise ValueError('Entity source must be a viking URI')
+        return {'account': account, 'namespace_id': namespace_id, 'canonical_id': canonical_id,
+                'entity_type': entry['entity_type'], 'schema_id': entry['schema_id'],
+                'schema_version': entry['schema_version'], 'schema_digest': digest,
+                'aliases': aliases, 'source_uri': source_uri}
+
+    def wiki_entity_register(self, account, namespace_id, entries):
+        """Authoritative catalog append; one alias names one canonical entity per namespace."""
+        rows = [self._entity_entry(account, namespace_id, entry) for entry in entries]
+        with self.db() as db:
+            if db.execute('SELECT 1 FROM kb_namespaces WHERE account=? AND namespace=?',
+                          (account, namespace_id)).fetchone() is None:
+                raise NotFoundError(namespace_id, 'Knowledge namespace')
+            incoming = {}
+            for row in rows:
+                for alias in row['aliases']:
+                    incoming.setdefault(alias, set()).add(row['canonical_id'])
+            collisions = {alias: sorted(ids) for alias, ids in incoming.items() if len(ids) > 1}
+            if collisions:
+                raise ConflictError('Batch claims one display alias for several canonical entities: '
+                                    + ', '.join(sorted(collisions)))
+            for row in rows:
+                old = db.execute('SELECT * FROM wiki_entity_catalog WHERE account=? AND namespace_id=? AND canonical_id=?',
+                                 (account, namespace_id, row['canonical_id'])).fetchone()
+                if old is not None:
+                    same = (old['entity_type'], old['schema_id'], old['schema_version'], old['schema_digest'],
+                            old['aliases'], old['source_uri'])
+                    if same != (row['entity_type'], row['schema_id'], row['schema_version'], row['schema_digest'],
+                                json.dumps(row['aliases'], ensure_ascii=False), row['source_uri']):
+                        raise ConflictError('Canonical entity already registered with different contents')
+                    continue
+                for alias in row['aliases']:
+                    holder = db.execute('SELECT canonical_id FROM wiki_entity_aliases WHERE account=? AND namespace_id=? AND alias=?',
+                                        (account, namespace_id, alias)).fetchone()
+                    if holder is not None and holder['canonical_id'] != row['canonical_id']:
+                        raise ConflictError('Display alias is already owned by another canonical entity: ' + alias)
+                db.execute('INSERT INTO wiki_entity_catalog VALUES (?,?,?,?,?,?,?,?,?,?)',
+                           (account, namespace_id, row['canonical_id'], row['entity_type'], row['schema_id'],
+                            row['schema_version'], row['schema_digest'], json.dumps(row['aliases'], ensure_ascii=False),
+                            row['source_uri'], time.time()))
+                for alias in row['aliases']:
+                    db.execute('INSERT INTO wiki_entity_aliases VALUES (?,?,?,?)',
+                               (account, namespace_id, alias, row['canonical_id']))
+            return {'registered': len(rows), 'aliases': {alias: sorted(ids)[0] for alias, ids in incoming.items()}}
+
+    def wiki_entity_get(self, account, namespace_id, canonical_id):
+        with self.db() as db:
+            row = db.execute('SELECT * FROM wiki_entity_catalog WHERE account=? AND namespace_id=? AND canonical_id=?',
+                             (account, namespace_id, canonical_id)).fetchone()
+            if row is None:
+                raise NotFoundError(canonical_id, 'Wiki entity')
+            return dict(row)
+
+    def wiki_entity_list(self, account, namespace_id):
+        with self.db() as db:
+            return [dict(row) for row in db.execute(
+                'SELECT * FROM wiki_entity_catalog WHERE account=? AND namespace_id=? ORDER BY canonical_id', (account, namespace_id))]
 
     def wiki_collection_register(self, account, binding):
         body = json.dumps(binding, ensure_ascii=False, sort_keys=True, separators=(',', ':'))

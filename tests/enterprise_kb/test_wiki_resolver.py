@@ -9,7 +9,7 @@ from test_index_plan import embedding as embedding
 
 from openviking.wiki.resolver import ReferenceBinding, VikingReferenceResolver
 from openviking.wiki.schema import SchemaError
-from openviking_cli.exceptions import PermissionDeniedError
+from openviking_cli.exceptions import PermissionDeniedError, FailedPreconditionError
 
 RAW='viking://resources/raw/source.md'
 FAULT='viking://resources/wiki/Fault/f.md'
@@ -68,10 +68,10 @@ async def test_reference_capture_rejects_completed_write_during_read(environment
 async def test_inflight_and_uncertain_fences_block_reference_capture(environment):
     e=environment;r=await resolver(e)
     token=e.store.begin_write('acct',RAW)
-    with pytest.raises(RuntimeError,match='in-flight'):
+    with pytest.raises(FailedPreconditionError,match='in-flight'):
         await r(RAW)
     e.store.uncertain_write(token)
-    with pytest.raises(RuntimeError,match='uncertain'):
+    with pytest.raises(FailedPreconditionError,match='uncertain'):
         await r(RAW)
 
 

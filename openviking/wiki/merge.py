@@ -345,10 +345,16 @@ class PrivateWikiMerger:
                 if prior is not None:
                     if prior['markdown'] != markdown:
                         raise SchemaError('Candidate URI claimed by different content across groups: ' + uri)
+                    # A replayed page must keep every original contributor: the
+                    # index-level derived gate revokes on any single one of them.
+                    contributors = set(prior.get('contributors', [prior['provenance']['source_uri']]))
+                    contributors.add(provenance['source_uri'])
+                    prior['contributors'] = sorted(contributors)
                     continue
                 draft = inspect_entity(schema, uri, markdown, namespace_root=root)
                 entry = {'uri': uri, 'markdown': markdown, 'kind': group['kind'], 'draft': draft,
-                         'candidate_id': group['candidate_id'], 'provenance': provenance}
+                         'candidate_id': group['candidate_id'], 'provenance': provenance,
+                         'contributors': [provenance['source_uri']]}
                 by_uri[uri] = entry
                 planned.append(entry)
         for entry in planned:
@@ -415,6 +421,9 @@ class PrivateWikiMerger:
                 source_snapshot, raw = await archive_source(self.fs, uri, ctx)
                 content = raw.decode() if isinstance(raw, bytes) else (raw or '')
                 source_snapshot['text_sha256'] = hashlib.sha256(content.encode()).hexdigest()
+                # Every extraction source must remain authorized for the derived
+                # page to stay visible; the registry-level gate reads this list.
+                source_snapshot['wiki_contributors'] = sorted(page.get('contributors', []))
                 meta_input = await load_business_meta(self.fs, uri, ctx)
             else:
                 content = page['markdown']

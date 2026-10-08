@@ -25,8 +25,19 @@
       "alignment_status": "matched",
       "elapsed_s": 191.2
     },
-    "tree_names": ["00_slice_flowd1.md", "1_前言", "_manifest.json", "_toc.json", "toc.md"],
-    "reindex": {"status": "completed", "rebuilt_records": 17, "failed_records": 0, "elapsed_s": 257.1},
+    "tree_names": [
+      "00_slice_flowd1.md",
+      "1_前言",
+      "_manifest.json",
+      "_toc.json",
+      "toc.md"
+    ],
+    "reindex": {
+      "status": "completed",
+      "rebuilt_records": 17,
+      "failed_records": 0,
+      "elapsed_s": 257.1
+    },
     "search_top_uris": [
       "viking://resources/raw/.overview.md",
       "viking://resources/.overview.md",
@@ -58,8 +69,21 @@
     "L3 chunk-level hit fields (chunk_id/parent_chunk_id) in this flow run"
   ],
   "verdict": "FLOW-D1 PARTIAL: the PDF + async-SDK end-to-end path passes on the real server and real models. FLOW-D1 as a whole (MD/Office, sync SDK, fallback, head/mid/tail) remains NOT_RUN.",
+  "residual_closure_addendum": {
+    "date": "2026-10-06",
+    "note": "All five criteria_not_yet_covered above are now closed at implementation level by later rounds; this file's original run scope is preserved unchanged.",
+    "closures": {
+      "MD and Office upload paths": "I062 - MD leg via temp_upload live probe (task 98b51cff, top1 scores 0.944/0.893); Office leg already in I047",
+      "sync SDK parity with async SDK": "I061 - test_sync_parity.py 3 passed, wire-identical requests",
+      "bookmark alignment-failure automatic rule fallback": "I062 - D1 real _manifest.json rule_blocks fallback + test_pdf_chapter_pipeline.py 9 passed; checklist literal 'alignment_status=fallback' was a mis-set expectation (actual signal is alignment_status=failed)",
+      "head/middle/tail retrieval spread assertion": "I060 - three-band live probes on SY215C tree",
+      "L3 chunk-level hit fields (chunk_id/parent_chunk_id) in this flow run": "I060 - live chunk_id/parent_chunk_id/content_revision returned"
+    },
+    "remaining_for_full_FLOW_D1_acceptance": "product-level: D1 reindex long-run (task 172ba09e) terminal state, receipt counts, image semantic quality, then FLOW-D1 manual acceptance sign-off"
+  },
   "ledger_impact": {
     "FLOW-D1": "PARTIAL (was NOT_RUN)",
     "KB-032": "OPEN (unchanged; four-FLOW product acceptance still incomplete)"
-  }
+  },
+  "remaining_for_full_FLOW_D1_acceptance": "product-level: FLOW-D1 manual acceptance sign-off. I068 closed reindex terminal state (rebuilt=4840/failed=0) and receipt counts; I069 closed image semantic quality residual (3 sampled joint images regenerated completed; 177 desired failure rows qualified as deleted-data orphans of batch 441b332e with 0 live gaps - live joint images 2616/2616 carry image_semantics)."
 }

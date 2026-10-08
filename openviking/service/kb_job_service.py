@@ -11,9 +11,9 @@ from openviking_cli.exceptions import ConflictError, FailedPreconditionError, In
 
 
 class KBJobService:
-    def __init__(self, fs, repository):
+    def __init__(self, fs, repository, *, max_source_uris=2048):
         self.fs, self.repository = fs, repository
-        self.namespaces = NamespaceCatalog(fs, registry=repository)
+        self.namespaces = NamespaceCatalog(fs, registry=repository, max_source_uris=max_source_uris)
 
     async def _authorize(self, ctx, job, action):
         if ctx.bypass_acl or job['account'] != ctx.account_id or job['principal'] != ctx.user.user_id:
@@ -31,6 +31,19 @@ class KBJobService:
         if job.get('kind') in {'W1', 'W2'}:
             await self.namespaces.authorize_sources(ctx, target_namespace_id=job['namespace'],
                 target_uri=target, source_uris=sources)
+
+    async def _authorize_row_visibility(self, ctx, job):
+        """List-path row check: ownership + namespace read only.
+
+        Source-set re-authorization here is quadratic at scale (each W1 row
+        replays ~2000+ per-URI ACL/stat walks over the whole collection) and
+        redundant: sources were gated when the job was created and are
+        re-checked by the executor before any work runs. Listing reveals only
+        the fact of a job and its namespace, which this check covers.
+        """
+        if ctx.bypass_acl or job['account'] != ctx.account_id or job['principal'] != ctx.user.user_id:
+            raise PermissionDeniedError('Jobs require their original user identity')
+        await self.namespaces.get(ctx, job['namespace'], action=AclAction.READ)
 
     async def create(self, ctx, *, namespace_id, kind, idempotency_key, payload, effective_config):
         if ctx.bypass_acl:
@@ -92,7 +105,7 @@ class KBJobService:
         visible = []
         for row in rows:
             try:
-                await self._authorize(ctx, row, AclAction.READ)
+                await self._authorize_row_visibility(ctx, row)
             except (PermissionDeniedError, NotFoundError):
                 continue
             visible.append(row)

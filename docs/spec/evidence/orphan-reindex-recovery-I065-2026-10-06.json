@@ -1,0 +1,46 @@
+{
+  "id": "I065",
+  "date": "2026-10-06",
+  "title": "D1 reindex 长跑断层处置：孤儿 RUNNING 任务收口与重投",
+  "trigger": "I058 轮重投的 D1 admin reindex（task 172ba09e，semantic_and_vectors）终态核查。",
+  "orphan_discovery": {
+    "symptom": "任务记录 status=running 但仅 2 个执行事件（created→running），updated_at 停在 2026-10-05T23:14:07Z（与创建同毫秒），2.3 小时无任何推进；API GET /api/v1/tasks/{id} 持续返回 running。",
+    "decisive_probes": {
+      "queue": "/api/v1/observer/queue 全队列 Pending=0 / In-Progress=0（Embedding/Semantic 均 0），queue.db-wal 自 09:09:46 后静默（60s 复采样无变化）",
+      "index_blobs": "data/viking/flowtest/_system/index_blobs 最新写入 09:09，-mmin 探针 0 命中",
+      "vectordb": "data/vectordb/context/store 最新 ldb/log 停在 09:07-09:09",
+      "process": "服务进程 PID 13592 于 09:05 重启（etime 27min），日志无 reindex worker 活动"
+    },
+    "root_cause": [
+      "(1) reindex_executor._run_tracked 是纯进程内 asyncio.create_task，服务重启即死，无跨重启恢复/续跑机制；",
+      "(2) task tracker 的 _is_expired 只对 completed/cancelled 设 TTL（TTL_FAILED 覆盖 failed），对 RUNNING 无陈旧阈值 → 孤儿 RUNNING 记录永久存在；",
+      "(3) reindex 入口 create_if_no_running 按 (account,user,type,resource_id) 判定 has_active → 该 URI 重投永远 CONFLICT。"
+    ]
+  },
+  "remediation_this_round": {
+    "step1_cancel_orphan": "POST /api/v1/tasks/172ba09e-…-40b2ecc1dd07/cancel → 200，status=cancelled（admin_reindex 在 _CANCELLABLE_TASK_TYPES 白单内，走正规接口而非改库）",
+    "step2_resubmit": "POST /api/v1/content/reindex {uri: viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh, mode: semantic_and_vectors, wait: false} → 新 task c70364c0-dbfb-410a-9f9c-a3f510fcd0c3 accepted",
+    "liveness_after_resubmit": {
+      "vlm_calls_growth": "qwen3.8-27b 调用数 552（09:41）→ 589 → 794（09:46 前后三次采样持续增长）≈ 933 图语义摘要在逐图生成",
+      "note": "embedding 计数停在 41 属预期：semantic_dag 语义阶段先于向量阶段，933 图摘要完成后才进入图文 joint 向量写入"
+    }
+  },
+  "truthful_boundaries": [
+    "本轮是断层处置（取消+重投），不是断点续跑：新任务从语义阶段重新开始，先前已生成的 139+28 条图片语义缓存可经 image-semantics-cache-v2 命中复用，但正文 chunk 向量会重建。",
+    "根因 (1)(2) 的代码修复未在本轮实施，只完成台账记录与待办（见 backlog I065 待办两条）。",
+    "FLOW-D1 完整验收仍等待本重投任务终态 + 图片回执计数核验。"
+  ],
+  "followups": [
+    "KB-004/KB-020 补强项：task tracker RUNNING 陈旧阈值 or 启动时 owner 存活检查标 failed",
+    "reindex executor checkpoint 续跑（与 KB-004 lease/checkpoint 契约对齐）"
+  ],
+  "code_paths": [
+    "openviking/service/reindex_executor.py:886 (_run_tracked 进程内任务)",
+    "openviking/service/task_tracker.py:311 (_is_expired 无 RUNNING TTL)",
+    "openviking/service/task_tracker.py:450 (create_if_no_running 的 CONFLICT 判定)"
+  ],
+  "ledger_impact": {
+    "backlog": "新增 I065 段落",
+    "feature_status": "无状态升降——断层处置不改变任何 PARTIAL/OPEN；FLOW-D1 与 KB-020 维持原判"
+  }
+}

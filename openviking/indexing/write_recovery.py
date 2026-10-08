@@ -12,7 +12,8 @@ from uuid import uuid4
 
 from openviking_cli.exceptions import ConflictError, FailedPreconditionError, NotFoundError, PermissionDeniedError
 
-RECOVERY_COMMANDS = ('write_recovery_diagnose', 'write_recovery_prepare', 'write_recovery_execute', 'write_recovery_get')
+RECOVERY_COMMANDS = ('write_recovery_diagnose', 'write_recovery_prepare', 'write_recovery_execute', 'write_recovery_get',
+                      'write_fence_clear')
 
 
 class WriteRecoveryMixin:
@@ -36,6 +37,10 @@ class WriteRecoveryMixin:
                   actor TEXT NOT NULL, backend TEXT NOT NULL, operations TEXT NOT NULL,
                   confirmed REAL NOT NULL, sha256 TEXT NOT NULL, old_epoch INTEGER NOT NULL,
                   new_epoch INTEGER NOT NULL, result TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS source_fence_clears (
+                  account TEXT NOT NULL, uri TEXT NOT NULL, actor TEXT NOT NULL,
+                  reason TEXT NOT NULL, fences TEXT NOT NULL, old_epoch INTEGER NOT NULL,
+                  new_epoch INTEGER NOT NULL, confirmed REAL NOT NULL);
             ''')
 
     def configure_write_recovery(self, *, backends, authorizer):
@@ -96,6 +101,46 @@ class WriteRecoveryMixin:
             result = dict(row)
             result['result'] = json.loads(result['result']) if result['result'] else None
             return result
+
+    def write_fence_clear(self, account, uri, actor, reason):
+        """Operator-only settlement for UNBACKED uncertain write fences.
+
+        These fences have no source_write_refs row (backend had no
+        prepare_source_write), so no verifier can ever prove or deny terminality.
+        The operator vouches out-of-band that the backend stopped; the clear is
+        audited and bumps the draft epoch like any fence resolution. A 'writing'
+        state or a backed fence is rejected here — those still require verified
+        recovery through write_recovery_execute.
+        """
+        if not isinstance(actor, str) or not actor or len(actor) > 256:
+            raise ValueError('Fence clear actor must be a bounded server-resolved identity')
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 1024:
+            raise ValueError('Fence clear requires a non-empty bounded reason')
+        with self.db() as db:
+            writes = [dict(row) for row in db.execute(
+                "SELECT * FROM source_writes WHERE account=? AND uri=? ORDER BY id", (account, uri))]
+            if not writes:
+                raise NotFoundError(uri, 'Pending write fence')
+            if any(row['state'] != 'uncertain' for row in writes):
+                raise FailedPreconditionError(
+                    'WRITE_RECOVERY_REQUIRED: only fully uncertain fences may be cleared by operator assertion')
+            ref_rows = db.execute(
+                'SELECT DISTINCT token FROM source_write_refs WHERE token IN ('
+                + ','.join('?' for _ in writes) + ')', [row['id'] for row in writes]).fetchall()
+            if ref_rows:
+                raise FailedPreconditionError(
+                    'WRITE_RECOVERY_REQUIRED: backed fences require verified backend recovery')
+            cleared = [{'id': row['id'], 'state': row['state'], 'created': row['created']} for row in writes]
+            epoch_row = db.execute('SELECT epoch FROM drafts WHERE account=? AND uri=?', (account, uri)).fetchone()
+            epoch = epoch_row['epoch'] if epoch_row else 0
+            db.execute(
+                'INSERT INTO source_fence_clears (account,uri,actor,reason,fences,old_epoch,new_epoch,confirmed) '
+                'VALUES (?,?,?,?,?,?,?,?)',
+                (account, uri, actor, reason.strip(), json.dumps(cleared, sort_keys=True), epoch, epoch + 1, time.time()))
+            db.execute("DELETE FROM source_writes WHERE account=? AND uri=?", (account, uri))
+            db.execute("UPDATE drafts SET epoch=epoch+1,sha=NULL WHERE account=? AND uri=?", (account, uri))
+            return {'uri': uri, 'state': 'cleared', 'cleared_fences': cleared,
+                    'old_epoch': epoch, 'new_epoch': epoch + 1}
 
     def _recovery_authorize(self, account, actor, uri):
         if self._recovery_authorizer is None:

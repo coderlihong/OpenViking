@@ -1,0 +1,44 @@
+{
+  "id": "I062",
+  "date": "2026-10-06",
+  "title": "flow-d1 残项收口：MD temp_upload 真机探针 + bookmark 回退双证据",
+  "requirement": "flow-d1-2026-10-05.json criteria_not_yet_covered 中剩余两项：(a) MD and Office upload paths；(b) bookmark alignment-failure automatic rule fallback。",
+  "verdict": "BOTH_CLOSED",
+  "md_upload_path": {
+    "mechanism": "POST /api/v1/resources/temp_upload（multipart file）→ POST /api/v1/resources {temp_file_id, to} → 队列自动消化 semantic+vector → 检索回指 URI。与 I059 的 write 入口互补：本腿证明外部 MD 经标准上传通道同样入库。",
+    "live_probe": {
+      "upload_response": "temp_file_id=upload_f14b6819d5ca45dab6dbc72b75e4b693.md",
+      "add_resource_task": "98b51cff-7200-404b-8d1b-443787d74848 (stage processing_queue → completed)",
+      "root_uri": "viking://resources/raw/track-tension-notes.md",
+      "search_probes": [
+        {"query": "张紧油缸渗漏怎么办", "top1_uri_contains_target": true, "top1_score": 0.9441, "chunks_in_group": 2},
+        {"query": "履带下垂量超标如何调整", "top1_uri_contains_target": true, "top1_score": 0.8927, "chunks_in_group": 1}
+      ],
+      "competition": "SY215C 手册 section_*.md 同库竞争下仍 top1（对手 0.70-0.80）"
+    },
+    "office_leg_already_evidenced": "I047 真机：D1 Word 上传→PDF→规则回退→7 条索引重建/0 失败→限定来源检索通过（flow-w1-office-fontchecked-I047-2026-10-05.json）"
+  },
+  "bookmark_fallback": {
+    "mechanism": "bookmarks_preferred 策略下书签对齐失败不中止解析：meta 落 alignment_status=failed + info[0].code=BOOKMARK_ALIGNMENT_FAILED + fallback_strategy=rule_blocks，正文按规则块重新分章节。",
+    "live_evidence": "D1 手册真机落盘 data/viking/flowtest/resources/raw/SY215C_SY021NCB62788_维修手册_zh_1/_manifest.json 实际发生该回退：alignment_status=failed、unmatched_count=4、fallback_strategy=rule_blocks，684 chapters/sections 全部生成。",
+    "contract_tests": "tests/enterprise_kb/test_pdf_chapter_pipeline.py 9 passed——test_pdf_with_bookmarks_missing_body 断言 alignment_status=failed+BOOKMARK_ALIGNMENT_FAILED 仍产出树；test_no_bookmark_pdf_rule_fallback_is_successful 断言无书签 PDF structure_source=rule_blocks+BOOKMARKS_UNAVAILABLE 成功产出 section_0001.md。",
+    "clarification": "flow-d1 原清单将此项列为未覆盖是对 检查方向的误设：fallback 从不是 alignment_status=fallback 字面值，而是 alignment_status=failed 时的 rule_blocks 兜底；真机与测试均证据齐备。flow-d1-2026-10-05.json 记录的 slice_flowd1 那次命中的是 matched 分支（书签对齐成功），与 fallback 分支互补不矛盾。"
+  },
+  "regression": {
+    "command": ".venv/bin/python -m pytest tests/enterprise_kb/test_pdf_chapter_pipeline.py -q --no-cov",
+    "result": "9 passed"
+  },
+  "closes": [
+    "flow-d1 criteria_not_yet_covered: MD and Office upload paths (MD leg via temp_upload live probe; Office leg via I047)",
+    "flow-d1 criteria_not_yet_covered: bookmark alignment-failure automatic rule fallback (live _manifest.json + pipeline contract tests)"
+  ],
+  "code_paths": [
+    "openviking/server/routers/resources.py (temp_upload + add_resource endpoints)",
+    "openviking/parse/parsers/pdf.py (BOOKMARK_ALIGNMENT_FAILED → rule_blocks fallback)",
+    "tests/enterprise_kb/test_pdf_chapter_pipeline.py:107-128 (两分支契约)"
+  ],
+  "truthful_boundaries": [
+    "MD 探针为手写 311 字节文本，无图片语义；Office 腿引用 I047 既有证据非本轮重跑。",
+    "bookmark fallback 的 live manifest 来自 D1 全册作业，非本轮新投喂；契约测试为本轮重跑确认。"
+  ]
+}

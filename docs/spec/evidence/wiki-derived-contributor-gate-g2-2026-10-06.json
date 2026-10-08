@@ -1,0 +1,21 @@
+{
+  "probe": "G2 wiki contribution sources join the publication-level derived permission gate (wiki-publication-gate-deps-I071 glue item G2)",
+  "date": "2026-10-06",
+  "verdict": "CLOSED_AT_BACKBONE_LEVEL",
+  "what_shipped": {
+    "producer_stamping": "openviking/wiki/merge.py: _plan_pages keeps the full contributor set when replayed variants collapse onto one page URI (prior['contributors'] grows, sorted); publish passes entries through; _index_pages stamps source_snapshot['wiki_contributors'] = sorted(page.get('contributors', [])) right after text_sha256 so the list travels inside _source_snapshot -> registry.begin(source_ref=...) -> sources.reference JSON -> published manifest item['content']",
+    "registry_validation": "openviking/indexing/publication.py begin() validates the new key: wiki_contributors must be a list of viking://resources/ URIs (ValueError otherwise); absence keeps existing behavior, no migration surface",
+    "gate_extraction": "openviking/indexing/derived_access.py denied_derived_uris now extracts both image_context_epochs (epoch dict) and wiki_contributors (URI list) into one combined {derived_uri: [sources]} map; per-URI keys merge without dropping either side; the ACL-intersection deny computation (namespace roots, resolve_many read permission, tombstone prefix) runs over all sources of both kinds, and the disabled-ACL fallback denies the full combined set"
+  },
+  "mechanism": "Published wiki pages are derived content: their indexed chunks stay visible only while every extraction source of that page still grants READ to the querier. The manifest dependency key flows producer (merge stamp) -> begin validation -> manifest content -> query-time intersection in denied_derived_uris, which already backs the vector-search must_not filter, the BM25 dual gate and the FS read-channel recheck added in I057.",
+  "tests": {
+    "new_suite": "tests/enterprise_kb/test_derived_image_access.py — 7 passed (4 pre-existing + 3 new): contributor losing READ hides the page; tombstoning any contributor or disabling ACLs hides it even for an otherwise-authorized group member; a published page whose snapshot carries no wiki_contributors key stays visible to everyone (absence = not derived)",
+    "regressions": "test_wiki_candidate_merge 38 passed (full publish/preflight chain over real ACL/SQLite/disk); test_content_publication 9 passed"
+  },
+  "truthful_boundaries": [
+    "The stamp is written at publish time from merge provenance; a wiki page reindexed later through vectorize_file regenerates its snapshot from disk without the contributor list — reindex path recovery is out of G2 scope and left to the unified registry lifecycle (same boundary as before).",
+    "Contributors list only extraction sources (provenance source_uri), not relation targets; relation revocation semantics continue to live in schema-level graph checks.",
+    "The begin() check validates URI shape only; contributors need not exist in any namespace at stamp time — the gate excludes only what resolve_many/tombstones actually observe at query time."
+  ],
+  "next": ["G3: replace static WIKI_PUBLICATION_GATE_PENDING raise with real receipt-based adjudicator (G1 catalog + seven common gates + deny-set recomputation)"]
+}

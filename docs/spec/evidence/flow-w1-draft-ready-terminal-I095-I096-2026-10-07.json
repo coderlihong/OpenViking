@@ -1,0 +1,55 @@
+{
+  "id": "flow-w1-draft-ready-terminal-I095-I096",
+  "date": "2026-10-07",
+  "verdict": "PASS",
+  "subject": "Real 379MB repair-manual W1 build reaches durable draft_ready: terminal gate reconciles failed sections and a validated job is retryable without re-extraction",
+  "observations": {
+    "real_run": {
+      "source": "SY215C_SY021NCB62788_维修手册_zh.pdf (379MB) -> 2240 fixed plan sources",
+      "job_id": "27bebf83411d4010845d8e62191d09fe",
+      "build_id": "9733ca13308b42cbad297cf9e7be2301",
+      "terminal_state": "draft_ready",
+      "attempt": 18,
+      "info": {"private": true},
+      "candidate_count": 2134,
+      "model_calls": 2302,
+      "knowledge_state": "candidate",
+      "diagnostic_publishable": false,
+      "authorization_revision": 18,
+      "failed_sections": {"EVIDENCE_MISSING": 2, "MODEL_TIMEOUT": 3, "SCHEMA_VIOLATION": 12},
+      "coverage_reconciliation": "2223 unique source_uris covered by 2240 per-(source,chunk) receipts + 17 failed sections = 2240 fixed sources; 2240 receipts <= limits.model_calls 5120",
+      "terminal_timestamp": "2026-10-08 01:42:49 local"
+    },
+    "defect_I095": {
+      "mechanism": "jobs.py terminal draft_ready gate (a) capped len(drafts) at a hardcoded 512, unsatisfiable for a 2240-source plan whose per-(source,chunk) receipt array is 2240; and (b) required set(receipt.source_uri) == all fixed sources, but a section that exhausts its retries records a failure count instead of a receipt, so 17 sources were legitimately uncovered and the equality could never hold",
+      "symptom": "job failed at wiki_validate with 'Private candidate receipt must cover every fixed source' after a full, correct extraction",
+      "fix": [
+        "openviking/indexing/jobs.py: cap = config.limits.model_calls (scales with the plan; every receipt costs >=1 call) instead of a fixed 512",
+        "openviking/wiki/extraction.py: terminal receipt now carries failed_sources (sorted URIs that exhausted retries) alongside the existing failed_sections counts",
+        "openviking/indexing/jobs.py: coverage reconciled as receipts UNION failed_sources == fixed sources; a receipt written before failed_sources existed is reconciled by count — (len(sources) - len(covered)) == sum(failed_sections.values())"
+      ]
+    },
+    "defect_I096": {
+      "mechanism": "a W1 job that reached wiki_validate but failed the durable terminal gate (or lost its worker) was unretryable: extract_wiki re-enters wiki_extract on every run, but the stage machine forbade the wiki_validate -> wiki_extract rewind ('Job checkpoint cannot skip or rewind stages'); and the wiki_validate checkpoint stored only {draft_receipt, diagnostic_published}, dropping extraction_progress, so even a permitted retry would re-extract all 2240 sources from scratch (~6.7h of model calls) despite a complete, durable, content-addressed receipt already existing",
+      "fix": [
+        "openviking/indexing/jobs.py: permit the single wiki_validate -> wiki_extract rewind for W1/W2; the terminal gate, not the stage counter, is the authority on receipt validity, so no integrity check is weakened",
+        "openviking/service/kb_job_runtime.py: when the checkpoint already holds a complete draft_receipt (state=draft_ready, private, diagnostic_publishable False, build_id/plan_digest match, extractor_version/policy_version/model_profile/limits match the live extractor), re-authorize and re-commit that exact receipt through the existing replay loop instead of re-running extraction"
+      ],
+      "salvage_cost": "requeued job resumed from the durable receipt and committed draft_ready in ~30s wall clock with zero model calls (2240 blob re-reads + policy recheck), versus a ~6.7h full re-extraction"
+    },
+    "security_note": "Re-committing a prior receipt does not bypass any gate: the replay loop still re-runs authorize_inputs, re-reads every content-addressed candidate blob under current contributor permissions (read_draft_payload), and rechecks the namespace policy; job_complete then re-validates authorization_revision against the live kb_policy_revisions, per-receipt sha256/size blob references, coverage, and effective configuration. The receipt's authorization_revision (18) matched the live policy revision (18) at commit.",
+    "http_publish_chain": "GET /api/v1/kb/wiki/jobs/27bebf83411d4010845d8e62191d09fe/drafts/0 with the runtime-only flowadmin tenant key returned 200 and real repair-manual candidates (e.g. Source_PDF_image_page_1000_placement_1.md with verbatim quote/claim evidence and SHA-256 99a3a0d3...); the private candidate tree is readable post-draft_ready and diagnostic_publishable stays False"
+  },
+  "tests": {
+    "unit": [
+      "tests/enterprise_kb/test_wiki_execution_jobs.py::test_terminal_gate_reconciles_coverage_with_failed_sources — covered={ONE}, failed_sources=[TWO]; unaccounted (failed_sources=[]) raises 'must cover every fixed source', accounted receipt completes to draft_ready",
+      "tests/enterprise_kb/test_wiki_execution_jobs.py (6 passed), tests/enterprise_kb/test_durable_jobs.py (19 passed) — 25 passed with the I095/I096 gate + stage changes"
+    ],
+    "live": "job 27bebf83411d4010845d8e62191d09fe reached state=draft_ready (attempt 18) on the real 2240-source manual and serves drafts over HTTP"
+  },
+  "truthful_boundaries": [
+    "This closes W1 extraction to a durable private draft_ready terminal. Downstream publication_pending gates remain unmet and out of scope here: semantic_evidence_validation, schema_identity_resolution, trusted_entity_catalog, closed_relationships, derived_access_intersection, atomic_joint_publication.",
+    "17 of 2240 sections did not produce a candidate (2 EVIDENCE_MISSING, 3 MODEL_TIMEOUT, 12 SCHEMA_VIOLATION); they are reconciled as accounted failures, not silently dropped, and are not retried within this build.",
+    "The legacy count-based reconciliation branch was exercised by the live receipt (which predates failed_sources); the exact failed_sources branch is covered by unit test but not yet by a fresh live run."
+  ]
+}

@@ -4,6 +4,7 @@ No real-model quality, full policy, graph publication or gold claim is made.
 """
 import asyncio
 from dataclasses import replace
+import hashlib
 import json
 from unittest.mock import AsyncMock
 
@@ -19,6 +20,10 @@ from openviking.wiki.extraction import ExtractionError, ExtractionLimits, WikiDr
 from openviking.wiki.policies import check_build_profile, policy_coverage
 from openviking.wiki.schema import SchemaError
 from openviking_cli.exceptions import ConflictError, PermissionDeniedError
+
+
+def _json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
 
 
 async def execute_setup(domains, *, uris=(ONE,), model=None, limits=None):
@@ -40,6 +45,15 @@ def candidate(uri=ONE, *, quote='液压泵故障诊断。', claim='液压泵故�
 
 def response(*items):
     return json.dumps({'entities':list(items)}, ensure_ascii=False)
+
+
+async def manifest_partial(e, x, checkpoint_payload):
+    """Expand a receipts_ref checkpoint payload back into the legacy inline form."""
+    raw = e.fs._handle_agfs_read(await e.fs._async_agfs.read(blob_path(e.fs, e.ctx, checkpoint_payload['receipts_ref']['sha256'])))
+    manifest = json.loads(raw)
+    partial = {**checkpoint_payload, 'receipts': manifest['receipts']}
+    del partial['receipts_ref']  # legacy checkpoints had no ref; the ref form wins when both are present
+    return partial
 
 
 async def test_actual_candidate_private_blob_checkpoint_and_current_source_read_gate(domains):
@@ -69,6 +83,24 @@ async def test_empty_knowledge_does_not_force_any_entity(domains):
     result=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest)
     assert result['knowledge_state']=='empty_knowledge' and result['candidate_count']==0
     assert result['state']=='draft_ready' and result['receipts'][0]['candidate_count']==0
+
+
+async def test_one_malformed_section_defers_without_killing_sibling(domains):
+    e,p,c,a,b,plan,model,x=await execute_setup(domains,uris=(ONE,TWO))
+    # lexical order TWO precedes ONE: the first section returns broken JSON,
+    # the sibling still extracts a valid candidate.
+    model.get_completion_async.side_effect=['plain markdown',response(candidate())]
+    checkpoint=AsyncMock()
+    result=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
+    assert result['state']=='draft_ready' and result['candidate_count']==1
+    assert result['failed_sections']=={'MODEL_FORMAT_ERROR':1}
+    assert len(result['receipts'])==1 and result['receipts'][0]['source_uri']==ONE
+    assert 'failed_sections' in checkpoint.call_args.args[0]
+    # A run where every section fails stays a hard refusal, not an empty draft.
+    model.get_completion_async.reset_mock(side_effect=True)
+    model.get_completion_async.return_value='plain markdown'
+    with pytest.raises(ExtractionError,match='failed model contract'):
+        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest)
 
 
 @pytest.mark.parametrize('value,code',[
@@ -173,14 +205,134 @@ async def test_resume_validated_checkpoint_skips_completed_model_calls(domains):
     model.get_completion_async.side_effect=[response(),response(candidate())]
     checkpoint=AsyncMock()
     first=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
-    partial=checkpoint.call_args_list[0].args[0]
-    assert len(partial['receipts'])==1 and partial['candidate_count']==0 and partial['model_calls']==1
+    ref=checkpoint.call_args_list[0].args[0]
+    assert set(ref['receipts_ref'])=={'sha256','size'} and 'receipts' not in ref
+    # A run interrupted after one section resumes from its retained prefix.
+    partial={'build_id':first['build_id'],'plan_digest':first['plan_digest'],
+             'configuration':first['configuration'],'receipts':[first['receipts'][0]],
+             'candidate_count':0,'model_calls':1,'state':'extracting','private':True,
+             'authorization_revision':first['authorization_revision']}
     model.get_completion_async.reset_mock(side_effect=True)
     model.get_completion_async.return_value=response(candidate())
     resumed=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=partial)
     assert resumed['candidate_count']==first['candidate_count']==1
     assert resumed['model_calls']==first['model_calls']==2 and model.get_completion_async.call_count==1
     assert resumed['receipts'][0]==first['receipts'][0]
+
+
+async def test_resume_from_receipts_ref_round_trip(domains):
+    """The durable checkpoint form itself must resume: the manifest blob named
+    by receipts_ref is re-read through the full validation path, not just its
+    receipts array."""
+    e,p,c,a,b,plan,model,x=await execute_setup(domains,uris=(ONE,TWO))
+    async def _model(prompt, **kw):
+        if 'two.md' in prompt:
+            return response(candidate(uri=TWO,quote='行走跑偏检查。',claim='行走跑偏检查。'))
+        return response(candidate())
+    model.get_completion_async.side_effect=_model
+    checkpoint=AsyncMock()
+    first=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
+    ref=json.loads(json.dumps(checkpoint.call_args_list[0].args[0]))
+    assert 'receipts' not in ref and set(ref['receipts_ref'])=={'sha256','size'}
+    assert ref['candidate_count']==2
+    model.get_completion_async.reset_mock(side_effect=True)
+    model.get_completion_async.return_value=response(candidate())
+    resumed=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=ref)
+    assert sorted(r['source_uri'] for r in resumed['receipts'])==sorted([ONE,TWO])
+    assert resumed['candidate_count']==2 and resumed['model_calls']==2
+    assert model.get_completion_async.call_count==0
+
+
+async def test_resume_replay_does_not_recheck_acl_per_receipt(domains, monkeypatch):
+    """I094: resume replay must not run check_source_use per receipt. Each call
+    does 2 root-ACL stats + 2 _ensure_access LevelDB scrolls; over a real
+    handbook manifest (2000+ receipts, twice each) that burned ~8 minutes of
+    CPU per resume, stalled the event loop until worker leases expired, and
+    churned attempts forever. Replay authorization is bracketed once by
+    authorize_inputs before and the post-extract recheck after."""
+    from openviking.wiki.namespaces import NamespaceCatalog
+    e,p,c,a,b,plan,model,x=await execute_setup(domains,uris=(ONE,TWO))
+    async def _model(prompt, **kw):
+        if 'two.md' in prompt:
+            return response(candidate(uri=TWO,quote='行走跑偏检查。',claim='行走跑偏检查。'))
+        return response(candidate())
+    model.get_completion_async.side_effect=_model
+    checkpoint=AsyncMock()
+    await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
+    ref=json.loads(json.dumps(checkpoint.call_args_list[0].args[0]))
+    checks=[]
+    original=NamespaceCatalog.check_source_use
+    async def counting(self, ctx, authorization, **kw):
+        import traceback
+        frame=traceback.extract_stack()[-2]
+        checks.append(f'{frame.filename.rsplit("/", 1)[-1]}:{frame.lineno}')
+        return await original(self, ctx, authorization, **kw)
+    monkeypatch.setattr(NamespaceCatalog, 'check_source_use', counting)
+    model.get_completion_async.reset_mock(side_effect=True)
+    model.get_completion_async.return_value=response(candidate())
+    resumed=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=ref)
+    assert resumed['model_calls']==2 and model.get_completion_async.call_count==0
+    # The pinned-view text stream (build_plan) may check per source; the replay
+    # loop in extraction.py must not — its calls ran an unpinned capture each,
+    # O(receipts) event-loop stalls.
+    assert not any(site.startswith('extraction.py') for site in checks), checks
+
+
+async def test_resume_accepts_pre_i089_legacy_manifest_and_rebinds_per_receipt(domains):
+    """I091: manifests written before the writer bound plan/configuration must
+    still resume — the blob is sha/size-verified, account-checked, and every
+    replayed receipt re-binds to build/plan/schema at read time."""
+    e,p,c,a,b,plan,model,x=await execute_setup(domains,uris=(ONE,TWO))
+    async def _model(prompt, **kw):
+        if 'two.md' in prompt:
+            return response(candidate(uri=TWO,quote='行走跑偏检查。',claim='行走跑偏检查。'))
+        return response(candidate())
+    model.get_completion_async.side_effect=_model
+    checkpoint=AsyncMock()
+    await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
+    ref=json.loads(json.dumps(checkpoint.call_args_list[0].args[0]))
+    raw=e.fs._handle_agfs_read(await e.fs._async_agfs.read(blob_path(e.fs,e.ctx,ref['receipts_ref']['sha256'])))
+    manifest=json.loads(raw)
+    legacy={'version':1,'account_id':manifest['account_id'],'receipts':manifest['receipts']}
+    legacy_raw=_json(legacy).encode()
+    legacy_ref={'sha256':hashlib.sha256(legacy_raw).hexdigest(),'size':len(legacy_raw)}
+    await e.fs._async_agfs.write(blob_path(e.fs,e.ctx,legacy_ref['sha256']),legacy_raw)
+    model.get_completion_async.reset_mock(side_effect=True)
+    model.get_completion_async.return_value=response(candidate())
+    resumed=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,
+                            resume={**ref,'receipts_ref':legacy_ref})
+    assert sorted(r['source_uri'] for r in resumed['receipts'])==sorted([ONE,TWO])
+    assert model.get_completion_async.call_count==0
+    foreign={'version':1,'account_id':'someone-else','receipts':manifest['receipts']}
+    foreign_raw=_json(foreign).encode()
+    foreign_ref={'sha256':hashlib.sha256(foreign_raw).hexdigest(),'size':len(foreign_raw)}
+    await e.fs._async_agfs.write(blob_path(e.fs,e.ctx,foreign_ref['sha256']),foreign_raw)
+    with pytest.raises(ConflictError):
+        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,
+                        resume={**ref,'receipts_ref':foreign_ref})
+
+
+async def test_resume_matches_deferred_holes_by_key_not_position(domains):
+    """Deferred sections leave no receipt; a retained prefix with holes is a
+    key set, so the missing sections re-dispatch instead of failing alignment."""
+    e,p,c,a,b,plan,model,x=await execute_setup(domains,uris=(ONE,TWO))
+    model.get_completion_async.side_effect=['plain markdown',response(candidate())]  # TWO defers (lexical order first)
+    checkpoint=AsyncMock()
+    first=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
+    assert first['failed_sections']=={'MODEL_FORMAT_ERROR':1} and len(first['receipts'])==1
+    partial={'build_id':first['build_id'],'plan_digest':first['plan_digest'],
+             'configuration':first['configuration'],'receipts':list(first['receipts']),
+             'candidate_count':first['candidate_count'],'model_calls':first['model_calls'],
+             'state':'extracting','private':True,
+             'authorization_revision':first['authorization_revision']}
+    model.get_completion_async.reset_mock(side_effect=True)
+    # The hole (TWO) re-dispatches with evidence from its own source text; the
+    # retained ONE receipt does not rerun.
+    model.get_completion_async.return_value=response(candidate(uri=TWO,quote='行走跑偏检查。',claim='行走跑偏检查。'))
+    resumed=await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=partial)
+    assert resumed['candidate_count']==2 and model.get_completion_async.call_count==1
+    assert resumed['model_calls']==2 and resumed['failed_sections']=={}
+    assert sorted(r['source_uri'] for r in resumed['receipts'])==sorted([ONE,TWO])
 
 
 @pytest.mark.parametrize('change', [
@@ -192,17 +344,28 @@ async def test_resume_validated_checkpoint_skips_completed_model_calls(domains):
     lambda p:p.update(candidate_count=5),
     lambda p:p.update(model_calls=99),
     lambda p:p['receipts'].append(p['receipts'][0]),
+    lambda p:p.update(receipts_ref=p['receipts_ref']|{'sha256':'0'*64}),
+    lambda p:p.update(receipts_ref={'sha256':p['receipts_ref']['sha256'],'size':3}),
 ])
 async def test_resume_forged_configuration_chunk_counters_or_extra_receipts_rejected(domains,change):
     e,p,c,a,b,plan,model,x=await execute_setup(domains)
     model.get_completion_async.return_value=response(candidate())
     checkpoint=AsyncMock()
     await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,checkpoint=checkpoint)
-    partial=json.loads(json.dumps(checkpoint.call_args.args[0]))
-    change(partial)
+    ref_payload=json.loads(json.dumps(checkpoint.call_args.args[0]))
+    partial=await manifest_partial(e,x,json.loads(json.dumps(ref_payload)))
+    # Forgeries 0-7 mutate inline fields (legacy form, ref stripped); 8-9 forge
+    # the receipts_ref itself and need the ref form. Detect by trying on the
+    # legacy form and falling back to the ref form when the ref key is missing.
+    resume=partial
+    try:
+        change(partial)
+    except KeyError:
+        resume=json.loads(json.dumps(ref_payload))
+        change(resume)
     model.get_completion_async.reset_mock()
     with pytest.raises((ConflictError,SchemaError)):
-        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=partial)
+        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=resume)
     model.get_completion_async.assert_not_called()
 
 
@@ -214,7 +377,7 @@ async def test_resume_rechecks_acl_before_using_already_extracted_blob(domains):
     b.acl(RAW,[{'principal':'user:other','level':'read'}])
     model.get_completion_async.reset_mock()
     with pytest.raises(PermissionDeniedError):
-        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=checkpoint.call_args.args[0])
+        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=await manifest_partial(e,x,checkpoint.call_args.args[0]))
     model.get_completion_async.assert_not_called()
 
 
@@ -294,5 +457,5 @@ async def test_resume_fails_after_export_policy_changes_even_when_access_regrant
     await grant(c,a,allowed=True)
     model.get_completion_async.reset_mock()
     with pytest.raises(ConflictError,match='resume does not match'):
-        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=checkpoint.call_args.args[0])
+        await x.extract(e.ctx,plan.build_id,expected_plan_digest=plan.digest,resume=await manifest_partial(e,x,checkpoint.call_args.args[0]))
     model.get_completion_async.assert_not_called()

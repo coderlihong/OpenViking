@@ -85,8 +85,9 @@ class CollectionSchemas:
         fields = [
             {"FieldName": "id", "FieldType": "string", "IsPrimaryKey": True},
             {"FieldName": "uri", "FieldType": "path"},
-            # type 字段：当前版本未使用，保留用于未来扩展
-            # 预留用于表示资源的具体类型，如 "file", "directory", "image", "video", "repository" 等
+            # type 字段：记录内容形态，检索侧可结构化过滤图片/文本
+            # 枚举值："image"（多模态联合向量记录，message 带 image_url part）, "text"（其余）
+            # 写入规则见 EmbeddingMessageProcessor.on_dequeue
             {"FieldName": "type", "FieldType": "string"},
             # context_type 字段：区分上下文的大类
             # 枚举值："resource"（资源，默认）, "memory"（记忆）, "skill"（技能）
@@ -672,6 +673,19 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             embedding_msg = EmbeddingMsg.from_json(data["data"])
             inserted_data = dict(embedding_msg.context_data)
             require_joint_image = inserted_data.pop("_require_joint_image_embedding", False)
+            if not inserted_data.get("type"):
+                parts = (
+                    embedding_msg.message
+                    if isinstance(embedding_msg.message, list)
+                    else []
+                )
+                has_image_part = any(
+                    isinstance(p, dict)
+                    and p.get("type") == "image_url"
+                    and p.get("image_url", {}).get("url")
+                    for p in parts
+                )
+                inserted_data["type"] = "image" if (require_joint_image or has_image_part) else "text"
             generation = inserted_data.get("index_generation")
             if generation:
                 from openviking.indexing.publication import configured_store

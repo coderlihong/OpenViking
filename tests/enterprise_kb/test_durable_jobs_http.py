@@ -216,3 +216,40 @@ async def test_authorized_list_filters_principal_before_limit_and_rechecks_acl(a
             await c.kb.list_ingestion_jobs(namespace_id='manuals')
     finally:
         await c.close()
+
+
+async def test_job_list_authorizes_namespace_not_payload_sources(api, monkeypatch):
+    """Listing N jobs must not re-authorize each row's payload source set: a
+    W1-scale payload (thousands of source URIs) times row count turns the list
+    endpoint into a full-collection ACL scan per job. Row visibility is
+    ownership + namespace; sources stay gated at create/execution time."""
+    from openviking.wiki.namespaces import NamespaceCatalog
+
+    app, e, context, jobs, acl = api
+    c = client(app)
+    try:
+        many = [f'{RAW}/src-{i}.md' for i in range(40)]
+        row = jobs.repository.job_create('acct', 'manuals', 'w1-scale', 'W1',
+                                         {'source_uris': many, 'to': f'{RAW}/wiki-out'}, {}, 'user')
+        scans = []
+        original = NamespaceCatalog.authorize_sources
+
+        async def counting(self, ctx, **kw):
+            scans.append(len(kw['source_uris']))
+            return await original(self, ctx, **kw)
+
+        monkeypatch.setattr(NamespaceCatalog, 'authorize_sources', counting)
+        ensure_calls = []
+        fs_ensure = type(jobs.fs)._ensure_access_many
+
+        async def counting_ensure(self, uris, ctx, *, action):
+            ensure_calls.append(len(uris))
+            return await fs_ensure(self, uris, ctx, action=action)
+
+        monkeypatch.setattr(type(jobs.fs), '_ensure_access_many', counting_ensure)
+        rows = await c.kb.list_ingestion_jobs(namespace_id='manuals', limit=10)
+        assert row['job_id'] in [r['job_id'] for r in rows]
+        assert scans == [], 'list must not run per-row wiki source authorization'
+        assert all(n <= 1 for n in ensure_calls), 'list must not batch payload sources'
+    finally:
+        await c.close()

@@ -1,0 +1,20 @@
+{
+  "probe": "G3 check_build_profile becomes an adjudicator that reads real receipts (wiki-publication-gate-deps-I071 glue item G3)",
+  "date": "2026-10-06",
+  "verdict": "CLOSED_AT_BACKBONE_LEVEL",
+  "what_shipped": {
+    "adjudicator": "openviking/wiki/policies.py: publication_adjudication(catalog_read, catalog_entry, merge_payload, gate_observation) requires four callables and reads each receipt itself — trusted_entity_catalog from G1 catalog rows, schema_identity_resolution from a resolved canonical entry plus a pending_identity re-check over the admitted merge groups, closed_relationships from a non-empty admitted graph, derived_access_intersection from the contributor stamps G2 wrote, atomic_joint_publication from the seven-category gate observation's verified flag. Falsy results and reader exceptions both become named missing-gate reasons ('unreadable: ...'); no caller-supplied boolean can pass a gate.",
+    "profile_gate": "check_build_profile(bundle, profile, *, adjudication=None): strict_diagnostic without an adjudication object keeps the static WIKI_PUBLICATION_GATE_PENDING refusal (no evidence produced = the only truthful answer); with one, it consumes publication_adjudication() output, refuses naming the missing gates with their reasons, or stamps coverage['publication_adjudicated']=True. POLICY_VERSION bumped to wiki-policy-coverage-v3."
+  },
+  "mechanism": "The former static pending list is now evidence-backed: admission to strict_diagnostic walks four real readers (G1 entity catalog, canonical identity, the G2 merge graph with contributors, the seven durable joint-publication observations) and every refusal names the failing gate. draft profile is unchanged.",
+  "tests": {
+    "new_suite": "tests/enterprise_kb/test_wiki_publication_adjudication.py — 9 passed: non-callable readers rejected; draft passes without adjudication; strict without receipts stays statically pending; green receipts admit and stamp publication_adjudicated=True; single missing catalog names trusted_entity_catalog; unverified joint observation names atomic_joint_publication plus its durable gaps; contributor-free merge graph blocks derived_access_intersection; pending identity blocks schema_identity_resolution; raising reader becomes a named unreadable gate",
+    "regressions": "test_wiki_page_rules + test_wiki_path_policy 45 passed (strict-profile refusal shape preserved); test_wiki_execution_versions + test_wiki_extraction + test_wiki_candidate_merge 77 passed (execution versions read POLICY_VERSION dynamically, v2->v3 bump breaks nothing)"
+  },
+  "truthful_boundaries": [
+    "The adjudicator maps six gate labels onto four receipt readers; semantic_evidence_validation has no dedicated reader yet and is carried by the closed-relationship/pending-identity checks over the same merge payload — a distinct semantic-evidence receipt remains future work.",
+    "Service wiring (openviking/wiki/adjudication.py): WikiJobService.create builds service_adjudication over the planner registry for strict_diagnostic only — the G1 readers read wiki_entity_list (catalog rows, plus one row matching the pinned schema id/version/digest), the merge reader reads the head snapshot manifest under the collection target root (page groups from content.wiki_contributors), and the gate reader verifies non-empty published pages; unreadable stores surface as named reasons. Draft profile constructs no adjudication object.",
+    "The service-side gate observation is snapshot-page presence over the collection root, not the D1 seven-category job_publication_ready read (those bind to index-stage document jobs); a deeper per-category wiki observation can replace it when W-pipeline jobs carry publication_batch_id."
+  ],
+  "next": ["Glue order G1->G2->G3 complete with HTTP wiring; remaining: full-tree replacement in extraction wiring and end-to-end flow evidence"]
+}

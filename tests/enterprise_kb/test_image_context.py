@@ -67,6 +67,29 @@ async def test_collector_preserves_distinct_source_uri_and_propagates_access_err
         await collect_image_contexts(fs, IMAGE, "authorized-context")
 
 
+async def test_collector_skips_vanished_source_without_aborting_siblings():
+    # A source deleted between listing and reading (or tombstone-refused on a
+    # re-created tree) is skipped so the chapter's remaining images still index.
+    fs = SimpleNamespace(
+        ls=AsyncMock(return_value=[{"name": "a.md"}, {"name": "b.md"}, {"name": "c.md"}]),
+        read_file=AsyncMock(return_value="![图](images/a.png)"),
+    )
+    from openviking_cli.exceptions import NotFoundError
+
+    async def read_by_call(source_uri, ctx=None):
+        calls = fs.read_file.await_count
+        if calls == 1:
+            raise NotFoundError(source_uri, "file")
+        return "![图](images/a.png)"
+
+    fs.read_file.side_effect = read_by_call
+    found = await collect_image_contexts(fs, IMAGE, None)
+    assert [o["context_uri"] for o in found] == [
+        URI.replace("chapter.md", "b.md"),
+        URI.replace("chapter.md", "c.md"),
+    ]
+
+
 async def test_collector_keeps_more_than_sixteen_references():
     # The old per-image cap of 16 must be gone: 17+ references are all kept.
     fs = SimpleNamespace(
@@ -204,6 +227,40 @@ async def test_vlm_receives_each_occurrence_with_image_and_uncertainty_prompt(
         await media.generate_image_summary(
             IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
         )
+
+
+async def test_empty_vlm_response_retries_then_settles_low_information_placeholder(
+    environment, monkeypatch
+):
+    e = environment
+    import io
+
+    from PIL import Image
+
+    raw = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(raw, format="PNG")
+    await e.fs.write(IMAGE, raw.getvalue(), ctx=e.ctx)
+    from pathlib import Path
+
+    from openviking.prompts.manager import PromptManager
+
+    manager = PromptManager(templates_dir=Path("openviking/prompts/templates"))
+    monkeypatch.setattr(media, "render_prompt", manager.render)
+    # First call transiently empty, second call recovers: no placeholder.
+    vlm = SimpleNamespace(get_vision_completion_async=AsyncMock(side_effect=["", "恢复摘要"]))
+    monkeypatch.setattr(media, "get_viking_fs", lambda: e.fs)
+    monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm))
+    result = await media.generate_image_summary(IMAGE, "a.png", strict=True, ctx=e.ctx)
+    assert result["summary"] == "恢复摘要"
+    assert vlm.get_vision_completion_async.await_count == 2
+
+    # Deterministically empty (near-blank image): settle with honest
+    # low-information placeholder instead of raising SEMANTICS_REQUIRED forever.
+    vlm2 = SimpleNamespace(get_vision_completion_async=AsyncMock(return_value="  "))
+    monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm2))
+    result2 = await media.generate_image_summary(IMAGE, "a.png", strict=True, ctx=e.ctx)
+    assert "Low-information image" in result2["summary"]
+    assert vlm2.get_vision_completion_async.await_count == 2
 
 
 class JointEmbedder:

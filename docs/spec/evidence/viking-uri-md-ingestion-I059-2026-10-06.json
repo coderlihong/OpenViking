@@ -1,0 +1,37 @@
+{
+  "evidence_id": "I059",
+  "date": "2026-10-06",
+  "requirement": "Objective req 1 sub-item: viking URI MD ingestion — user pulls third-party data already stored as MD into viking, points at a viking:// URI, and the system performs the same vector construction as PDF parsing with retrieval traceability where multiple chunks point back to that URI.",
+  "verdict": "CAPABILITY CONFIRMED: write path auto-dispatches semantic+vector indexing for MD; retrieval returns URI-rooted chunks. No new code required this round.",
+  "mechanism": {
+    "ingest_entry": "POST /api/v1/content/write (openviking/server/routers/resources content router) — response carries semantic_status=queued / vector_status=queued; indexing is auto-dispatched on write, no manual reindex call needed.",
+    "d2_reindex_contract": "tests/enterprise_kb/test_parent_child_recall.py:296 test_reindex_markdown_skips_parser_and_does_not_rewrite_source proves: reindex of existing Markdown builds the layered chunk plan from original bytes, never invokes ParserRouter.parse (guarded by AssertionError), never rewrites source (fs.write_file assertion), and enqueues messages whose uri and source_uri both equal the source viking:// URI.",
+    "why_add_resource_not_needed": "HTTP add_resource path only accepts remote URLs or temp_file_id (openviking/server/local_input_guard.py require_remote_resource_source rejects viking:// shape), which is correct — the source data is already IN viking, so content/write + auto semantic dispatch is the entry, matching the objective's '拉过来存储到了viking上面但我们没有去做解析' scenario."
+  },
+  "live_probe": {
+    "server": "local OpenViking 127.0.0.1:1933, flowtest account key",
+    "step1_write": {
+      "uri": "viking://resources/external_md/pump_fault_notes.md",
+      "bytes": 462,
+      "response_fields": {"root_uri": "viking://resources/external_md", "mode": "create", "semantic_status": "queued", "vector_status": "queued", "content_updated": true}
+    },
+    "step2_search_after_queue_drain": [
+      {"query": "液压泵压力不足怎么排查", "top_uri": "viking://resources/external_md/pump_fault_notes.md", "top_score": 0.902},
+      {"query": "吸油管路进气 气蚀噪声", "top_uri": "viking://resources/external_md/pump_fault_notes.md", "top_score": 0.923, "chunks_in_group": 2},
+      {"query": "散热器堵塞 油温过高 旁通阀", "top_uri": "viking://resources/external_md/pump_fault_notes.md", "top_score": 0.966, "chunks_in_group": 1},
+      {"query": "主溢流阀弹簧疲劳 阀芯磨损", "top_uri": "viking://resources/external_md/pump_fault_notes.md", "top_score": 0.939, "chunks_in_group": 2}
+    ],
+    "multi_chunk_note": "Three section-level queries each ranked pump_fault_notes.md first with 1-2 matched chunks per hit group; all hits return the source viking URI in result.uri — traceability requirement satisfied.",
+    "mixed_corpus_context": "Manual's section_*.md chunks also appeared with 0.72-0.86 scores, demonstrating the new MD competes correctly inside the existing layered vector + BM25 corpus rather than being isolated."
+  },
+  "code_paths": {
+    "write_dispatch": "openviking/service/resource_service.py add_resource -> _submit_resource_ingestion (HTTP write router routes to same resource service); content/write handler sets semantic_status/vector_status queued",
+    "md_indexing": "openviking/service/reindex_executor.py _reindex_resource_vectors_from_entries files=[URI] path; openviking/utils/embedding_utils.py queue plan from read_file bytes",
+    "test_guard": "tests/enterprise_kb/test_parent_child_recall.py:296"
+  },
+  "truthful_boundaries": [
+    "Probe used a hand-written 462-byte Chinese MD with 3 sections; matches are grouped per query but total distinct chunk count for the doc was not enumerated from the vector store (chunks_in_group is per-hit-group from search API).",
+    "The D2 no-parser/no-rewrite guarantees are proven by unit test with mocked fs; live probe confirms end-to-end retrieval but not byte-level non-rewrite of the stored file.",
+    "Image-bearing external MD (chunk-level image summary for md-embedded pictures) was not exercised here; office/pdf image preservation evidence lives in I051/I053."
+  ]
+}

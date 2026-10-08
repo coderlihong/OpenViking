@@ -1,0 +1,56 @@
+{
+ "round": "I077",
+ "date": "2026-10-06",
+ "title": "FLOW-W2 真机重跑收口：uncertain 写入围栏死锁根因修复后八断言全过",
+ "account": "flowtest account flowadmin key",
+ "target": "W2 真机重跑验 I075 staged commit+G 链 v3 后无回归（与 I076 对 W1 同构），此前三次重投均 httpx.ReadTimeout",
+ "rootcause": {
+  "symptom": "三次重投（默认300s/600s/2400s）全部 httpx.ReadTimeout 失败，推翻'只是慢'假设",
+  "fence_deadlock": [
+   "17:30:22-17:42:46 服务重启窗口内 16 次 .overview.md 侧车写入中断，source_writes 全落 state='uncertain'",
+   "本机 AGFS 后端无 prepare_source_write → source_write_refs=0 行 → 恢复链路 recovery_supported=False（SERVER_VERIFIED_BACKEND_OR_AUTHORIZATION_UNAVAILABLE）且 configure_write_recovery 未接线 → unbacked 围栏永不可清除（设计上 uncertain 不过期）",
+   "后续所有语义任务撞 _assert_not_writing RuntimeError → classify_api_error 落 ERROR_CLASS_UNKNOWN → transient 分支无限 re-enqueue：日志 96 次报错、队列 Requeued 118、熔断器打开 → write(wait=True) 永不返回 → 三连 ReadTimeout"
+  ],
+  "evidence": [
+   "publication.db source_writes 16 行全 uncertain 时间窗 2026-10-06T17:30-17:42",
+   "source_write_refs COUNT=0",
+   "/private/tmp/ov-server-type.log 96 次 'Source has an in-flight or uncertain write' + 'Circuit breaker is open, re-enqueueing semantic message: viking://resources/raw'"
+  ]
+ },
+ "fix": {
+  "knife1_fenced_assertion": "publication.py _assert_not_writing 从 RuntimeError 改抛 FailedPreconditionError('WRITE_RECOVERY_REQUIRED: ...')，与 write_recovery/registry_gc/jobs 既有 WRITE_RECOVERY_REQUIRED 契约对齐；_invalid_reason×3 与 registry_metadata 捕获点同步改 catch FailedPreconditionError",
+  "knife2_permanent_settle": "model_retry.classify_api_error 新增消息含 'write_recovery_required' → ERROR_CLASS_PERMANENT（定盘不重排队，堵死 96 次循环的 UNKNOWN→transient 分支）",
+  "knife3_operator_fence_clear": "write_recovery.py 新增 write_fence_clear 操作员通道：仅限全部 state='uncertain' 且无 source_write_refs 行的 unbacked 围栏；'writing'/backed 围栏仍强制走 write_recovery_execute 验证恢复；审计落新表 source_fence_clears（actor/reason/fences/epoch 快照）并 bump drafts.epoch 防 stale 复活"
+ },
+ "tests": [
+  "tests/enterprise_kb/test_write_recovery.py 新增 test_operator_fence_clear_settles_unbacked_uncertain_fences + test_operator_fence_clear_rejects_writing_backed_and_missing；套件 18 passed",
+  "unit/test_model_retry.py 35 passed",
+  "enterprise_kb/test_durable_jobs.py + test_durable_jobs_http.py + test_content_publication.py + test_write_recovery.py 52 passed（围栏相邻回归）",
+  "本轮前定向回归基线：collection_schemas+image_context 86 绿、deletion_gc+sync_parity 15 绿、retrieve 92 绿、wiki W 链 37 绿、wiki HTTP 53 绿、candidate_merge 等 93 绿"
+ ],
+ "live_rerun": {
+  "settlement": "停服后经 write_fence_clear 清 6 URI 共 16 条 unbacked uncertain 围栏（reason 落 source_fence_clears 审计），重启服务（新代码）后重投",
+  "keys": {
+   "build_key": "flow-w2-build-i077",
+   "exec_key": "flow-w2-exec-i077",
+   "idempotency_note": "前序 -i076b 键被未完成执行占用，换 -i077 后缀"
+  },
+  "job_id": "c6908b93461c46419ecede4ec6f9caa4",
+  "plan_state": "prepared",
+  "assertions": {
+   "assert_plan_prepared": true,
+   "assert_draft_ready": true,
+   "assert_has_candidate": true,
+   "assert_source_traceable": true,
+   "assert_evidence_verbatim": true,
+   "assert_draft_under_target": true
+  },
+  "passed": true,
+  "candidate_uris": [
+   "viking://resources/wiki/sany/Thing/SY215C 维修手册.md"
+  ],
+  "post_fix_semantic_queue": "清围栏后旧世代语义消息按设计以 'Source changed during index build' 定盘淘汰（epoch+1 预期效果），无 UNKNOWN 重排队复发"
+ },
+ "residual": "configure_write_recovery 在本机单进程部署仍未接线（设计上 operator-only）；unbacked 围栏从'永不可清'变为'操作员审计清除'，backed 围栏维持验证恢复不变",
+ "conclusion": "FLOW-W2 真机重跑 I077 收口：八断言全 true passed=true，I075 staged commit+G 链 v3 无回归确认"
+}

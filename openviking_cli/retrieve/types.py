@@ -288,6 +288,7 @@ class MatchedContext:
 
     search_tags: List[str] = field(default_factory=list)
     matches: List[Dict[str, Any]] = field(default_factory=list)
+    type: str = ""
 
 
 @dataclass
@@ -381,6 +382,7 @@ class FindResult:
             "score": ctx.score,
             "abstract": ctx.abstract,
             "tags": normalize_search_tags(ctx.search_tags, discard_invalid=True),
+            **({"type": ctx.type} if ctx.type else {}),
             **({"matches": ctx.matches} if ctx.matches else {}),
         }
 
@@ -426,6 +428,7 @@ class FindResult:
                 score=d.get("score", 0.0),
                 match_reason=d.get("match_reason", ""),
                 search_tags=list(d.get("tags") or d.get("search_tags") or []),
+                type=str(d.get("type", "") or ""),
             )
 
         return cls(

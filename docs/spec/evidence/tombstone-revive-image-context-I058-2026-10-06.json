@@ -1,0 +1,55 @@
+{
+  "initiative": "I058-tombstone-revive-and-image-context-resilience",
+  "date": "2026-10-06",
+  "task": "Fix image context index.md hard dependency (D1 SEMANTICS_REQUIRED 933) (#33)",
+  "root_cause_chain": {
+    "trigger": "~02:29 tree replace: rm() tombstoned viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh at ancestor level before physical delete; write path re-created index.md but the stale tombstone survived",
+    "gate": "_ensure_not_tombstoned refused read_file of the physically-present re-created index.md (stat/ls unaffected, so parse finished but reads failed)",
+    "propagation": "collect_image_contexts propagated that single NotFoundError -> _regenerate_image_summary returned None for all 933 visuals-dir images -> vectorize_file SEMANTICS_REQUIRED ValueError escaped asyncio.gather -> whole reindex HTTP 500 (attempt 320 era logs)"
+  },
+  "fixes": [
+    {
+      "id": "F1-tombstone-revive",
+      "file": "openviking/storage/viking_fs/_ops.py",
+      "change": "_revive_tombstoned_uri helper wired into write() and mkdir() after _ensure_access(WRITE); per documented clear_tombstone contract ('Drop a tombstone only when the source is re-created as current content') clears the URI tombstone and every ancestor tombstone up to root",
+      "call_sites_unchanged": ["read:174", "read_file:2047", "read_file_bytes:2104"]
+    },
+    {
+      "id": "F2-graceful-skip",
+      "file": "openviking/indexing/image_context.py",
+      "change": "collect_image_contexts catches NotFoundError per source (mirrors semantic_dag 'Skipping vanished semantic source' precedent) and continues; PermissionError still propagates",
+      "note": "A source listed before deletion (or blocked by a tombstone on a re-created tree) must not abort the chapter's remaining images"
+    }
+  ],
+  "data_repair": {
+    "store": "/Users/wh/.openviking/state/publication.db",
+    "action": "DELETE FROM tombstones WHERE account='flowtest' AND uri IN ('viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh','viking://resources/raw/slice_flowd1_1')",
+    "post_condition": "tombstones table empty"
+  },
+  "tests": {
+    "new": [
+      "tests/enterprise_kb/test_deletion_gc.py::test_recreate_after_tombstoned_rm_clears_tombstone_and_reads",
+      "tests/enterprise_kb/test_image_context.py::test_collector_skips_vanished_source_without_aborting_siblings"
+    ],
+    "targeted_scope": "42 passed in tests/enterprise_kb/test_deletion_gc.py + test_image_context.py + test_image_cache.py",
+    "full_group_rerun": "tests/enterprise_kb: 1091 passed, 1 skipped, 0 failed in 554s (post-fix full-group confirmation)",
+    "guards_held": "PermissionError propagation test and all pre-existing tombstone/read-back tests still green"
+  },
+  "live_verification": {
+    "server_restart": "PID 91445 on 127.0.0.1:1933 with revived code, log /tmp/ov-server-tombstone-revive.log",
+    "previously_blocked_read": "GET /api/v1/content of viking://resources/raw/SY215C_SY021NCB62788_维修手册_zh/Preserved_source_PDF_visuals/index.md now returns {\"status\":\"ok\",\"result\":\"# Preserved source PDF visuals\\n\\n\"} with flowadmin user key (was NotFoundError before fix)",
+    "log_grep_early": "grep -cE 'Image semantics regeneration failed|SEMANTICS_REQUIRED' = 0 after dispatch"
+  },
+  "reindex_redispatch": {
+    "task_id": "172ba09e-38d2-4ee5-aea3-40b2ecc1dd07",
+    "mode": "semantic_and_vectors",
+    "recursive": true,
+    "dispatched_at": "2026-10-05T23:14:07Z",
+    "status_at_evidence_write": "running",
+    "prior_failed_job": "kb_jobs a8ac445b attempt 323 failed on OLD code at 2026-10-05T22:28 (PROCESSING_ERROR index_result), superseded by this admin reindex on new code"
+  },
+  "truthful_boundaries": [
+    "Terminal state of the re-dispatched D1 reindex and its image-semantics receipt counts are pending the background watcher (/tmp/ov-reindex-watch.sh); this file records mechanism, tests, and the live read fix, not final D1 acceptance",
+    "The three round-instruction audit lines were closed independently: (1) write-crash recovery already covered by tests/enterprise_kb/test_write_recovery.py TC-13.16 windows + wiki replay (I053d); (2) seven publication gates verified on live server I052; (3) TeleOCR/Logics image preservation disproven as a gap by I053 live evidence (19/19 placements, RMS 1.50 MATCH)"
+  ]
+}

@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from contextlib import suppress
 from typing import Awaitable, Callable
 from uuid import uuid4
 
 from openviking_cli.exceptions import PermissionDeniedError
+from openviking_cli.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class ParseSlotBusy(RuntimeError):
@@ -69,10 +73,40 @@ class JobExecutor:
         self.owner = owner or f'worker-{uuid4().hex}'
         self.lease_seconds = lease_seconds
 
-    async def _heartbeat(self, lease):
-        while True:
-            await asyncio.sleep(self.lease_seconds / 3)
-            await lease.assert_active()
+    def _start_heartbeat(self, lease):
+        """Renew the lease from a dedicated thread, not an event-loop task.
+
+        A CPU-bound handler (e.g. Wiki source re-authorization that resolves
+        ACLs and re-reads bytes for thousands of sources) issues async calls
+        that do synchronous store work without truly yielding, so the event
+        loop can be blocked for minutes. An asyncio-task heartbeat is then
+        never scheduled: the lease expires, recovery re-claims the job, and the
+        handler restarts from scratch — an infinite cycle that never commits.
+        A thread renews independently because job_heartbeat is a small sqlite
+        write and the GIL is released during I/O and every switch interval, so
+        renewal survives loop saturation. Returns (stop_event, thread).
+        """
+        stop = threading.Event()
+        interval = max(0.005, self.lease_seconds / 3)
+        job_id, owner, fence = lease.job['job_id'], lease.owner, lease.fence
+
+        def _run():
+            while not stop.wait(interval):
+                try:
+                    self.repository.job_heartbeat(job_id, owner, fence, self.lease_seconds)
+                except ValueError:
+                    # STALE_OWNER: the lease/fence is genuinely gone (recovered
+                    # or re-claimed). The handler's next fenced write fails too.
+                    return
+                except Exception:
+                    # Transient store errors (e.g. sqlite 'database is locked'
+                    # while a BEGIN IMMEDIATE waits out its busy timeout) must
+                    # not stop renewal; retry on the next tick.
+                    logger.warning('Job lease renewal failed transiently; retrying', exc_info=True)
+
+        thread = threading.Thread(target=_run, name=f'kb-job-hb-{job_id[:8]}', daemon=True)
+        thread.start()
+        return stop, thread
 
     async def run_once(self):
         job = await asyncio.to_thread(self.repository.job_claim, self.owner,
@@ -80,7 +114,7 @@ class JobExecutor:
         if job is None:
             return None
         lease = WorkerLease(self.repository, job, self.lease_seconds)
-        heartbeat = asyncio.create_task(self._heartbeat(lease))
+        hb_stop, hb_thread = self._start_heartbeat(lease)
         try:
             ctx = await self.context_resolver(job)
             if ctx is None or ctx.bypass_acl or ctx.account_id != job['account'] or ctx.user.user_id != job['principal']:
@@ -111,7 +145,6 @@ class JobExecutor:
                                         lease.owner, lease.fence,
                                         {'code': getattr(exc, 'code', 'EXECUTION_FAILED'), 'message': str(exc)})
         finally:
-            heartbeat.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await heartbeat
+            hb_stop.set()
+            hb_thread.join(timeout=5)
         return await asyncio.to_thread(self.repository.job_get, job['account'], job['job_id'])

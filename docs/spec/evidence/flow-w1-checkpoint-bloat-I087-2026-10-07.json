@@ -1,0 +1,35 @@
+{
+  "id": "I087",
+  "date": "2026-10-07",
+  "title": "W1 抽取检查点瘦身：durable checkpoint 只留计数器，receipts 全量挪到内容寻址 manifest blob",
+  "requirement": "真实 379MB 维修手册 W1 抽取（2197 回执）每批把全量 receipts 序列化进 kb_jobs.checkpoint（651,358 字节，逼近 1MiB 硬上限 jobs.py:323），批间 SQLite 重写整行使 worker 在模型零调用时段空转（采样：json 扫描 38%、GC 13%、SQLite 写 11%，0 条模型连接）。要求消除 inline receipts 的 O(n²) 重写。",
+  "verdict": "PASS",
+  "server": "local OpenViking 127.0.0.1:1933, flowtest account flowadmin key",
+  "run": {
+    "script": "openviking/wiki/extraction.py: _write_manifest/_read_manifest (archive_bytes 内容寻址), dispatch loop flush at ≥256 new receipts or final batch; tests/enterprise_kb/test_wiki_extraction.py",
+    "assertions": {
+      "unit_tests_pass": "39 passed (test_wiki_extraction.py)",
+      "live_before": {
+        "job_id": "248c82e6…",
+        "checkpoint_form": "inline receipts array",
+        "checkpoint_bytes": 651358,
+        "model_calls": 2197,
+        "symptom": "samples show scan_once_unicode/unixWrite/pager_write dominance with 0 model connections"
+      },
+      "live_after": {
+        "job_id": "3c16c68d…",
+        "checkpoint_form": "receipts_ref {sha256,size} + counters only",
+        "checkpoint_bytes": 874,
+        "manifest_blob": {"sha256": "3e00b2c4…", "size": 166096},
+        "model_calls_at_flush": 515
+      }
+    }
+  },
+  "interpretation": "检查点从 651KB inline 数组缩到 874B 引用+计数器；receipts 以 {version,account_id,receipts} blob 落 _system/index_blobs，plan_digest/configuration/account_id 三重绑定校验，读取时 sha256+size 完整性验证。伪造 ref 形状/坏 sha 均在单测覆盖（ConflictError）。",
+  "truthful_boundaries": [
+    "manifest 每 ≥256 新回执或末批才落盘：批间计数器在 DB 中滞后属预期，非停滞（旧实现每批全量重写的对比口径）",
+    "inline receipts 形式仍被 resume 接受（向后兼容旧检查点），legacy job 248c82e6 未迁移",
+    "接续深挖见 I088：deferred 洞导致位置对齐失效的修复"
+  ],
+  "next": ["等待 qwen 端点 W1 全链跑通 draft_ready 后补充终态证据"]
+}

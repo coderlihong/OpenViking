@@ -1,0 +1,26 @@
+{
+  "id": "I088",
+  "date": "2026-10-07",
+  "title": "W1 resume 改 (uri, chunk) 键集对齐：deferred 洞不再破坏位置前缀断言",
+  "requirement": "模型契约失败的 section 不产生回执，使已存回执序列 ≠ all_items 的位置前缀；旧 resume 按位置对齐在第一个洞处错位（真机：r24=page_1012_placement_3 vs s24=page_1012_placement_2，CONFLICT 'resume is not a sequential source/chunk prefix'），2197 回执检查点无法续跑。要求键集匹配并把缺洞重派。",
+  "verdict": "PASS",
+  "server": "unit: test double models; live: prior CONFLICT observed on job 248c82e6 resume attempts",
+  "run": {
+    "script": "tests/enterprise_kb/test_wiki_extraction.py::test_resume_matches_deferred_holes_by_key_not_position",
+    "assertions": {
+      "deferred_hole_redispatched": true,
+      "retained_receipts_not_rerun": "model.call_count==1 on resume (TWO only)",
+      "resumed_candidate_count": 2,
+      "resumed_model_calls": 2,
+      "final_failed_sections_empty": true,
+      "receipt_keys_sorted_union": true,
+      "forged_cases_covered": ["bad sha256", "wrong size", "extra keys", "duplicate key", "counter mismatch"]
+    }
+  },
+  "interpretation": "saved receipts 按 (source_uri, source_chunk) 建键集；fresh 列表 = all_items − saved_keys，洞自然重派且证据取自各自源文；重复键/越界键/计数器不一致均拒绝。旧 inline 形式与新 receipts_ref 形式同走键集路径。",
+  "truthful_boundaries": [
+    "重派依赖源文本与 prompt 派生匹配（quote 需与该源 chunk 对应），单测用 TWO 的自有文案验证非交叉污染",
+    "现有失败计数口径：deferred 重派后再失败会再次计入 failed_sections，终局判定仍由后续 gate 负责"
+  ],
+  "next": ["真实手册续跑在 I087 新检查点形态下继续验证"]
+}

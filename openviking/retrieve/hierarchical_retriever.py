@@ -846,6 +846,7 @@ class HierarchicalRetriever:
                     category=c.get("category", ""),
                     score=final_score,
                     search_tags=normalize_search_tags(c.get("search_tags"), discard_invalid=True),
+                    type=str(c.get("type", "") or ""),
                 )
             )
 

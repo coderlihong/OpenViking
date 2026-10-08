@@ -5,6 +5,7 @@ import json
 import time
 
 from openviking.indexing.business_meta import AuthoritativeMeta, MetaValue, build_meta
+from openviking_cli.exceptions import FailedPreconditionError
 
 METADATA_COMMANDS = ("metadata_write", "metadata_read", "metadata_latest")
 
@@ -90,7 +91,7 @@ class RegistryMetadataMixin:
         for reference in json.loads(row["dependencies"]):
             try:
                 self._assert_not_writing(db, build["account"], reference["uri"])
-            except RuntimeError as exc:
+            except FailedPreconditionError as exc:
                 return str(exc)
             draft = db.execute("SELECT epoch,sha FROM drafts WHERE account=? AND uri=?",
                                (build["account"], reference["uri"])).fetchone()
