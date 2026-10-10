@@ -2032,6 +2032,10 @@ class _OpsMixin:
         concurrently (e.g. unique-per-request shared upload directories).
         """
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
+        # Re-writing a deleted URI makes it current content again; without this
+        # the file lands on disk but stays permanently unreadable behind its
+        # tombstone (the content API writes through here, not ``write``).
+        self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
 
@@ -2168,6 +2172,8 @@ class _OpsMixin:
         concurrently (e.g. unique-per-request shared upload directories).
         """
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
+        # See write_file: re-creating content must clear any deletion tombstone.
+        self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
 
@@ -2188,6 +2194,8 @@ class _OpsMixin:
     ) -> None:
         """Append content to file while holding one exact pathlock lease."""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
+        # See write_file: re-creating content must clear any deletion tombstone.
+        self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
             owned_lease = None
