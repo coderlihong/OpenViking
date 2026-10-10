@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -91,6 +92,62 @@ FETCH_BY_URI_OUTPUT_FIELDS = [
 ]
 
 VIKINGDB_CONTENT_MAX_SIZE = 1024 * 1024
+
+# The local engine persists every record as one serialized row whose ``fields``
+# scalar is length-prefixed with a uint16, so the whole record must stay under
+# 65535 bytes or the write is rejected outright. One summary is carried in
+# several fields (``abstract`` and ``chunk_text``; ``content`` too where the
+# backend keeps it), so a per-field cap cannot bound the row: two 50 KB fields
+# already exceed the limit. Bound the materialized record as a whole instead.
+_RECORD_MAX_BYTES = 65535
+_RECORD_HEADROOM_BYTES = 2048
+# Trim order: the bulky source-context echo yields first, the durable retrieval
+# fields keep the most budget.
+_RECORD_TRIM_ORDER = ("content", "parent_text", "chunk_text", "abstract")
+
+
+def _bounded_record(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep a record's serialized size under the engine's per-row byte limit.
+
+    Every oversized string field is shortened together on a shared shrinking
+    factor until the whole record fits, so no field is capped on its own while
+    the sum still overflows. Returns ``data`` unchanged when it already fits.
+    """
+    if len(json.dumps(data, ensure_ascii=False).encode("utf-8")) <= _RECORD_MAX_BYTES:
+        return data
+
+    budget = _RECORD_MAX_BYTES - _RECORD_HEADROOM_BYTES
+    mutable = [
+        (field, data[field])
+        for field in _RECORD_TRIM_ORDER
+        if isinstance(data.get(field), str) and data[field]
+    ]
+    if not mutable:
+        return data
+
+    # The non-string remainder (vectors, ids, timestamps) is fixed cost; its
+    # size bounds how small the text may shrink before the row can never fit.
+    trimmed = dict(data)
+    for field, _ in mutable:
+        trimmed[field] = ""
+    fixed = len(json.dumps(trimmed, ensure_ascii=False).encode("utf-8"))
+    if fixed >= budget:
+        return data
+
+    text_bytes = sum(len(value.encode("utf-8")) for _, value in mutable)
+    allowed = budget - fixed
+    if text_bytes <= allowed:
+        return data
+    factor = allowed / text_bytes
+
+    for field, value in mutable:
+        raw = value.encode("utf-8")
+        keep = max(1, int(len(raw) * factor))
+        if keep >= len(raw):
+            continue
+        # Cut on a UTF-8 boundary so the stored scalar stays valid text.
+        trimmed[field] = raw[:keep].decode("utf-8", errors="ignore")
+    return trimmed
 
 
 @dataclass(frozen=True)
@@ -296,7 +353,9 @@ class _SingleAccountBackend:
         else:
             result.pop("content", None)
 
-        return result
+        # A record whose combined text fields overflow the per-row byte limit is
+        # rejected by the engine; shorten them together so the write succeeds.
+        return _bounded_record(result)
 
     def _prepare_upsert_payloads(self, data_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Prepare a batch in one worker-thread handoff."""
