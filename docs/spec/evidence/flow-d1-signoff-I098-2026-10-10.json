@@ -1,0 +1,44 @@
+{
+  "id": "I098",
+  "date": "2026-10-10",
+  "flow": "FLOW-D1",
+  "scope": "product-level manual sign-off probe: live three-band retrieval + type-filter matrix on the current published vector generation, closing task #23 FLOW-D1 manual acceptance",
+  "criteria_closed_by_prior_rounds": {
+    "PDF upload + async SDK main chain": "flow-d1-2026-10-05.json (slice fixture, bookmarks matched, reindex clean, URI traceable)",
+    "MD upload leg": "I062 (temp_upload live probe task 98b51cff, top1 0.944/0.893)",
+    "Office legs (DOCX/XLSX/PPTX)": "I047 (font-gated conversion, 7 records rebuilt, scoped retrieval)",
+    "sync SDK parity": "I061 (test_sync_parity.py wire-identical two generations)",
+    "bookmark alignment failure rule fallback": "I062 (live _manifest alignment_status=failed -> rule_blocks 684 sections + test_pdf_chapter_pipeline 9 passed)",
+    "head/mid/tail spread + L3 chunk fields": "I060 (section_0001/0335/0684 hits with chunk_id/parent_chunk_id)",
+    "full-volume reindex terminal state": "I068 (task 76ffbae7 completed rebuilt=4840/failed=0; type backfill verified: type=text and type=image filters both hit on the new generation)",
+    "image semantics quality + orphan closure": "I063/I069 (sampled VLM summaries match visual content; live joint images 2616/2616 carry image_semantics)"
+  },
+  "this_round_live_probes": {
+    "environment": {
+      "server": "local HTTP server pid 56989, up 19h24m, port 1933",
+      "identity": "account=e2etest user=e2eadmin (admin role)",
+      "identity_note": "the legacy flowadmin tenant key no longer resolves against the current key store (accounts.json now holds only default/e2etest); the SY215C corpus lives under this account's resources — probes ran with the current store's admin identity; the old flow-d1-2026-10-05.json run used the same server-side data via the then-valid flowadmin identity",
+      "corpus_note": "manual trees now live under viking://resources/raw/menus/<doc-id>/ section paths (re-imported corpus), not the earlier raw/<manual-name>_1 layout of I060; band assertions are content-based (preface / H031 valve fault / wiring diagram), not path-literal"
+    },
+    "probes": [
+      {"band": "head", "query": "本维修手册是为有经验的技术人员编写的 保养和修理", "top1": {"uri_tail": "resources/raw/menus/805209495144989/1_前言/1.1_维修手册阅读指南.md", "score": 0.919}, "assert": "preface chapter hits top1"},
+      {"band": "mid", "query": "回转优先比例电磁阀插头CN-133F针脚电阻标准值", "top1": {"uri_tail": "9.5.33_故障代码H031_（回转优先比例阀过流）.md", "score": 0.923}, "assert": "same H031 swivel-priority valve fault entry as I060 mid-band, precise top1"},
+      {"band": "tail", "query": "熄火继电器 Flame-out relay 线束图", "top1": {"uri_tail": "11_液压与电气原理图/11.2_电气原理图/11.2.2_整车电气原理图.md", "score_queried_separately": "returned as top result in tail band probe (unsorted-score display)", "read_back_bytes": 3305, "content_page_marker": "page: p.1072-1074"}, "assert": "manual last-chapter wiring diagram hit, URI readable via content/read"},
+      {"type_filter_matrix": {"mixed_top1_type": "image", "mixed_top1_score": 0.978, "image_must_count": 3, "image_must_all_image": true, "text_must_all_text": true}, "assert": "I065 type=image/type=text structured filter holds on the live generation"}
+    ]
+  },
+  "assertions": {
+    "assert_head_band_hit": true,
+    "assert_mid_band_precise_hit": true,
+    "assert_tail_band_hit_and_readable": true,
+    "assert_type_filters_live": true,
+    "assert_all_hits_traceable_viking_uri": true
+  },
+  "passed": true,
+  "residuals": [
+    "business-side activation of the six publication gates remains a business task (I070/I074 scope), not part of FLOW-D1",
+    "checkpoint resume for reindex executor remains an engineering nicety, not an acceptance criterion",
+    "4 SEMANTICS_REQUIRED image warnings counted separately in I068 are non-blocking"
+  ],
+  "verdict": "FLOW-D1 product-level manual acceptance signed off on live evidence: all legs (PDF/MD/Office x async/sync SDK x fallback x three-band retrieval x type filters x URI provenance) closed by I034/I047/I060/I061/I062/I068 cumulative evidence plus today's live probes."
+}

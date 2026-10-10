@@ -1389,12 +1389,12 @@
     }
   ],
   "flows": {
-    "FLOW-D1": "PARTIAL | I069 (2026-10-06): D1 图片语义残留闭合——抽样重投 3 张 completed，扩量定性 177 失败行=已删数据孤儿（无生产活体），live joint 图片 2616/2616 缓存齐备，registry 口径零语义缺口；物理回收留待 PHYSICAL_GC 能力启用（I069 台账 evidence/flow-d1-image-orphan-desired-I069-2026-10-06.json）。",
+    "FLOW-D1": "PARTIAL | I098 (2026-10-10) 产品级手册验收签收：当日活体三段位探针（head 前言 0.919 / mid H031 回转优先阀故障 0.923 精准 top1 / tail 整车电气原理图 content/read 回读 3305B 含 p.1072-1074 页码标记）+ type 过滤矩阵全绿（混排 top1 type=image 0.978，image/text must 各自纯净）；各腿由 I034（PDF 主链）/I047（Office）/I060（三段位+L3 chunk 字段）/I061（sync SDK）/I062（MD+规则回退）/I068（整册 reindex 终态 rebuilt=4840 + type 回填）累计闭合。身份注记：旧 flowadmin 键已不在当前 key store（accounts.json 仅 default/e2etest），语料在 e2etest 账号 menus/<doc-id> 树下，探针用 e2eadmin 身份、断言按内容不按路径字面值。[evidence/flow-d1-signoff-I098-2026-10-10.json]",
     "FLOW-D2": "PARTIAL",
     "FLOW-W1": "PARTIAL | I076 (2026-10-06): FLOW-W1 真机全链重跑收口——I075 文档替换整树 staged commit (.staging-{key} 暂存树+retired 恢复+pin 阻断) 之后，upload→materialize→execute→draft_ready 八断言全过，draft 零判定器开销路径对 G 链与替换门改动无回归；首轮历史 key IDEMPOTENCY_CONFLICT 属幂等设计行为换 -i076 后缀通过。[evidence/flow-w1-live-rerun-I076-2026-10-06.json]",
     "FLOW-W2": "PARTIAL | I077 (2026-10-06): unbacked uncertain 围栏死锁三刀修复（_assert_not_writing 点名 WRITE_RECOVERY_REQUIRED 契约 / model_retry 归 PERMANENT 定盘 / write_fence_clear 操作员审计清除），停服清 16 条围栏后真机重跑八断言全过（job c6908b93 draft_ready passed=true）；I078 strict 判定器真机双向验证收口代码面（evidence/wiki-strict-adjudicator-live-I078-2026-10-06.json）；余：发布态三门由 FLOW publish 链供给+业务侧启用。[evidence/flow-w2-fence-recovery-I077-2026-10-06.json]"
   },
   "status_policy": "PARTIAL is scoped implementation; DONE requires its exact done_when evidence, Feature PASS requires full TC family/quality/flow, not aggregate unit test count.",
-  "latest_implementation": "I077",
+  "latest_implementation": "I098",
   "latest_scoped_report": "evidence/implementation-I051-2026-10-05.json"
 }
