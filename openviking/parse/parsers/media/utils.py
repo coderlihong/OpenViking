@@ -301,7 +301,42 @@ async def generate_image_summary(
         summaries = []
         from openviking.indexing.image_cache import semantics_signature
         signature = semantics_signature()
+        asset_sha256 = hashlib.sha256(image_bytes).hexdigest()
+
+        # The corpus stores byte-identical copies under many directories and
+        # usually only one of them is cited; reuse the published twin's summary
+        # rather than re-billing the VLM for identical bytes. A genuinely novel
+        # asset still falls through below.
+        from openviking.indexing.image_cache import load_twin_image_semantics
+
+        try:
+            twin = await load_twin_image_semantics(
+                viking_fs, image_uri, ctx, asset_sha256=asset_sha256
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[MediaUtils.generate_image_summary] Twin lookup failed for {image_uri}: {exc}"
+            )
+            twin = None
+        if twin is not None:
+            return twin
         for occurrence in occurrences:
+            # A non-empty figcaption is the authoritative description: it was
+            # generated offline before upload (upstream untrusted bodies are
+            # discarded at the corpus boundary, not here), so it is used
+            # verbatim as the occurrence summary and the VLM is skipped. Only
+            # an occurrence with no caption falls through to regeneration.
+            caption = (occurrence.get("caption") or "").strip()
+            if caption:
+                summaries.append(
+                    {
+                        **occurrence,
+                        "summary": caption,
+                        "asset_sha256": asset_sha256,
+                        "semantics_signature": signature,
+                    }
+                )
+                continue
             prompt = render_prompt("parsing.image_summary", {"context": occurrence["context"]})
             response = ""
             for attempt in range(2):

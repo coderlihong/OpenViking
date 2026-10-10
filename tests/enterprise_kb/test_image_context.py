@@ -18,14 +18,42 @@ URI = "viking://resources/manual/chapter.md"
 IMAGE = "viking://resources/manual/images/a.png"
 
 
-def test_ast_uses_real_reference_headings_caption_and_neighbors():
+def test_ast_uses_real_reference_headings_and_neighbors():
     source = "# 手册\n\n## 液压阀\n\n先检查油路。\n\n![阀芯示意图](images/a.png)\n\n图1：检查阀芯磨损。\n\n```md\n![假引用](images/a.png)\n```\n"
     found = extract_occurrences(source, URI, IMAGE)
     assert len(found) == 1
     assert found[0]["heading_path"] == ["手册", "液压阀"]
-    assert found[0]["caption"] == "阀芯示意图"
     assert "检查油路" in found[0]["context"] and "检查阀芯磨损" in found[0]["context"]
     assert found[0]["context_uri"] == URI
+
+
+def test_figcaption_is_the_occurrence_description_markdown_alt_is_not():
+    # The figcaption is generated offline before upload and is authoritative,
+    # so it surfaces as the occurrence's caption. A markdown embed's alt text
+    # carries no trusted description and never becomes one.
+    source = (
+        "# 手册\n\n![markdown 的 alt](images/a.png)\n\n"
+        '<figure>\n    <img src="images/a.png"/>\n'
+        "    <figcaption>\n    权威图注：液压泵剖面\n    </figcaption>\n</figure>\n"
+    )
+    found = extract_occurrences(source, URI, IMAGE)
+    assert found, "both references must still be discovered"
+    captions = [o["caption"] for o in found]
+    # Exactly one reference (the figure) carries the trusted caption.
+    assert "权威图注：液压泵剖面" in captions
+    assert "markdown 的 alt" not in captions
+    # The trusted figcaption stays in the neighboring source text as well.
+    figure_occurrence = next(o for o in found if o["caption"])
+    assert "权威图注" in figure_occurrence["context"]
+
+
+def test_img_without_figcaption_yields_empty_caption():
+    # An <img> with no figcaption (or an empty one) has no trusted description,
+    # so the summary path must regenerate through the VLM.
+    source = '# 手册\n\n<img src="images/a.png"/>\n'
+    found = extract_occurrences(source, URI, IMAGE)
+    assert found
+    assert found[0]["caption"] == ""
 
 
 def test_html_reference_repeated_occurrences_and_encoded_relative_paths():
@@ -151,6 +179,47 @@ async def test_collector_uses_injected_tokenizer_budget_not_fixed_count():
     assert seen  # the injected tokenizer was actually used
 
 
+async def test_run_cache_reads_and_parses_each_source_once_across_images():
+    # Two assets in one chapter must share a single read+parse of the chapter's
+    # markdown; without the run cache every image re-reads and re-parses it.
+    from openviking.indexing.image_context import image_context_cache
+
+    fs = SimpleNamespace(
+        ls=AsyncMock(return_value=[{"name": "chapter.md"}]),
+        read_file=AsyncMock(return_value="![图](images/a.png)\n\n![图2](images/b.png)\n"),
+    )
+    image_a = "viking://resources/manual/images/a.png"
+    image_b = "viking://resources/manual/images/b.png"
+
+    with image_context_cache():
+        first = await collect_image_contexts(fs, image_a, None)
+        second = await collect_image_contexts(fs, image_b, None)
+
+    assert [o["context_uri"] for o in first] == [URI]
+    assert [o["context_uri"] for o in second] == [URI]
+    assert fs.read_file.await_count == 1  # chapter read once for both images
+    assert fs.ls.await_count == 1  # chapter listing reused too
+
+
+def test_resolve_reference_treats_hash_and_query_as_filename_characters():
+    # A Viking path is a filesystem path: '#' and '?' are ordinary filename
+    # characters. url-based parsing truncated them, rejecting valid sources and
+    # aborting the whole chapter's context collection.
+    from openviking.indexing.image_context import resolve_reference
+
+    hashed = "viking://resources/raw/menus/1/9.6/9.6.53_nozzle_#1_drive.md"
+    assert resolve_reference(hashed, hashed) == hashed
+    percent = "viking://resources/raw/menus/1/9.9/9.9.9_SOC_below_20%.md"
+    assert resolve_reference(percent, percent) == percent
+    # Relative and absolute local references still resolve; foreign schemes do not.
+    assert (
+        resolve_reference("viking://resources/a/b/c.md", "images/x.jpg")
+        == "viking://resources/a/b/images/x.jpg"
+    )
+    assert resolve_reference("viking://resources/a/b/c.md", "//evil/x.jpg") is None
+    assert resolve_reference("viking://resources/a/b/c.md", "http://evil/x.jpg") is None
+
+
 def test_vlm_token_counter_is_none_without_configured_tokenizer(monkeypatch):
     from openviking.indexing import image_context as module
 
@@ -227,6 +296,42 @@ async def test_vlm_receives_each_occurrence_with_image_and_uncertainty_prompt(
         await media.generate_image_summary(
             IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
         )
+
+
+async def test_trusted_caption_short_circuits_vlm_and_missing_caption_regenerates(
+    environment, monkeypatch
+):
+    """A trusted figcaption is the summary; only a caption-less occurrence hits the VLM."""
+    e = environment
+    import io
+
+    from PIL import Image
+
+    raw = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(raw, format="PNG")
+    await e.fs.write(IMAGE, raw.getvalue(), ctx=e.ctx)
+    from pathlib import Path
+
+    from openviking.prompts.manager import PromptManager
+
+    manager = PromptManager(templates_dir=Path("openviking/prompts/templates"))
+    monkeypatch.setattr(media, "render_prompt", manager.render)
+    vlm = SimpleNamespace(get_vision_completion_async=AsyncMock(return_value="VLM B"))
+    monkeypatch.setattr(media, "get_viking_fs", lambda: e.fs)
+    monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm))
+
+    contexts = [
+        {"context": "Chapter A", "context_uri": URI, "context_hash": "A", "caption": "阀芯磨损示意"},
+        {"context": "Chapter B", "context_uri": URI + "b", "context_hash": "B", "caption": "  "},
+    ]
+    result = await media.generate_image_summary(
+        IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
+    )
+    records = result["image_occurrences"]
+    # The trusted caption is reused verbatim; only the caption-less occurrence
+    # is regenerated by the VLM (exactly one call).
+    assert [r["summary"] for r in records] == ["阀芯磨损示意", "VLM B"]
+    assert vlm.get_vision_completion_async.await_count == 1
 
 
 async def test_empty_vlm_response_retries_then_settles_low_information_placeholder(
@@ -378,12 +483,12 @@ async def test_real_vlm_image_summary_follows_template_contract():
     manager = PromptManager(templates_dir=Path("openviking/prompts/templates"))
     context = (
         "Source URI: viking://resources/manual/chapter.md\n"
-        "Chapter: 手册 > 液压阀\nCaption: 阀芯示意图\n"
+        "Chapter: 手册 > 液压阀\n"
         "Neighboring source text:\n先检查油路，再检查阀芯磨损。"
     )
     prompt = manager.render("parsing.image_summary", {"context": context})
-    assert "Separate visible facts from contextual interpretation" in prompt
-    assert "mark uncertainty" in prompt
+    assert "Separate observation from inference" in prompt
+    assert "uncertainty" in prompt
 
     raw = io.BytesIO()
     Image.new("RGB", (64, 64), "steelblue").save(raw, format="PNG")

@@ -1687,12 +1687,19 @@ class ReindexExecutor:
                             exc,
                         )
                         summary_dict = await self._regenerate_image_summary(
-                            file_uri, ctx=ctx, llm_sem=image_llm_sem
+                            file_uri, ctx=ctx, llm_sem=image_llm_sem,
                         )
                         if summary_dict is None:
                             # Regeneration failed: the stored abstract is stale
                             # joint input and must not be re-published.
                             stale_joint_input = True
+                if is_image and summary_dict is None and not stale_joint_input:
+                    # Joint embedding is required for every resource image; an
+                    # asset whose summary was never published (e.g. none-mode
+                    # import) still needs VLM semantics before it can index.
+                    summary_dict = await self._regenerate_image_summary(
+                        file_uri, ctx=ctx, llm_sem=image_llm_sem,
+                    )
                 if summary_dict is None and not stale_joint_input:
                     summary_dict = _static_image_summary()
                 if summary_dict is None:
@@ -1762,12 +1769,19 @@ class ReindexExecutor:
                 len(deduped_files),
                 concurrency,
             )
-        await self._run_ordered_counter_batches(
-            deduped_files,
-            concurrency=concurrency,
-            processor=process_file,
-            counters=counters,
-        )
+        # Chapter markdown is target-independent, so one tree-wide memo turns
+        # the per-image chapter read+parse into a single pass per source. The
+        # twin index is likewise captured once and shared by every uncited copy.
+        from openviking.indexing.image_context import image_context_cache
+        from openviking.indexing.image_cache import image_twin_cache
+
+        with image_context_cache(), image_twin_cache():
+            await self._run_ordered_counter_batches(
+                deduped_files,
+                concurrency=concurrency,
+                processor=process_file,
+                counters=counters,
+            )
 
     async def _chunk_reindex_ingest_options(
         self, uri: str, *, ctx: RequestContext, incoming: IngestOptions | None
@@ -2394,11 +2408,12 @@ class ReindexExecutor:
         ctx: RequestContext,
         llm_sem: asyncio.Semaphore | None = None,
     ) -> dict | None:
-        """Regenerate VLM image semantics for one joint image during reindex.
+        """Resolve image semantics for every occurrence.
 
-        Called only when the published occurrence cache is missing or invalid
-        (SEMANTICS_REQUIRED); a fresh failure must not mask the original gate
-        reason, so the outcome is logged and propagated.
+        An occurrence carrying a non-empty figcaption (generated offline before
+        upload) uses that caption as its summary and skips the VLM; occurrences
+        without one are described by the VLM from the image plus its bounded,
+        tokenized chapter context (``collect_image_contexts``).
         """
         from openviking.indexing.image_context import collect_image_contexts
         from openviking.parse.parsers.media.utils import generate_image_summary
@@ -2408,6 +2423,11 @@ class ReindexExecutor:
         strict = bool(chunking and chunking.enabled)
         try:
             contexts = await collect_image_contexts(viking_fs, file_uri, ctx)
+        except Exception as exc:
+            logger.warning("Image context collection failed for %s: %s", file_uri, exc)
+            contexts = []
+
+        try:
             summary_dict = await generate_image_summary(
                 file_uri,
                 file_uri.rsplit("/", 1)[-1],

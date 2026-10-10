@@ -16,18 +16,21 @@ import hashlib
 import json
 import logging
 import posixpath
+from contextlib import contextmanager
+from contextvars import ContextVar
 from html.parser import HTMLParser
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
 
 from openviking.indexing.content import draft_sources
+from openviking.parse.image_rewrite import VIKINGSRC_ATTR
 from openviking_cli.exceptions import NotFoundError
 from openviking.utils.token_estimation import estimate_text_tokens
 
 logger = logging.getLogger(__name__)
 
-VERSION = "image-context-v3"
+VERSION = "image-context-v5"
 
 # Conservative default when no model tokenizer is configured. Kept in sync with
 # the legacy 2048-token occurrence budget, but callers that know the real VLM
@@ -41,33 +44,124 @@ LIST_PAGE_SIZE = 256
 _MARKDOWN_SUFFIXES = (".md", ".markdown")
 
 
-class _Images(HTMLParser):
+class _ParsedSource:
+    """One markdown source parsed once and reused across every cited image.
+
+    A chapter's markdown is identical for every asset it references, so parsing
+    it per image multiplies an O(md) cost by the image count. The token stream
+    and source lines are target-independent and cached here.
+    """
+
+    __slots__ = ("tokens", "lines")
+
+    def __init__(self, markdown: str):
+        # The figcaption is the authoritative description (generated offline
+        # before upload); it is read as the occurrence's caption and also stays
+        # in the neighboring source text. Untrusted upstream bodies never reach
+        # this point: they are discarded at the corpus boundary, not on ingest.
+        self.tokens = MarkdownIt("commonmark", {"html": True}).parse(markdown)
+        self.lines = markdown.splitlines(keepends=True)
+
+
+class _ImageContextCache:
+    """Run-scoped memo of source discovery, reads and parses.
+
+    Scoped to one reindex invocation: sources are fenced against concurrent
+    writes for its duration, so a single read is the run's consistent view.
+    """
+
     def __init__(self):
-        super().__init__()
+        self.sources: dict[str, tuple[str, ...]] = {}
+        self.texts: dict[str, str] = {}
+        self.parsed: dict[str, _ParsedSource] = {}
+
+
+_context_cache: ContextVar = ContextVar("image_context_cache", default=None)
+
+
+@contextmanager
+def image_context_cache():
+    """Enable per-run memoization of chapter markdown reads and parses."""
+    cache = _ImageContextCache()
+    token = _context_cache.set(cache)
+    try:
+        yield cache
+    finally:
+        _context_cache.reset(token)
+
+
+class _Images(HTMLParser):
+    """Collect ``<img>`` references and their figcaption from an HTML fragment.
+
+    Each reference is returned as ``(src, caption)``. The caption is the body of
+    the ``<figcaption>`` that follows the ``<img>`` inside the same figure block:
+    it is the authoritative description, generated offline before upload. An
+    ``<img>`` with no figcaption (or an empty one) yields an empty caption, which
+    the summary path treats as "regenerate".
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
         self.images = []
+        self._in_caption = False
+        self._caption_parts = []
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() == "img":
+        tag = tag.lower()
+        if tag == "img":
             attrs = dict(attrs)
-            if attrs.get("src"):
-                self.images.append((attrs["src"], attrs.get("alt", "")))
+            src = attrs.get("src") or attrs.get(VIKINGSRC_ATTR)
+            if src:
+                self.images.append([src, ""])
+        elif tag == "figcaption":
+            self._in_caption = True
+            self._caption_parts = []
+
+    def handle_endtag(self, tag):
+        if tag.lower() != "figcaption":
+            return
+        self._in_caption = False
+        caption = "".join(self._caption_parts).strip()
+        self._caption_parts = []
+        if caption and self.images:
+            # Attach to the most recent reference that has no caption yet.
+            for entry in reversed(self.images):
+                if not entry[1]:
+                    entry[1] = caption
+                    break
+
+    def handle_data(self, data):
+        if self._in_caption:
+            self._caption_parts.append(data)
+
+
+def _viking_parts(uri):
+    """Split ``viking://<authority>/<path>`` without URL fragment/query parsing.
+
+    A Viking path is a filesystem path, so ``#`` and ``?`` are ordinary filename
+    characters. ``urlsplit`` would truncate at them (e.g. an authored
+    ``..._nozzle_#1_....md`` source), so the path is taken verbatim here.
+    """
+    rest = uri[len("viking://") :]
+    slash = rest.find("/")
+    if slash < 0:
+        return rest, ""
+    return rest[:slash], rest[slash:]
 
 
 def resolve_reference(source_uri, reference):
-    parsed = urlsplit(reference)
-    if parsed.scheme:
-        if parsed.scheme != "viking":
-            return None
-        base = parsed
-        path = parsed.path
+    if reference.startswith("viking://"):
+        netloc, path = _viking_parts(reference)
+    elif "://" in reference or reference.startswith("//"):
+        # A non-Viking absolute scheme or a protocol-relative reference cannot
+        # name a local asset.
+        return None
     else:
-        if parsed.netloc:
-            return None
-        base = urlsplit(source_uri)
-        path = posixpath.join(posixpath.dirname(base.path), parsed.path)
+        netloc, base_path = _viking_parts(source_uri)
+        path = posixpath.join(posixpath.dirname(base_path), reference)
     # Resolve only a local URI; VikingFS still enforces current source ACL.
     path = posixpath.normpath(unquote(path))
-    return f"viking://{base.netloc}{path}"
+    return f"viking://{netloc}{path}"
 
 
 def load_vlm_token_counter():
@@ -166,9 +260,18 @@ def truncate_to_token_budget(text, max_tokens, count_tokens=None, *, marker="\nâ
     return candidate
 
 
-def extract_occurrences(markdown, source_uri, image_uri, token_budget=2048, count_tokens=None):
-    tokens = MarkdownIt("commonmark", {"html": True}).parse(markdown)
-    lines = markdown.splitlines(keepends=True)
+def extract_occurrences(
+    markdown,
+    source_uri,
+    image_uri,
+    token_budget=2048,
+    count_tokens=None,
+    parsed: "_ParsedSource | None" = None,
+):
+    if parsed is None:
+        parsed = _ParsedSource(markdown)
+    tokens = parsed.tokens
+    lines = parsed.lines
     heading = []
     occurrences = []
     target = resolve_reference(image_uri, image_uri)
@@ -181,7 +284,9 @@ def extract_occurrences(markdown, source_uri, image_uri, token_budget=2048, coun
         if token.type == "inline":
             for child in token.children or []:
                 if child.type == "image":
-                    images.append((child.attrGet("src") or "", child.content))
+                    # A markdown embed carries only alt text, never a trusted
+                    # figcaption: the caption lives in the <figure> HTML form.
+                    images.append((child.attrGet("src") or "", ""))
                 elif child.type == "html_inline":
                     parser = _Images()
                     parser.feed(child.content)
@@ -191,20 +296,21 @@ def extract_occurrences(markdown, source_uri, image_uri, token_budget=2048, coun
             parser.feed(token.content)
             images.extend(parser.images)
         for reference, caption in images:
-            if resolve_reference(source_uri, reference) != target:
+            if not _reference_matches(reference, source_uri, target, token.map, lines):
                 continue
             start, end = token.map or (0, 0)
             # Neighboring prose remains centered on this reference, including
             # captions after the figure. Never use only the document beginning.
             nearby = "".join(lines[max(0, start - 12) : min(len(lines), end + 12)])
             context = truncate_to_token_budget(
-                f"Source URI: {source_uri}\nChapter: {' > '.join(s for _, s in heading)}\nCaption: {caption}\nNeighboring source text:\n{nearby}",
+                f"Source URI: {source_uri}\nChapter: {' > '.join(s for _, s in heading)}\nNeighboring source text:\n{nearby}",
                 token_budget,
                 count_tokens,
             )
+            caption = (caption or "").strip()
             digest = hashlib.sha256(
                 json.dumps(
-                    [VERSION, source_uri, index, len(occurrences), caption, context],
+                    [VERSION, source_uri, index, len(occurrences), context, caption],
                     ensure_ascii=False,
                 ).encode()
             ).hexdigest()
@@ -212,7 +318,6 @@ def extract_occurrences(markdown, source_uri, image_uri, token_budget=2048, coun
                 {
                     "context_uri": source_uri,
                     "heading_path": [s for _, s in heading],
-                    "caption": caption,
                     "context": context,
                     "context_hash": digest,
                     "ordinal": len(occurrences),
@@ -220,10 +325,50 @@ def extract_occurrences(markdown, source_uri, image_uri, token_budget=2048, coun
                     "context_token_budget": token_budget,
                     "context_token_count": (count_tokens or estimate_text_tokens)(context),
                     "context_budget_kind": "measured" if count_tokens else "estimated",
-
+                    "caption": caption,
                 }
             )
     return occurrences
+
+
+def _reference_matches(reference, source_uri, target, token_map, lines):
+    """Figure form keeps the authoring ``src`` beside the storage pointer, so a
+    match on either wins: relative src resolves to the sibling image; when the
+    src path was never materialized (sidecar layouts renamed it), the explicit
+    viking:// pointer is authoritative."""
+    if resolve_reference(source_uri, reference) == target:
+        return True
+    if reference.startswith("viking://"):
+        return reference == target
+    pointer = _find_vikingsrc_nearby(reference, lines, token_map)
+    return bool(pointer) and pointer == target
+
+
+def _find_vikingsrc_nearby(reference, lines, token_map):
+    """Locate the vikingsrc pointer of the <img> whose src is *reference*.
+
+    HTMLParser collapses multi-attribute tags before we see raw text, so scan
+    the token's source lines for the tag carrying this exact src.
+    """
+    if not token_map:
+        return None
+    start, end = token_map
+    for line in lines[start:end]:
+        marker = f'src="{reference}"'
+        pos = line.find(marker)
+        if pos < 0:
+            continue
+        tail = line[pos + len(marker) :]
+        v_pos = tail.find(f'{VIKINGSRC_ATTR}="')
+        if v_pos < 0:
+            continue
+        tail = tail[v_pos + len(VIKINGSRC_ATTR) + 2 :]
+        close = tail.find('"')
+        if close < 0:
+            continue
+        netloc, path = _viking_parts(tail[:close])
+        return f"viking://{netloc}{posixpath.normpath(unquote(path))}"
+    return None
 
 
 def _is_markdown_source(entry):
@@ -302,9 +447,23 @@ async def collect_image_contexts(
     if token_budget is None:
         token_budget = DEFAULT_CONTEXT_TOKEN_BUDGET
 
+    cache = _context_cache.get()
     result = []
     with draft_sources():
-        async for source_uri in _discover_markdown_sources(fs, chapter, ctx):
+        source_uris = (
+            cache.sources[chapter]
+            if cache is not None and chapter in cache.sources
+            else None
+        )
+        if source_uris is None:
+            discovered = []
+            async for source_uri in _discover_markdown_sources(fs, chapter, ctx):
+                discovered.append(source_uri)
+            source_uris = tuple(discovered)
+            if cache is not None:
+                cache.sources[chapter] = source_uris
+
+        for source_uri in source_uris:
             from openviking.indexing.publication import configured_store
 
             registry = configured_store()
@@ -313,17 +472,30 @@ async def collect_image_contexts(
                 if registry and getattr(ctx, "account_id", None)
                 else None
             )
-            try:
-                content = await fs.read_file(source_uri, ctx=ctx)
-            except NotFoundError:
-                # A source listed before deletion (or blocked by a tombstone on a
-                # re-created tree) must not abort the chapter's remaining images.
-                logger.warning("Skipping vanished image context source: %s", source_uri)
-                continue
-            if isinstance(content, bytes):
-                content = content.decode("utf-8")
+            text = cache.texts.get(source_uri) if cache is not None else None
+            parsed = cache.parsed.get(source_uri) if cache is not None else None
+            if text is None:
+                try:
+                    content = await fs.read_file(source_uri, ctx=ctx)
+                except NotFoundError:
+                    # A source listed before deletion (or blocked by a tombstone on a
+                    # re-created tree) must not abort the chapter's remaining images.
+                    logger.warning("Skipping vanished image context source: %s", source_uri)
+                    continue
+                text = content.decode("utf-8") if isinstance(content, bytes) else content
+                if cache is not None:
+                    cache.texts[source_uri] = text
+            if parsed is None:
+                parsed = _ParsedSource(text)
+                if cache is not None:
+                    cache.parsed[source_uri] = parsed
             found = extract_occurrences(
-                content, source_uri, image_uri, token_budget, count_tokens=count_tokens
+                text,
+                source_uri,
+                image_uri,
+                token_budget,
+                count_tokens=count_tokens,
+                parsed=parsed,
             )
             if epoch is not None:
                 for occurrence in found:

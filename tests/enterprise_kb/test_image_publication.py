@@ -94,7 +94,7 @@ async def test_text_navigation_and_image_wait_for_all_receipts(image_env):
 
 
 @pytest.mark.parametrize("failure", ["edited", "worker", "newer"])
-async def test_failed_image_keeps_old_whole_batch(image_env, failure):
+async def test_failed_image_keeps_old_asset_while_text_publishes(image_env, failure):
     e = image_env
     await consume(e, await stage(e))
     old = manifest(e)[IMAGE]["generation"]
@@ -119,9 +119,11 @@ async def test_failed_image_keeps_old_whole_batch(image_env, failure):
         await stage(e, b"newer attempt", "newer summary")
         result = await e.handler.on_dequeue({"data": messages[0].to_json()})
         assert result.outcome.value == "failed"
+    # The failed image keeps its old asset and generation; the healthy text
+    # member of the same batch still publishes.
     assert manifest(e)[IMAGE]["generation"] == old
-    assert TEXT not in manifest(e)
-    assert e.store.batch_state(batch.id)["state"] == "failed"
+    assert TEXT in manifest(e)
+    assert e.store.batch_state(batch.id)["state"] == "published"
     assert e.store.state(generation)["state"] == "failed"
 
 

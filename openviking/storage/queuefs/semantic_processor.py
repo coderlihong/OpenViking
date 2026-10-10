@@ -504,7 +504,13 @@ class SemanticProcessor(DequeueHandlerBase):
                                 aggregate_directory=msg.aggregate_directory,
                                 copy_source_uri=msg.copy_source_uri,
                             )
-                            await executor.run(run_uri)
+                            from openviking.indexing.image_cache import image_twin_cache
+
+                            # One manifest capture serves every uncited image
+                            # copy in this run; without it each copy would
+                            # re-parse the multi-megabyte manifest.
+                            with image_twin_cache():
+                                await executor.run(run_uri)
                             self._cache_dag_stats(
                                 msg.telemetry_id,
                                 run_uri,

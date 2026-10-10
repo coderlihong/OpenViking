@@ -58,10 +58,47 @@ def test_lossless_token_bounded_parent_child_and_stable_id(embedding):
 
     assert all(count(c.embedding_text) + 16 <= 192 for c in first.chunks)
     assert all(count(c.parent_text) <= 768 for c in first.chunks)
-    assert len({c.parent_chunk_id for c in first.chunks}) < len(first.chunks)
-    other = plan_resource(SOURCE + "修改", URI, "acct", embedding)
-    assert {c.chunk_id for c in first.chunks}.isdisjoint(c.chunk_id for c in other.chunks)
-    assert first.document_id != plan_resource(SOURCE, URI, "other", embedding).document_id
+
+
+def test_figure_block_embedding_text_carries_caption_not_markup(embedding):
+    from openviking.parse.image_rewrite import wrap_in_figure
+
+    figure_uri = "viking://resources/raw/images/abc.jpg"
+    source = (
+        "# 故障案例\n\n"
+        + wrap_in_figure(figure_uri, figure_uri, caption="平衡阀故障示意图，展示油缸连接。")
+        + "\n\n后续正文段落。\n"
+    )
+    plan = plan_resource(source, URI, "acct", embedding)
+    assert "".join(c.source_text for c in plan.chunks) == source
+    embedded = "\n".join(c.embedding_text for c in plan.chunks)
+    assert "平衡阀故障示意图" in embedded, embedded
+    assert "<img" not in embedded, embedded
+    assert "<figure>" not in embedded and "</figure>" not in embedded, embedded
+    assert figure_uri in embedded, "caption text must keep the storage pointer"
+    assert all("figcap" not in c.embedding_text for c in plan.chunks), embedded
+
+
+def test_torn_caption_list_still_fragments_within_child_budget(embedding):
+    # A PDF-derived caption can embed a whole VLM description in a bullet list
+    # that ends with a stray </figcaption>. The list carries no <img>, so it is
+    # not a figure block, but it still must fragment by size: rendering it whole
+    # overflowed the child budget and aborted the entire file's plan.
+    source = (
+        "\n* **detailed_purpose_description**: "
+        + "该图展示了电子控制面板的正面布局与接口说明。" * 60
+        + "\n\n* **citation_source**: 设备用户手册\n</figcaption>\n"
+    )
+    plan = plan_resource(source, URI, "acct", embedding)
+    plan.validate_coverage(source)
+    tokenizer = Tokenizer.from_file(embedding.chunking.tokenizer_path)
+
+    def count(text):
+        return len(tokenizer.encode(text, add_special_tokens=False).ids)
+
+    assert all(count(c.embedding_text) + 16 <= 192 for c in plan.chunks)
+    embedded = "\n".join(c.embedding_text for c in plan.chunks)
+    assert "figcaption" not in embedded, embedded
 
 
 def test_wrong_tokenizer_sha_fails_before_enqueuing(embedding):

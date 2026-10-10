@@ -106,8 +106,82 @@ def ast_blocks(source: str):
         yield source[cursor:], "paragraph"
 
 
+_FIGURE_TAG_RE = re.compile(r"</?(figure|figcaption)>", re.IGNORECASE)
+_FIGURE_IMG_TAG_RE = re.compile(r"<img\b[^>]*/?>", re.IGNORECASE)
+_FIGURE_VIKINGSRC_RE = re.compile(
+    r"""\bvikingsrc=["']([^"']+)["']""", re.IGNORECASE
+)
+
+
+def figure_embedding_text(block: str) -> str:
+    """Render a ``<figure>`` block as plain text for the text-vector path.
+
+    The image bytes are indexed separately through the joint image embedding;
+    the text index carries the description (figcaption) plus the storage
+    pointer so recall can tie the hit back to the asset.
+    """
+    pointer_match = _FIGURE_VIKINGSRC_RE.search(block)
+    text = _FIGURE_IMG_TAG_RE.sub("", block)
+    text = _FIGURE_TAG_RE.sub("", text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if pointer_match:
+        lines.append(f"Image: {pointer_match.group(1)}")
+    return "\n".join(lines) + "\n\n" if lines else ""
+
+
+def figure_pieces(block: str, rendered: str, budget: int, count, kind):
+    """Partition a figure piece when its rendered caption exceeds the budget.
+
+    Authored captions are normally tiny; PDF-derived captions can embed a whole
+    VLM description. Rendering such a caption whole would overflow the child
+    budget, so the block source splits at line boundaries and each sub-span
+    re-renders through ``figure_embedding_text`` — every sub-span keeps its own
+    vikingsrc pointer line, so each fragment still ties back to the asset.
+    Source spans concatenate back to the full block, preserving coverage.
+    """
+    pointer = _FIGURE_VIKINGSRC_RE.search(block)
+    pointer_tokens = count(f"Image: {pointer.group(1)}\n") if pointer else 0
+    lines = block.splitlines(keepends=True)
+    groups: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        if not current:
+            current = [line]
+            continue
+        # Pure markup lines render empty; they ride along until content arrives,
+        # then split only when the content-carrying group would overflow.
+        current.append(line)
+        trial_render = figure_embedding_text("".join(current))
+        if trial_render.strip() and count(trial_render) + pointer_tokens > budget:
+            head = figure_embedding_text("".join(current[:-1]))
+            if head.strip():
+                groups.append(current[:-1])
+                current = [line]
+    if current:
+        if figure_embedding_text("".join(current)).strip():
+            groups.append(current)
+        elif groups:
+            groups[-1].extend(current)
+        else:
+            groups.append(current)
+    pieces = []
+    for group_lines in groups:
+        span = "".join(group_lines)
+        piece_rendered = figure_embedding_text(span)
+        if not piece_rendered:
+            continue
+        # A continuation may sit before the asset pointer line; re-append the
+        # pointer so every fragment still ties back to the asset.
+        if pointer and "Image:" not in piece_rendered:
+            stripped_lines = [l.strip() for l in piece_rendered.splitlines() if l.strip()]
+            piece_rendered = "\n".join(stripped_lines) + f"\nImage: {pointer.group(1)}\n\n"
+        pieces.append((span, piece_rendered, bool(pieces), kind))
+    if "".join(p[0] for p in pieces) != block:
+        raise ValueError("Figure partition lost source content")
+    return pieces
+
+
 def prefix_piece(text: str, budget: int, count: Callable[[str], int]) -> str:
-    """Split on Unicode character boundaries, never decoded partial byte tokens."""
     low, high = 0, len(text)
     while low < high:
         middle = (low + high + 1) // 2
@@ -251,6 +325,28 @@ def build_plan(
             pieces.extend(table_pieces(block, capacity, count))
             continue
         remainder = block
+        # Figure blocks embed images; the text vector cites the description,
+        # not the markup. The stripped caption text is tiny compared to the
+        # markup, so a figure always renders whole — never fragmented.
+        # Blank lines inside a caption can tear one authored figure across
+        # several AST blocks; strip figure tags from every html_block piece.
+        # Only genuine <figure>/<figcaption> markup qualifies: an ordinary HTML
+        # table that merely contains an <img> renders (minus tags) far over the
+        # child budget and must fragment through the generic oversize path.
+        figure_rendered = (
+            figure_embedding_text(block)
+            if kind == "html_block" and _FIGURE_TAG_RE.search(block)
+            else None
+        )
+        if figure_rendered is not None and "<img" in block:
+            pieces.extend(figure_pieces(block, figure_rendered, capacity, count, kind))
+            continue
+        # A torn caption can leave figure tags inside a list/paragraph block;
+        # render those as plain text too, keeping the source span for QA. The
+        # block still fragments by size: a PDF-derived caption can carry a whole
+        # VLM description, and the raw source token count overstates its render
+        # only when tags are the bulk, so splitting on the source stays safe.
+        torn_caption = _FIGURE_TAG_RE.search(remainder) is not None and "</code" not in remainder
         # Prefer intact Markdown blocks. Oversize blocks split at complete lines
         # where possible; fragments are explicitly marked for downstream QA.
         fragmented = count(block) > capacity
@@ -262,13 +358,17 @@ def build_plan(
                 last_line = piece.rfind("\n")
                 if last_line > len(piece) // 2:
                     piece = piece[: last_line + 1]
-            rendered = piece
-            if fragmented and kind in {"fence", "code_block", "table_open"}:
-                fence = "`" * max(
-                    3,
-                    max((len(m.group()) for m in re.finditer(r"`+", piece)), default=0) + 1,
-                )
-                rendered = fence + "markdown\n" + piece + "\n" + fence + "\n"
+            if torn_caption:
+                plain = _FIGURE_IMG_TAG_RE.sub("", _FIGURE_TAG_RE.sub("", piece)).strip()
+                rendered = plain + "\n\n" if plain else ""
+            else:
+                rendered = piece
+                if fragmented and kind in {"fence", "code_block", "table_open"}:
+                    fence = "`" * max(
+                        3,
+                        max((len(m.group()) for m in re.finditer(r"`+", piece)), default=0) + 1,
+                    )
+                    rendered = fence + "markdown\n" + piece + "\n" + fence + "\n"
             pieces.append((piece, rendered, fragmented, kind))
             remainder = remainder[len(piece) :]
     # Pack short adjacent blocks into a child; a heading should not receive an
@@ -323,18 +423,22 @@ def build_plan(
         parent_text = prefix + heading_at(source_offset) + "".join(p[1] for p in group)
         parent_id = digest(plan_id, "parent", parent_ordinal)
         previous = ""
+        previous_rendered = ""
         for own, rendered, continuation in group:
             overlap = ""
-            if previous and config.overlap_tokens:
+            # Overlap extends the previous child's RENDERED text (markup-free),
+            # never its raw source: a figure block's tail must not leak tags.
+            overlap_source = previous_rendered or previous
+            if overlap_source and config.overlap_tokens:
                 # Suffix measured with the same model tokenizer as the child.
-                low, high = 0, len(previous)
+                low, high = 0, len(overlap_source)
                 while low < high:
                     middle = (low + high + 1) // 2
-                    if count(previous[-middle:]) <= config.overlap_tokens:
+                    if count(overlap_source[-middle:]) <= config.overlap_tokens:
                         low = middle
                     else:
                         high = middle - 1
-                overlap = previous[-low:] if low else ""
+                overlap = overlap_source[-low:] if low else ""
                 while overlap and count(overlap) > config.overlap_tokens:
                     overlap = overlap[1:]
             heading = heading_at(source_offset)
@@ -364,6 +468,7 @@ def build_plan(
                 )
             )
             previous = own
+            previous_rendered = rendered
             source_offset += len(own)
     plan = IndexPlan(
         uri,

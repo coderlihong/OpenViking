@@ -672,8 +672,8 @@ class TestImageLinkSplit:
 
         assert stats["references_rewritten"] == 2, stats
         page = _decode(fake.files[f"{root}/guides/page/page.md"])
-        assert f"![p]({root}/guides/page/photo.png)" in page, page
-        assert f'<img src="{root}/guides/page/photo.png" width="80%">' in page, page
+        assert f'<img src="../images/photo.png" alt="p" vikingsrc="{root}/guides/page/photo.png"/>' in page, page
+        assert f'<img src="../images/photo.png" width="80%" vikingsrc="{root}/guides/page/photo.png">' in page, page
 
     async def test_invalid_image_depth_adjusted(self, tmp_path: Path):
         # In base_dir but not a decodable image -> ingest skips it -> depth-adjust.
@@ -721,7 +721,13 @@ class TestRewriteImageUris:
             stats = await rewrite_image_uris(root, lease_ref=None)
 
         assert stats == {"files_processed": 1, "references_rewritten": 1}
-        assert _decode(fake.files[f"{root}/index/index.md"]) == (f"![p]({root}/index/logo.png)")
+        assert _decode(fake.files[f"{root}/index/index.md"]) == (
+            f'<figure>\n'
+            f'    <img src="./assets/logo.png" alt="p" vikingsrc="{root}/index/logo.png"/>\n'
+            f"    <figcaption>\n"
+            f"    </figcaption>\n"
+            f"</figure>"
+        )
         assert f"{root}/index/.image_mappings.json" not in fake.files
 
     async def test_split_doc_mapping_keys_resolved(self):
@@ -744,7 +750,11 @@ class TestRewriteImageUris:
 
         assert stats == {"files_processed": 1, "references_rewritten": 1}
         assert _decode(fake.files[f"{root}/big/标题/章一/部分_1.md"]) == (
-            f"![p]({root}/big/标题/章一/d.jpg)"
+            f"<figure>\n"
+            f'    <img src="./assets/d.jpg" alt="p" vikingsrc="{root}/big/标题/章一/d.jpg"/>\n'
+            f"    <figcaption>\n"
+            f"    </figcaption>\n"
+            f"</figure>"
         )
         assert f"{root}/big/.image_mappings.json" not in fake.files
 
@@ -767,8 +777,77 @@ class TestRewriteImageUris:
             stats = await rewrite_image_uris(root, lease_ref=None)
 
         assert stats == {"files_processed": 1, "references_rewritten": 1}
-        assert _decode(fake.files[f"{root}/doc.md"]) == f"![p]({root}/logo.png)"
+        assert _decode(fake.files[f"{root}/doc.md"]) == (
+            "<figure>\n"
+            '    <img src="./assets/logo.png" alt="p" '
+            f'vikingsrc="{root}/logo.png"/>\n'
+            "    <figcaption>\n"
+            "    </figcaption>\n"
+            "</figure>"
+        )
         assert f"{root}/.image_mappings.json" not in fake.files
+
+    async def test_second_rewrite_is_idempotent(self):
+        # A figure block whose <img> already carries vikingsrc is never
+        # double-wrapped, and its trusted figcaption is preserved verbatim: the
+        # very first pass is already a no-op (no rewrite), and so is the second.
+        from openviking.parse.image_rewrite import rewrite_image_uris
+
+        root = "viking://resources/doc"
+        fake = FakeVikingFS()
+        normalized = (
+            "<figure>\n"
+            '    <img src="./assets/logo.png" alt="p" '
+            f'vikingsrc="{root}/logo.png"/>\n'
+            "    <figcaption>\n"
+            "    caption text\n"
+            "    </figcaption>\n"
+            "</figure>"
+        )
+        fake.files = {
+            f"{root}/doc.md": normalized.encode(),
+            f"{root}/logo.png": b"img",
+            f"{root}/.image_mappings.json": (
+                '{"doc.md": {"./assets/logo.png": "logo.png"}}'.encode()
+            ),
+        }
+
+        with self._patched(fake):
+            stats = await rewrite_image_uris(root, lease_ref=None)
+
+        # Already-normalized block: nothing to rewrite, caption kept verbatim.
+        assert stats == {"files_processed": 0, "references_rewritten": 0}
+        assert _decode(fake.files[f"{root}/doc.md"]) == normalized
+
+        with self._patched(fake):
+            again = await rewrite_image_uris(root, lease_ref=None)
+        assert again == {"files_processed": 0, "references_rewritten": 0}
+        assert _decode(fake.files[f"{root}/doc.md"]) == normalized
+
+    async def test_chapter_sibling_images_directory_resolved(self):
+        # Chapter layout writes references as images/<name> with no sidecar;
+        # the sibling images/ listing must resolve them to viking:// URIs.
+        from openviking.parse.image_rewrite import rewrite_image_uris
+
+        root = "viking://resources/chapter"
+        fake = FakeVikingFS()
+        fake.files = {
+            f"{root}/index.md": "![fig](images/abc123.jpg)".encode(),
+            f"{root}/images/abc123.jpg": b"img",
+        }
+
+        with self._patched(fake):
+            stats = await rewrite_image_uris(root, lease_ref=None)
+
+        assert stats == {"files_processed": 1, "references_rewritten": 1}
+        assert _decode(fake.files[f"{root}/index.md"]) == (
+            "<figure>\n"
+            '    <img src="images/abc123.jpg" alt="fig" '
+            f'vikingsrc="{root}/images/abc123.jpg"/>\n'
+            "    <figcaption>\n"
+            "    </figcaption>\n"
+            "</figure>"
+        )
 
     async def test_merge_temp_carries_sidecar_but_not_other_hidden_files(self):
         # _merge_temp must carry the declared .image_mappings.json sidecar, but
@@ -868,7 +947,14 @@ class TestRewriteImageUris:
         ):
             await processor._rewrite_target_image_uris(root, target)
 
-        assert _decode(fake.files[f"{target}/index/index.md"]) == (f"![p]({target}/index/logo.png)")
+        assert _decode(fake.files[f"{target}/index/index.md"]) == (
+            "<figure>\n"
+            '    <img src="./assets/logo.png" alt="p" '
+            f'vikingsrc="{target}/index/logo.png"/>\n'
+            "    <figcaption>\n"
+            "    </figcaption>\n"
+            "</figure>"
+        )
 
     @pytest.mark.parametrize("split_content", [True, False])
     async def test_directory_ingest_images_become_viking_uris(
@@ -911,8 +997,8 @@ class TestRewriteImageUris:
         assert stats["files_processed"] == 2, stats
         index_md = _decode(fake.files[f"{root}/index/index.md"])
         guide_md = _decode(fake.files[f"{root}/guide/guide.md"])
-        assert f"![logo]({root}/index/logo.png)" in index_md, index_md
-        assert f"![logo2]({root}/guide/logo.png)" in guide_md, guide_md
+        assert f'src="./assets/logo.png" alt="logo" vikingsrc="{root}/index/logo.png"' in index_md, index_md
+        assert f'src="./assets/logo.png" alt="logo2" vikingsrc="{root}/guide/logo.png"' in guide_md, guide_md
         assert not any(
             u.endswith(".image_mappings.json") and u.startswith(root) for u in fake.files
         ), fake.files

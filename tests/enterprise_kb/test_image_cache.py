@@ -12,11 +12,46 @@ from openviking.indexing.content import blob_path
 from openviking.indexing.image_cache import (
     cache_key,
     load_image_semantics,
+    load_twin_image_semantics,
     occurrence_identity,
     semantics_signature,
 )
 from openviking.indexing.image_context import collect_image_contexts
 from openviking.utils.embedding_utils import vectorize_file
+
+COPY = ROOT + "/other/images/a.png"
+
+
+async def test_uncited_copy_reuses_published_twin_summary_without_vlm(image_env):
+    e = image_env
+    # Publish the cited copy so its summary is trusted and reusable.
+    await consume(e, await stage(e, await prepare(e)))
+    published = manifest(e)[IMAGE]["content"]["image_semantics"]["sha256"]
+
+    # A byte-identical copy under another directory cites no markdown of its own.
+    await e.fs.write(COPY, b"asset", ctx=e.ctx)
+    twin = await load_twin_image_semantics(e.fs, COPY, e.ctx)
+
+    assert twin is not None
+    assert twin["summary"] == "purpose 0\n\npurpose 1"
+    # The reused record must not claim the twin's citing chapter as its own.
+    assert twin["image_occurrences"] == [
+        {
+            "summary": "purpose 0\n\npurpose 1",
+            "context_status": "twin_reuse",
+            "asset_sha256": hashlib.sha256(b"asset").hexdigest(),
+            "semantics_signature": semantics_signature(),
+        }
+    ]
+    # Reuse reads the published cache, never writes a new one.
+    assert manifest(e)[IMAGE]["content"]["image_semantics"]["sha256"] == published
+
+
+async def test_novel_asset_has_no_twin_and_still_needs_the_model(image_env):
+    e = image_env
+    await consume(e, await stage(e, await prepare(e)))
+    await e.fs.write(COPY, b"genuinely different bytes", ctx=e.ctx)
+    assert await load_twin_image_semantics(e.fs, COPY, e.ctx) is None
 
 
 def test_cache_key_includes_context_signature_so_context_change_invalidates():

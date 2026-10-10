@@ -865,6 +865,12 @@ class SemanticDagExecutor:
                     ingest_options=self._ingest_options_for_file(file_path),
                     creator_acl_grant=self._creator_acl_grant(file_path),
                 )
+                # Caption backfill runs only after joint-index enqueue: writing
+                # the citing markdown between context capture and enqueue
+                # bumps the draft epoch and trips the "Image context changed"
+                # publication gate into a re-enqueue loop.
+                if summary_dict.get("image_occurrences"):
+                    await self._backfill_figure_captions(file_path, summary_dict)
             except NotFoundError:
                 logger.warning("Skipping vectorization for vanished source: %s", file_path)
             except Exception as e:
@@ -883,6 +889,26 @@ class SemanticDagExecutor:
                 "summary": str(summary_dict.get("summary") or ""),
             },
         )
+
+    async def _backfill_figure_captions(self, file_path: str, summary_dict: dict) -> None:
+        """Write the generated image caption into citing markdown figure blocks."""
+        from openviking.parse.figure_caption import backfill_image_captions
+
+        try:
+            updated = await backfill_image_captions(
+                self._viking_fs,
+                file_path,
+                summary_dict,
+                ctx=self._ctx,
+                lock=self._lock,
+            )
+        except Exception as e:
+            logger.warning(f"[SemanticDag] Figure caption backfill failed for {file_path}: {e}")
+            return
+        if updated:
+            logger.info(
+                f"[SemanticDag] Backfilled figure captions for {file_path} into {updated} file(s)"
+            )
 
     async def _on_file_done(
         self, parent_uri: str, file_path: str, summary_dict: Dict[str, str]
