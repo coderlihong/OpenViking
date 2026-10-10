@@ -410,6 +410,9 @@ async def _format_search_result(result, *, service, ctx, read_content: bool = Fa
         ).strip()
         score = getattr(m, "score", 0.0)
         line = f"- [{ctx_type} {score * 100:.0f}%] {m.uri}\n    {abstract}"
+        for chunk in getattr(m, "matches", None) or ():
+            text = (chunk.get("text") or "").replace("\n", " ").strip()
+            line += f"\n    [{chunk.get('chunk_id', '')}] {text}"
         if m.uri in contents:
             line += f"\n\n    {contents[m.uri]}"
         lines.append(line)

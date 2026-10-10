@@ -337,6 +337,60 @@ async def test_find_tool_inlines_visible_content_when_requested(service, monkeyp
     assert "Use the read tool" not in result
 
 
+async def test_find_tool_renders_chunk_matches(service, monkeypatch):
+    async def fake_find(**kwargs):
+        del kwargs
+        return SimpleNamespace(
+            memories=[],
+            resources=[
+                SimpleNamespace(
+                    uri="viking://resources/doc.md",
+                    abstract="summary",
+                    overview="",
+                    score=0.86,
+                    matches=[
+                        {
+                            "chunk_id": "abc123",
+                            "text": "## Layer 2 机理表\n| R8 | 马达内漏 |",
+                            "parent_chunk_id": "p-1",
+                        }
+                    ],
+                )
+            ],
+            skills=[],
+        )
+
+    monkeypatch.setattr(service.search, "find", fake_find)
+
+    result = await mcp_endpoint.find(query="mechanism")
+
+    assert "[abc123] ## Layer 2 机理表 | R8 | 马达内漏 |" in result
+
+
+async def test_find_tool_omits_chunk_lines_when_no_matches(service, monkeypatch):
+    async def fake_find(**kwargs):
+        del kwargs
+        return SimpleNamespace(
+            memories=[],
+            resources=[
+                SimpleNamespace(
+                    uri="viking://resources/doc.md",
+                    abstract="summary",
+                    overview="",
+                    score=0.5,
+                    matches=[],
+                )
+            ],
+            skills=[],
+        )
+
+    monkeypatch.setattr(service.search, "find", fake_find)
+
+    result = await mcp_endpoint.find(query="bare")
+
+    assert "[" not in result.split("summary")[1]
+
+
 async def test_search_tool_rejects_read_content_in_context_mode():
     with pytest.raises(InvalidArgumentError, match="read_content"):
         await mcp_endpoint.search(query="visible", mode="context", read_content=True)
