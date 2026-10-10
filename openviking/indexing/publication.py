@@ -530,14 +530,29 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             "WHERE m.batch=?",
             (batch,),
         ).fetchall()
+        if not rows:
+            return False
+        # A member that failed or was superseded is dropped from this publication;
+        # the remaining members still publish once every one of them is ready.
+        # Only a batch with no publishable member fails as a whole.
+        healthy = []
         for row in rows:
             reason = self._invalid_reason(db, row)
             if row["state"] in {"failed", "superseded"} or reason:
-                self._fail_batch(db, batch, reason or row["error"] or "Batch member failed")
-                return False
-        if not rows or not all(self._has_all_receipts(db, row) for row in rows):
+                if reason and row["state"] not in {"failed", "superseded"}:
+                    state = "superseded" if reason.startswith("Newer") else "failed"
+                    db.execute(
+                        "UPDATE builds SET state=?,error=? WHERE generation=?",
+                        (state, reason, row["generation"]),
+                    )
+                continue
+            healthy.append(row)
+        if not all(self._has_all_receipts(db, row) for row in healthy):
             return False
-        self._publish_rows(db, rows)
+        if not healthy:
+            self._fail_batch(db, batch, "No batch member could be published")
+            return False
+        self._publish_rows(db, healthy)
         db.execute("UPDATE batches SET state='published' WHERE id=?", (batch,))
         return True
 
@@ -546,8 +561,8 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             "SELECT batch FROM batch_members WHERE generation=?", (row["generation"],)
         ).fetchone()
         if member:
-            if not self._has_all_receipts(db, row):
-                return False
+            # Delegate to the batch even when this member is not ready: a member
+            # that turned invalid is dropped there, letting healthy members publish.
             return self._publish_batch_if_complete(db, member[0])
         if not self._has_all_receipts(db, row):
             return False
@@ -602,12 +617,23 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             member = db.execute(
                 "SELECT batch FROM batch_members WHERE generation=?", (generation,)
             ).fetchone()
-            if member:
-                self._fail_batch(db, member[0], reason)
             db.execute(
                 "UPDATE builds SET state='failed',error=? WHERE generation=? AND state IN ('building','queued')",
                 (reason, generation),
             )
+            if not member:
+                return
+            remaining = db.execute(
+                "SELECT COUNT(*) FROM batch_members m JOIN builds b ON b.generation=m.generation "
+                "WHERE m.batch=? AND b.state IN ('building','queued','published')",
+                (member[0],),
+            ).fetchone()[0]
+            if remaining:
+                # Fail only this member; the rest of the batch keeps publishing.
+                self._publish_batch_if_complete(db, member[0])
+            else:
+                # The last live member failed: the whole batch is now dead.
+                self._fail_batch(db, member[0], reason)
 
     def state(self, generation):
         with self.db() as db:

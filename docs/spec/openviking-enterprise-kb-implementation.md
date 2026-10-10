@@ -213,7 +213,7 @@ GC 当前仅提供 `retired_candidates` 只读计划：active snapshot、有效�
 
 新增共享 `text_publication_batch` 编排与 SQL batches/batch_members。producer 在第一份文本计划时建立持久批次，后续并行子任务加入同一 account/namespace 的批次；单文件 seal 仅关闭该文件 producer，整个遍历成功后才 batch seal。消费端使用持久成员与 receipt，不依赖 producer 进程存活。最终事务重新核对每个成员的唯一 child 集合、desired attempt 和来源 epoch，合并最新 head 后一次切换所有成员，保留无关文档。
 
-D2 `_reindex_resource_vectors_from_entries`、D1 `_vectorize_resource_files` 和 SemanticProcessor 的递归任务共用此屏障。reindex 已捕获但计入 failed_records 的错误也会使整批失败；ProcessResult.failed/requeued/cancelled 和 producer 异常/取消不会封口发布。终止 embedding 错误会使同批尚未发布成员全部失败，重排由新的 producer 批次重新构建；没有自动 orphan 复活。
+D2 `_reindex_resource_vectors_from_entries`、D1 `_vectorize_resource_files` 和 SemanticProcessor 的递归任务共用此屏障。producer 正常返回（含 reindex 已捕获并计入 failed_records 的错误、ProcessResult.failed/requeued）即封口批次；producer 异常/取消才整批失败。批次封口时逐个成员复核：失败或被取代的成员从本次发布中剔除并保留其旧版本，其余健康成员照常发布；仅当批次已无可发布成员时才整批失败。终止 embedding 错误不再连坐同批尚未发布成员，重排由新的 producer 批次重新构建；没有自动 orphan 复活。
 
 共享 SemanticNodeScheduler 的 worker 会服务多份文档，不能依赖创建 worker 时继承的 ContextVar。SemanticDagExecutor 在创建时保存自己的批次，并在每次节点执行时重新绑定；同时显式读取工作正文，避免拿到已发布旧正文。空批次不切换 head，重复 URI 或跨 account/namespace/registry 加入被拒绝。每个 child 使用原 generation 防止物理向量覆盖旧代。
 

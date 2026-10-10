@@ -49,7 +49,7 @@ def test_complete_early_chapter_waits_for_producer_and_all_chapters(tmp_path):
 
 
 @pytest.mark.parametrize("failure", ["worker", "superseded", "edited"])
-def test_any_member_invalidates_batch_and_keeps_other_old_chapters(tmp_path, failure):
+def test_invalid_member_drops_out_while_others_publish(tmp_path, failure):
     store = PublicationStore(str(tmp_path / "db"))
     old = {uri: publish(store, uri) for uri in (A, B)}
     batch = store.begin_batch("acct", "ns")
@@ -72,14 +72,17 @@ def test_any_member_invalidates_batch_and_keeps_other_old_chapters(tmp_path, fai
     store.seal_batch(batch)
     if failure == "worker":
         store.fail(b, "embedding timeout")
+        assert not store.acknowledge(b, "x")
     elif failure == "superseded":
         store.begin("acct", "ns", B, "newer", ["y"])
+        store.acknowledge(b, "x")
     else:
         store.invalidate_draft("acct", B)
-    assert not store.acknowledge(b, "x")
-    assert store.batch_state(batch)["state"] == "failed"
-    assert {uri: view(store)[uri]["generation"] for uri in (A, B)} == old
-    assert store.state(a)["state"] == "failed"
+        store.acknowledge(b, "x")
+    # The healthy member publishes; only the invalid one keeps its old chapter.
+    assert store.batch_state(batch)["state"] == "published"
+    assert {uri: view(store)[uri]["generation"] for uri in (A, B)} == {A: a, B: old[B]}
+    assert store.state(a)["state"] == "published"
 
 
 def test_batch_rejects_duplicate_sources_and_scope_mismatch(tmp_path):
@@ -126,8 +129,10 @@ async def test_real_consumers_complete_during_producer_but_cannot_publish(runtim
     assert {u: view(runtime)[u]["generation"] for u in (A, B)} == generations
 
 
-@pytest.mark.parametrize("failure", ["counter", "retry", "cancel"])
-async def test_producer_failures_preserve_batch(runtime, embedding, failure):
+@pytest.mark.parametrize("failure", ["counter", "retry"])
+async def test_producer_reports_still_seal_planned_members(runtime, embedding, failure):
+    """A member the producer could not build is settled by that member's own path;
+    a counter bump or a requeued return must not fail the whole batch."""
     queue = Queue()
     counters = SimpleNamespace(failed_records=0)
 
@@ -137,15 +142,26 @@ async def test_producer_failures_preserve_batch(runtime, embedding, failure):
         await enqueue_text_plan(msg, SOURCE, embedding, queue)
         if failure == "counter":
             counters.failed_records += 1
-        elif failure == "retry":
-            return ProcessResult.requeued()
         else:
-            raise asyncio.CancelledError()
+            return ProcessResult.requeued()
 
-    if failure == "cancel":
-        with pytest.raises(asyncio.CancelledError):
-            await produce(counters=counters)
-    else:
+    await produce(counters=counters)
+    generation = queue.messages[0].context_data["index_generation"]
+    assert runtime.state(generation)["state"] == "queued"
+    assert not view(runtime)
+
+
+async def test_producer_exception_still_fails_the_batch(runtime, embedding):
+    queue = Queue()
+    counters = SimpleNamespace(failed_records=0)
+
+    @text_publication_batch
+    async def produce(*, counters):
+        msg = EmbeddingMsg(SOURCE, {"uri": A, "account_id": "acct"})
+        await enqueue_text_plan(msg, SOURCE, embedding, queue)
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
         await produce(counters=counters)
     generation = queue.messages[0].context_data["index_generation"]
     assert runtime.state(generation)["state"] == "failed"
@@ -221,8 +237,10 @@ async def test_actual_uri_reindex_batches_two_source_files(
     assert counters.failed_records == int(invalid_second), counters.warnings
     assert {uri: await e.fs.read_file(uri, ctx=e.ctx) for uri in (A, B)} == old
     if invalid_second:
+        # Only the oversized second file failed; the valid file's plan stays
+        # pending its embedding receipt instead of being failed with the batch.
         generation = e.queue.messages[0].context_data["index_generation"]
-        assert e.store.state(generation)["state"] == "failed"
+        assert e.store.state(generation)["state"] == "queued"
         return
     first = [msg for msg in e.queue.messages if msg.context_data["uri"] == A]
     second = [msg for msg in e.queue.messages if msg.context_data["uri"] == B]

@@ -40,7 +40,7 @@ class DiskAGFS:
             raise FileNotFoundError(path)
         return {"isDir": target.is_dir(), "size": target.stat().st_size}
 
-    async def read(self, path, offset=0, size=-1):
+    async def read(self, path, offset=0, size=-1, *, fs_ctx=None):
         raw = self.path(path).read_bytes()
         return raw[offset:] if size == -1 else raw[offset : offset + size]
 

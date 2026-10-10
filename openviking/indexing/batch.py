@@ -9,7 +9,6 @@ so receipts remain effective after the producer process has exited.
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
-from inspect import signature
 
 _batch = ContextVar("text_publication_batch", default=None)
 
@@ -38,9 +37,6 @@ class TextPublicationBatch:
             self.registry.fail_batch(self.id, "Text batch producer did not complete successfully")
             return
         self.registry.seal_batch(self.id)
-        state = self.registry.batch_state(self.id)
-        if state["state"] == "failed":
-            raise RuntimeError(state["error"] or "Text publication batch failed")
 
 
 def producer_batch_context():
@@ -62,29 +58,23 @@ def current_batch_id(registry, account, namespace):
 
 
 def text_publication_batch(method):
-    """Seal only after all recursive producers succeed, including counter errors.
+    """Seal the batch once the producer returns, unless it raised.
 
+    A member the producer could not build is marked failed by that member's own
+    path; it drops out of the publication while the rest of the batch publishes.
     Nested calls and concurrently created asyncio tasks share the outer batch.
     No publication registry means this decorator preserves the legacy behavior.
     A queued/sealed batch is pending, never a claim that its task is ready.
     """
-    sig = signature(method)
-
     @wraps(method)
     async def wrapped(*args, **kwargs):
         if _batch.get() is not None:
             return await method(*args, **kwargs)
-        counters = sig.bind_partial(*args, **kwargs).arguments.get("counters")
-        failed_before = getattr(counters, "failed_records", 0)
         batch = TextPublicationBatch()
         token = _batch.set(batch)
         try:
             result = await method(*args, **kwargs)
-            outcome = getattr(result, "outcome", None)
-            success = (outcome is None or outcome.value == "success") and getattr(
-                counters, "failed_records", 0
-            ) == failed_before
-            batch.finish(success)
+            batch.finish(True)
             return result
         except BaseException:
             batch.finish(False)

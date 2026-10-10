@@ -165,6 +165,37 @@ async def test_recreate_after_tombstoned_rm_clears_tombstone_and_reads(store, tm
     assert await fs.read_file(uri, ctx=ctx) == "fresh"
 
 
+async def test_recreate_through_write_file_clears_tombstone(store, tmp_path):
+    # The content API writes through ``write_file``/``write_file_bytes``/
+    # ``append_file``, not ``write``. Every entry point that lands bytes on disk
+    # must clear the deletion tombstone, or a re-created source stays readable
+    # only via raw storage while every read path answers 404 forever.
+    uri = "viking://resources/manual/a.md"
+    parent = "viking://resources/manual"
+    fs = fs_with_tombstones(tmp_path, store)
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+
+    await fs.write_file(uri, b"body", ctx=ctx)
+    store.tombstone("acct", parent)
+    with pytest.raises(NotFoundError):
+        await fs.read_file(uri, ctx=ctx)
+
+    await fs.write_file(uri, b"fresh", ctx=ctx)
+    assert not store.is_tombstoned("acct", uri)
+    assert not store.is_tombstoned("acct", parent)
+    assert await fs.read_file(uri, ctx=ctx) == "fresh"
+
+    store.tombstone("acct", parent)
+    await fs.write_file_bytes(uri, b"binary", ctx=ctx)
+    assert not store.is_tombstoned("acct", parent)
+    assert await fs.read_file_bytes(uri, ctx=ctx) == b"binary"
+
+    store.tombstone("acct", parent)
+    await fs.append_file(uri, " tail", ctx=ctx)
+    assert not store.is_tombstoned("acct", parent)
+    assert await fs.read_file(uri, ctx=ctx) == "binary tail"
+
+
 def test_dependents_mark_child_chunks_cache_and_sidecars(store):
     uri = "viking://resources/manual/a.png"
     ref = content_ref(b"asset")
