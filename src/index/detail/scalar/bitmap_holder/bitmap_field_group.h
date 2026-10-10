@@ -130,7 +130,10 @@ class FieldBitmapGroup : public BitmapGroupBase {
   }
 
   virtual int add_field_data(const std::string& field_str, int offset) {
-    auto found = field_str.find(';');
+    // A path field carries exactly one value, so a ';' inside a path segment is
+    // literal data and must not be treated as a multi-value separator. Only
+    // bitmap string/list fields use ';' as the list delimiter.
+    auto found = dir_index_ ? std::string::npos : field_str.find(';');
     if (found != std::string::npos) {
       std::vector<std::string> keys;
       split(keys, field_str, ";");
@@ -203,7 +206,9 @@ class FieldBitmapGroup : public BitmapGroupBase {
       return -1;
     }
 
-    auto found = field_str.find(';');
+    // Mirror add_field_data: a path field value is a single literal key, so a
+    // ';' inside it must not be interpreted as a multi-value separator.
+    auto found = dir_index_ ? std::string::npos : field_str.find(';');
     if (found != std::string::npos) {
       std::vector<std::string> keys;
       split(keys, field_str, ";");
