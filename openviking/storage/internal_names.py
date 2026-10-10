@@ -33,4 +33,7 @@ WEBDAV_RESERVED_FILENAMES = frozenset(
 )
 
 # Parser control records remain readable but are not source knowledge.
-CHAPTER_METADATA_FILENAMES = frozenset({"_toc.json", "_manifest.json"})
+# ``toc.md`` is the parser's human-readable navigation index (a flat list of
+# every chapter title and path); indexing it would let the table of contents
+# outrank the chapters it points at.
+CHAPTER_METADATA_FILENAMES = frozenset({"toc.md", "_toc.json", "_manifest.json"})
