@@ -18,6 +18,8 @@ from openviking.server.identity import RequestContext, Role
 from openviking.service.pack_service import PackService
 from openviking.storage.index_consistency import IndexConsistencyReport, IndexExpectation
 from openviking.storage.ovpack.operations import (
+    _enqueue_direct_vectorization,
+    _image_occurrence_records,
     backup_ovpack,
     export_ovpack,
     import_ovpack,
@@ -1483,3 +1485,127 @@ async def test_import_keeps_newest_generation_of_duplicate_rows(
     assert [row["abstract"] for row in writes] == ["abstract v1", "abstract v3", "abstract v2"]
     assert writes[-1]["vector"] == pytest.approx([2.0, 2.0, 2.0])
     assert "index_generation" not in writes[-1]
+
+
+def test_image_occurrence_records_replays_rows_in_ordinal_order():
+    records = [
+        {
+            "path": "dir/images/a.jpg",
+            "level": 2,
+            "scalars": {
+                "chunk_id": "image:second",
+                "chunk_ordinal": 1,
+                "chunk_text": "cap-b",
+                "image_context_uri": "viking://resources/raw/dir/ch.md",
+                "image_context_hash": "hash-b",
+                "parent_text": "ctx-b",
+            },
+        },
+        {
+            "path": "dir/images/a.jpg",
+            "level": 2,
+            "scalars": {
+                "chunk_id": "image:first",
+                "chunk_ordinal": 0,
+                "chunk_text": "cap-a",
+                "image_context_uri": "",
+                "image_context_hash": "",
+                "parent_text": "",
+            },
+        },
+        {
+            "path": "dir/ch.md",
+            "level": 2,
+            "scalars": {"chunk_id": "text:1", "chunk_text": "chapter", "abstract": "chapter"},
+        },
+    ]
+    replayed = _image_occurrence_records(records, "dir/images/a.jpg", "viking://resources/raw")
+    assert [record["ordinal"] for record in replayed] == [0, 1]
+    assert replayed[0]["context_uri"] == ""
+    assert replayed[1]["summary"] == "cap-b"
+    assert replayed[1]["context_hash"] == "hash-b"
+    assert replayed[1]["context"] == "ctx-b"
+
+    assert _image_occurrence_records(records, "dir/ch.md", "viking://resources/raw") is None
+    out_of_root = _image_occurrence_records(
+        records, "dir/images/a.jpg", "viking://resources/other"
+    )
+    assert out_of_root == [replayed[0]]
+
+
+@pytest.mark.asyncio
+async def test_recompute_import_replays_image_occurrences_with_source_meta(
+    request_ctx: RequestContext, monkeypatch: pytest.MonkeyPatch
+):
+    chapter_uri = "viking://resources/raw/dir/ch.md"
+    image_uri = "viking://resources/raw/dir/images/a.jpg"
+
+    class ReplayVikingFS(FakeVikingFS):
+        async def tree(self, uri, node_limit=None, level_limit=None, ctx=None):
+            self.tree_calls.append(uri)
+            return [
+                {"uri": "viking://resources/raw/dir", "rel_path": "dir", "isDir": True},
+                {
+                    "uri": chapter_uri,
+                    "rel_path": "dir/ch.md",
+                    "isDir": False,
+                    "name": "ch.md",
+                },
+                {
+                    "uri": image_uri,
+                    "rel_path": "dir/images/a.jpg",
+                    "isDir": False,
+                    "name": "a.jpg",
+                },
+            ]
+
+        async def read_file(self, uri, ctx=None):
+            if uri == chapter_uri:
+                return b"- document_id: 820676206347751\n- page: p.23-32\n"
+            raise FileNotFoundError(uri)
+
+    captured: dict[str, dict] = {}
+
+    async def fake_vectorize_file(**kwargs):
+        captured[kwargs["file_path"]] = kwargs
+
+    monkeypatch.setattr(
+        "openviking.storage.ovpack.operations.vectorize_file", fake_vectorize_file
+    )
+
+    index_records = [
+        {
+            "path": "dir/images/a.jpg",
+            "level": 2,
+            "scalars": {
+                "chunk_id": "image:abc",
+                "chunk_ordinal": 0,
+                "chunk_text": "该图为品牌标识。",
+                "abstract": "该图为品牌标识。",
+                "image_context_uri": chapter_uri,
+                "image_context_hash": "hash-1",
+                "parent_text": "Source URI: viking://resources/raw/dir/ch.md",
+            },
+        },
+        {"path": "dir/ch.md", "level": 2, "scalars": {"chunk_id": "text:1", "abstract": "chapter"}},
+    ]
+
+    await _enqueue_direct_vectorization(
+        ReplayVikingFS(),
+        "viking://resources/raw",
+        ctx=request_ctx,
+        index_records=index_records,
+    )
+
+    image_call = captured[image_uri]
+    occurrences = image_call["summary_dict"]["image_occurrences"]
+    assert len(occurrences) == 1
+    assert occurrences[0]["context_uri"] == chapter_uri
+    assert occurrences[0]["context_hash"] == "hash-1"
+    assert occurrences[0]["context"] == "Source URI: viking://resources/raw/dir/ch.md"
+    assert occurrences[0]["source_meta"] == {
+        "source_document_id": "820676206347751",
+        "page": "p.23-32",
+    }
+    assert image_call["summary_dict"]["summary"] == "该图为品牌标识。"
+    assert "image_occurrences" not in captured[chapter_uri]["summary_dict"]

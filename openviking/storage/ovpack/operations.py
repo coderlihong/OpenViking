@@ -8,6 +8,7 @@ import os
 import zipfile
 from typing import Any, Optional
 
+from openviking.core.context import ResourceContentType
 from openviking.core.namespace import (
     content_owner_context_for_uri,
     context_type_for_uri,
@@ -69,7 +70,11 @@ from openviking.storage.ovpack.vectors import (
     read_dense_vectors,
     restore_vector_snapshot,
 )
-from openviking.utils.embedding_utils import vectorize_directory_meta, vectorize_file
+from openviking.utils.embedding_utils import (
+    get_resource_content_type,
+    vectorize_directory_meta,
+    vectorize_file,
+)
 from openviking_cli.exceptions import ConflictError, InvalidArgumentError, NotFoundError
 from openviking_cli.utils.logger import get_logger
 from openviking_cli.utils.uri import VikingURI
@@ -120,6 +125,56 @@ def _index_scalar_overrides(
         if current is None or (current[0] and not is_chunk):
             best[level] = (is_chunk, dict(scalars))
     return {level: scalars for level, (_, scalars) in best.items()}
+
+
+def _image_occurrence_records(
+    index_records: list[dict[str, Any]], rel_path: str, root_uri: str
+) -> Optional[list[dict[str, Any]]]:
+    """Replay the source instance's occurrence rows for one image file.
+
+    An image row is bound to the chapters citing it, so recomputing its
+    context on the destination would need the exporting instance's citing
+    tree and tokenizer budget, and could disagree with the very rows being
+    reproduced. The pack already holds each occurrence exactly as the source
+    wrote it — citing chapter, context window and hash, caption — so the
+    import replays them in ordinal order. An occurrence whose chapter lives
+    outside the imported root is dropped rather than rewritten: its context
+    text embeds the exporting path.
+    """
+    rows = []
+    for record in index_records:
+        if not isinstance(record, dict) or record.get("path") != rel_path:
+            continue
+        scalars = record.get("scalars")
+        if not isinstance(scalars, dict):
+            continue
+        if not str(scalars.get("chunk_id") or "").startswith("image:"):
+            continue
+        rows.append(scalars)
+    if not rows:
+        return None
+    rows.sort(key=lambda scalars: int(scalars.get("chunk_ordinal") or 0))
+    occurrences: list[dict[str, Any]] = []
+    for scalars in rows:
+        summary = str(scalars.get("chunk_text") or scalars.get("abstract") or "")
+        if not summary.strip():
+            continue
+        context_uri = str(scalars.get("image_context_uri") or "")
+        if context_uri and not (
+            context_uri == root_uri or context_uri.startswith(root_uri + "/")
+        ):
+            logger.warning(f"[ovpack] Dropping out-of-root image context: {context_uri}")
+            continue
+        occurrences.append(
+            {
+                "context_uri": context_uri,
+                "context_hash": str(scalars.get("image_context_hash") or ""),
+                "context": str(scalars.get("parent_text") or ""),
+                "ordinal": int(scalars.get("chunk_ordinal") or 0),
+                "summary": summary,
+            }
+        )
+    return occurrences or None
 
 
 async def _root_exists(viking_fs, root_uri: str, ctx: RequestContext) -> bool:
@@ -262,13 +317,54 @@ async def _enqueue_direct_vectorization(
             scalar_overrides=scalar_overrides,
         )
 
+    chapter_texts: dict[str, str] = {}
+
+    async def chapter_source_meta(chapter_uri: str) -> dict[str, Any]:
+        """Provenance block of the citing chapter, read from the imported tree."""
+        if not chapter_uri:
+            return {}
+        text = chapter_texts.get(chapter_uri)
+        if text is None:
+            from openviking.indexing.content import draft_sources
+
+            try:
+                with draft_sources():
+                    raw = await viking_fs.read_file(chapter_uri, ctx=ctx)
+            except Exception as exc:
+                logger.warning(f"[ovpack] Unreadable image source chapter {chapter_uri}: {exc}")
+                raw = None
+            text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
+            chapter_texts[chapter_uri] = text
+        if not text:
+            return {}
+        from openviking.indexing.record_meta import extract_inline_metadata
+
+        return extract_inline_metadata(text)
+
     async def index_file(file_uri: str, parent_uri: str, name: str, rel_path: str) -> None:
         overrides = _index_scalar_overrides(index_records, rel_path)
         scalar_override = overrides.get(2) or next(iter(overrides.values()), {})
         summary = str(scalar_override.get("abstract") or "")
+        summary_dict: dict[str, Any] = {"name": name, "summary": summary}
+        if get_resource_content_type(name) == ResourceContentType.IMAGE:
+            occurrences = _image_occurrence_records(
+                index_records, rel_path, manifest_path_root_uri
+            )
+            if occurrences:
+                replayed: list[dict[str, Any]] = []
+                for occurrence in occurrences:
+                    occurrence = dict(occurrence)
+                    source_meta = await chapter_source_meta(occurrence["context_uri"])
+                    if source_meta:
+                        occurrence["source_meta"] = source_meta
+                    replayed.append(occurrence)
+                summary_dict["image_occurrences"] = replayed
+                summary_dict["summary"] = "\n\n".join(
+                    occurrence["summary"] for occurrence in replayed
+                )
         await vectorize_file(
             file_path=file_uri,
-            summary_dict={"name": name, "summary": summary},
+            summary_dict=summary_dict,
             parent_uri=parent_uri,
             context_type=context_type_for_uri(file_uri),
             ctx=ctx,
