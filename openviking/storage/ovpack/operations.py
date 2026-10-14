@@ -17,6 +17,7 @@ from openviking.core.namespace import (
 from openviking.resource.watch_storage import is_watch_task_control_uri
 from openviking.server.identity import RequestContext
 from openviking.storage.index_consistency import check_index_consistency
+from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
 from openviking.storage.ovpack.format import (
     OVPACK_BACKUP_NAME,
     OVPACK_BACKUP_TYPE,
@@ -222,7 +223,16 @@ async def _enqueue_direct_vectorization(
             dir_uris.add(entry_uri)
             continue
         name = entry.get("name", "") or leaf_name(rel_path)
-        if name.startswith("."):
+        # Mirror the write path's skip set (resource_processor._vectorize_resource_files)
+        # and the export gate's (index_consistency._file_candidates): dotfiles and
+        # chapter metadata sidecars are never vectorized, and neither is a generated
+        # navigation catalogue (its entry list would outrank the entries it points at).
+        # A migrated tree must agree or it gains rows the source instance never had.
+        if name.startswith(".") or name in CHAPTER_METADATA_FILENAMES:
+            continue
+        from openviking.core.directory_index import is_generated_index_at
+
+        if await is_generated_index_at(viking_fs, entry_uri, ctx=ctx):
             continue
         parent = VikingURI(entry_uri).parent
         if parent:
