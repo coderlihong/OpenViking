@@ -1473,6 +1473,18 @@ pub async fn handle_reindex(
     .await
 }
 
+pub async fn handle_normalize_citations(uri: String, recursive: bool, ctx: CliContext) -> Result<()> {
+    let client = ctx.get_client();
+    commands::content::normalize_citations(
+        &client,
+        &uri,
+        recursive,
+        ctx.output_format,
+        ctx.compact,
+    )
+    .await
+}
+
 pub async fn handle_get(uri: String, local_path: String, ctx: CliContext) -> Result<()> {
     let client = ctx.get_client();
     commands::content::get(&client, &uri, &local_path).await

@@ -289,6 +289,12 @@ class MatchedContext:
     search_tags: List[str] = field(default_factory=list)
     matches: List[Dict[str, Any]] = field(default_factory=list)
     type: str = ""
+    # Business meta the record was stamped with (category, source/chapter/page,
+    # machine model, keywords) and the viking URIs it cites. The retrieval layer
+    # fills them from the row's own columns; an empty dict means the record
+    # declares nothing, and the response then omits the key rather than guessing.
+    meta: Dict[str, Any] = field(default_factory=dict)
+    provenance: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -384,6 +390,8 @@ class FindResult:
             "tags": normalize_search_tags(ctx.search_tags, discard_invalid=True),
             **({"type": ctx.type} if ctx.type else {}),
             **({"matches": ctx.matches} if ctx.matches else {}),
+            **({"meta": ctx.meta} if ctx.meta else {}),
+            **({"provenance": ctx.provenance} if ctx.provenance else {}),
         }
 
     def _query_to_dict(self, q: TypedQuery) -> Dict[str, Any]:

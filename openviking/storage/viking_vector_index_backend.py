@@ -56,6 +56,15 @@ RETRIEVAL_OUTPUT_FIELDS = [
     "content_revision",
     "index_plan_id",
     "index_generation",
+    # A joint image row cites the markdown it illustrates. Without this column a
+    # figure hit arrives with an empty context URI even though the row is
+    # populated, so the agent cannot tell which chapter the picture came from.
+    "image_context_uri",
+    "image_context_hash",
+    # The record's own business meta (modality category, source/chapter/page,
+    # machine model, keywords). Retrieval filters on its tokens; a hit should
+    # also answer with the values it matched on.
+    "business_meta_payload",
     "uri",
     "level",
     "context_type",
@@ -95,28 +104,29 @@ VIKINGDB_CONTENT_MAX_SIZE = 1024 * 1024
 
 # The local engine persists every record as one serialized row whose ``fields``
 # scalar is length-prefixed with a uint16, so the whole record must stay under
-# 65535 bytes or the write is rejected outright. One summary is carried in
+# that limit or the write is rejected outright. One summary is carried in
 # several fields (``abstract`` and ``chunk_text``; ``content`` too where the
 # backend keeps it), so a per-field cap cannot bound the row: two 50 KB fields
-# already exceed the limit. Bound the materialized record as a whole instead.
-_RECORD_MAX_BYTES = 65535
+# already exceed the limit. Bound the materialized record as a whole instead,
+# and only where the backend declares ``_RECORD_BYTE_LIMIT`` -- a server-side
+# record budget must not pay for the embedded engine's encoding detail.
 _RECORD_HEADROOM_BYTES = 2048
 # Trim order: the bulky source-context echo yields first, the durable retrieval
 # fields keep the most budget.
 _RECORD_TRIM_ORDER = ("content", "parent_text", "chunk_text", "abstract")
 
 
-def _bounded_record(data: Dict[str, Any]) -> Dict[str, Any]:
+def _bounded_record(data: Dict[str, Any], max_bytes: int) -> Dict[str, Any]:
     """Keep a record's serialized size under the engine's per-row byte limit.
 
     Every oversized string field is shortened together on a shared shrinking
     factor until the whole record fits, so no field is capped on its own while
     the sum still overflows. Returns ``data`` unchanged when it already fits.
     """
-    if len(json.dumps(data, ensure_ascii=False).encode("utf-8")) <= _RECORD_MAX_BYTES:
+    if len(json.dumps(data, ensure_ascii=False).encode("utf-8")) <= max_bytes:
         return data
 
-    budget = _RECORD_MAX_BYTES - _RECORD_HEADROOM_BYTES
+    budget = max_bytes - _RECORD_HEADROOM_BYTES
     mutable = [
         (field, data[field])
         for field in _RECORD_TRIM_ORDER
@@ -353,9 +363,13 @@ class _SingleAccountBackend:
         else:
             result.pop("content", None)
 
-        # A record whose combined text fields overflow the per-row byte limit is
-        # rejected by the engine; shorten them together so the write succeeds.
-        return _bounded_record(result)
+        # A record whose combined text fields overflow the row byte limit is
+        # rejected by the engine that imposes one; shorten them together so the
+        # write succeeds. Backends without a row limit keep their fields whole.
+        row_limit = getattr(self._adapter, "_RECORD_BYTE_LIMIT", None)
+        if row_limit is None:
+            return result
+        return _bounded_record(result, row_limit)
 
     def _prepare_upsert_payloads(self, data_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Prepare a batch in one worker-thread handoff."""

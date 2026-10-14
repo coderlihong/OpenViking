@@ -253,8 +253,19 @@ def test_main_prints_config_diagnostics_on_validation_error(monkeypatch, capsys)
         ),
     )
 
-    with pytest.raises(SystemExit) as exc:
-        bootstrap.main()
+    # main() exports --config into OPENVIKING_CONFIG_ENV through raw os.environ so
+    # worker processes inherit it; monkeypatch cannot undo that, and "/tmp/ov.conf"
+    # does not exist, so leaving it set makes every later test that resolves config
+    # fail with FileNotFoundError.
+    leaked = os.environ.get(bootstrap.OPENVIKING_CONFIG_ENV)
+    try:
+        with pytest.raises(SystemExit) as exc:
+            bootstrap.main()
+    finally:
+        if leaked is None:
+            os.environ.pop(bootstrap.OPENVIKING_CONFIG_ENV, None)
+        else:
+            os.environ[bootstrap.OPENVIKING_CONFIG_ENV] = leaked
 
     assert exc.value.code == 1
     err = capsys.readouterr().err

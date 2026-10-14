@@ -1,0 +1,250 @@
+{
+  "record": "static-kb-round-closure-I100",
+  "date": "2026-10-11",
+  "branch": "deploy/wolf-viking",
+  "source_state": "uncommitted working tree; 85 tracked files modified（5 staged + 80 unstaged；含 I099 轮既有改动与本轮新增）+ 19 untracked；I099 三新模块 openviking/core/directory_index.py、openviking/indexing/record_meta.py、openviking/parse/remote_images.py + 本轮新脚本 scripts/maintenance/legacy_directory_index/relocate_legacy_directory_index.py 与测试助手 tests/server/authored_content_helpers.py 等；e2e 实例 1940 于 15:15:25 重启载入本轮 OVPack 修复码",
+  "requirement_source": "用户 2026-10-09 静态知识库方案口述（企业知识库方案/知识库建设.html）持续目标 + 2026-10-11 轮指令「继续 还有什么问题，修复闭合，不要部分完成」+ 本轮中点名「目前这个版本导出导入估计还有问题，不能完全复刻l0 l1 以及分层向量等」+ 2026-10-11 测试节奏指令「我们测试就先小批量测试通过之后，比如一个手册，然后都没问题了才开始全量」（先单本手册端到端全绿，再开全量）",
+  "environment": {
+    "instance": "e2e 1940",
+    "config": "/tmp/ov-e2e/ov.conf",
+    "workspace": "/Users/wh/code/OpenViking/data-e2e",
+    "tenant": "e2etest (user_key from /tmp/ov-e2e/state.json)",
+    "pid": 55424,
+    "restart": "2026-10-11 15:15:25 载 OVPack 修复码（pid 94757）；18:30:38 再重启（pid 46577）载 figure 计划修复 + PlanRejectionError settle 码，重启后清除旧 boot 的重投风暴（旧 boot 最后一条图块错误 18:27:01，新 boot 前日志切面为零）；19:01:05 再重启（pid 55424）载投影遮蔽修复（image_rewrite 入口 draft_sources 包裹）并剥离全部 [I100PROBE] 探针，重启后 small-batch run5 全绿",
+    "models": "embedding/vlm/rerank at 10.147.254.3 per ov.conf",
+    "note": "1933 (pid 64985) 与 replica 1934 (pid 91399) 全程未扰动"
+  },
+  "round_tasks": [
+    {
+      "id": "#20",
+      "title": "修复 publication 快照门早于参数校验",
+      "status": "completed",
+      "evidence": "search/find 入口改为参数校验通过后才 pin_query_snapshot（openviking/service/search_service.py、openviking/storage/viking_fs/_semantic.py）；坏请求 400 不触 publication——live gate 两例 400 各 ~2.4ms/2.5ms，全程 leases=0"
+    },
+    {
+      "id": "#22",
+      "title": "完成 publication 懒开视图并实机复验",
+      "status": "completed",
+      "evidence": "derived_access/lexical_recall/metadata_query 由预捕获四元组改 view.read(ctx, registry) 懒开单读；live gate：rest/rejects/真实查询/teardown 后 leases 均 0，accepted search 200 1.38s 3 hits"
+    },
+    {
+      "id": "#21",
+      "title": "让 legacy {stem}/index.md 分支也有目录清单",
+      "status": "completed",
+      "evidence": "routers/content 加 _resolve_payload + _reserve_navigation_index(authored_index_collision) → 写生成清单目标报 400 INVALID_ARGUMENT 并给 canonical {stem}.md；新增 relocate 脚本（plan/apply，仅走 HTTP）；scratch 实测 would-relocate→relocated；menus 全树 plan：9383 目录/4674 条 authored index.md/420.8s（未执行）"
+    },
+    {
+      "id": "#23",
+      "title": "修复遥测计时缺失、测试非隔离与租约表泄漏",
+      "status": "completed",
+      "evidence": "hierarchical_retriever 补 with telemetry.measure('search.vector_retrieval')；telemetry/execution register/unregister_telemetry(collector) 按 id 重绑请求上下文；publication.capture() 回收过期 leases/gc_leases（到期行 reader 忽略、renew 拒绝）；tests/server/conftest 装 fake reranker（确定性排序）；test_request_wait_tracking stale fake 修 async → 4 passed"
+    },
+    {
+      "id": "#24",
+      "title": "隔离测试进程的 publication 注册表",
+      "status": "completed",
+      "evidence": "tests/conftest.py 会话级 _private_publication_registry（把 ambient ov.conf 的 chunking.publication_path 重写到临时文件）+ per-test registry；消灭共享 44GB publication.db 的 BEGIN IMMEDIATE 竞争与配置漂移噪声"
+    },
+    {
+      "id": "#25",
+      "title": "恢复 publication 受管下的「写完即可读」契约",
+      "status": "completed",
+      "evidence": "content_write.read_if_exists 在 draft_sources() 内读计划体（读=归档修订，agent 面视图滞后不再误退好写入）；publication.begin 同批旧成员标 superseded（caption 回填重建不再 Duplicate source URI 拒绝）；supersede()/is_superseded()/_retire；collection_schemas._skip_superseded_chunk 三处分支（被更新尝试取代的队列 chunk 按成功丢弃不判 failed，wait=true 回执可结清）"
+    },
+    {
+      "id": "#26",
+      "title": "修复 user 空间入库的 semantic 无限重投（sidecar 走查越界）",
+      "status": "completed",
+      "evidence": "metadata_integration._namespace_root：viking://user 是共享容器非目录，sidecar 名拼在它后面等于寻址一个叫 .business_meta.json 的『用户』（读取被拒 → semantic 无限重投）；user 分支返回 viking://user/{id}，其余空间行为不变"
+    },
+    {
+      "id": "#27",
+      "title": "OVPack 导出导入完整复刻 L0/L1 与分层向量",
+      "status": "completed",
+      "evidence": "四层缺陷全修——(1) export 每级只留一行（records_by_level dict）→ 全量保留 + _record_sort_key 旧前新胜；(2) 导出标量清单补 chunk 身份/父子链/业务 meta/image context 字段；(3) restore 主键改 chunk-aware（vector_record_id_for_data）并剥外来 index_generation/index_plan_id、chunk 行 content=chunk_text；(4) 一致性期望镜像管线排除（生成导航 index.md 按 frontmatter 标记、CHAPTER_METADATA_FILENAMES）修现代分支带向量导出 400；run5 真机 12/12 PASS"
+    },
+    {
+      "id": "#28",
+      "title": "修复 caption 回填前的 figure 块计划崩溃与整树重投风暴",
+      "status": "completed",
+      "evidence": "小批量首跑实证：PDF 章 md 的 <figure><img><figcaption></figcaption></figure>（空 caption、无 vikingsrc——回填前的正常中间态）在 figure_embedding_text 渲染为空 → plan.py figure_pieces 覆盖断言抛 ValueError('Figure partition lost source content')（server 日志 18:21 起每 ~30s 重投、circuit breaker 开、_backfill_figure_captions 永不执行）。修三层：(1) figure_pieces 整块空渲染 → 返回 [(block,'',False,kind)] span 保覆盖、零嵌入文本；块内 markup-only 片段同理不再 continue 丢 span；(2) 相邻 chunk 的 overlap 源不再从空渲染 figure 的原始 markup 回退（防标签泄入）；(3) plan_resource 全部 ValueError 包成新 PlanRejectionError(ValueError)，semantic_processor 对按确定性拒绝 settle（ProcessResult.failed，与 NotFoundError/INPUT_TOO_LARGE 同级），不再重投、不毒化 API circuit breaker。单测红绿：HEAD worktree 2 failed（plan.py:180 原文明同 Live traceback）/ 修复后 44 passed；定向 44 passed（test_index_plan 19 + test_parent_child_recall 11 + test_figure_caption_backfill 14）"
+    },
+    {
+      "id": "#29",
+      "title": "小批量单手册全链路验收（含 PDF 腿）全绿",
+      "status": "completed",
+      "evidence": "harness /tmp/ov-e2e/small_batch_i100.py（sany-manual：PDF+MD+图片、两图两引用者）run5 25 项 ALL PASS：tree_pdf_chapters_and_md pdf_chapter_md=4、img_vikingsrc_backfilled 指回 viking://resources/i100-smallbatch/chapter-10/chapter-10-2/844775934052881.jpg、figcaption_filled VLM caption、image_bytes_real jpeg_magic=True chars=28415、md_image_rewritten figure+vikingsrc、index_md_not_vectorized index_rows=0、parent_child_chunks 17/17、image_rows_business_meta 4/4、search_hits_with_meta_prov 5/5、grep_locates 3/3、scoped_reindex_roundtrip caption_preserved=True、OVPack 12/12（35=35、dense 逐字节全等、file_tree 30=30、dst_images_tree_retrievable）。run4 首现本轮真缺陷（删除后重投同一分支 → figure 规范化整段失效 vikingsrc=[]/captions=[]），修后 run5 于 run4 残留分支上先删后投（step 0）再全绿"
+    },
+    {
+      "id": "#32",
+      "title": "reindex 图片规范化 + 每目录 index.md 生成：实现与单手册切片验收",
+      "status": "completed",
+      "evidence": [
+        "normalize:{uri} 阶段先于 semantic（reindex_executor._normalize_figure_citations）+ kb:// 兄弟解析（image_rewrite._scheme_sibling）；menus 6.6 切片 18/18（/tmp/ov-e2e/menus_slice_run3.log）：输入去 vikingsrc 13/13、上传 53/53、工作树字节 13/13、reindex warnings=0、vikingsrc 40/40 且字节同盘（30521B 一致）、figcaption 40/40、index.md 13 md 链接 + images 子目录、0 向量行（85 行 levels 0/1/2 = 40 图片 + 80 chunks 含 40 带父）、溯源 85/85、search 5 hits 带 meta+溯源、grep index count=1"
+      ]
+    },
+    {
+      "id": "#30",
+      "title": "跑全量 pytest 两分片并裁定失败",
+      "status": "completed",
+      "evidence": "见 tests.broad_regression / tests.failures_adjudication / tests.broad_regression_adjudication：192 条失败 ID 全部经 HEAD worktree 基线裁定 = 190 存量 + 1 回归（快照目录清单期望，已修复）+ 1 顺序性伪失败（隔离即过）"
+    },
+    {
+      "id": "#33",
+      "title": "menus 导出→新 key 导入检索验证（迁移 24/24）",
+      "status": "completed",
+      "evidence": "menus_migrate.py 24 项 ALL PASS（/tmp/ov-e2e/menu-mig/{run3.log,evidence.json}）：新账号 menumig + 铸 key → export --include-vectors 1.86MB/59 文件（l01=5 + chunks=80 含图片行 40）→ temp_upload → pack/import vector_mode=require 10.3s 同相对路径落回 → row_set 84=84 missing=0/extra=0、scalars/texts 0 differ、dense 逐字节全等、file_tree 59=59 sha 全同、consistency 两端 missing=0（expected=17）；新 key 面：md vikingsrc 3/3 存活、figcaption 3/3、index.md 可读 14 链接（打包但 index_rows=0 不进向量）、图片 download 真字节 28406B、L0 203B/L1 294B 可读、两查询 src=dst（启动电机零部件位置 10=10 / 电喇叭 7=7，meta+prov 全带，同文档集 missing=[]/extra=[]）、grep 定位 index URI count=1；隔离另行复核（新 key ls 只见自己树、跨租户 404）；src.ovpack 1862626B / dst.ovpack 1850874B 留存"
+    },
+    {
+      "id": "#34",
+      "title": "agent 披露四通道收口审计（L0/L1 向量、ls、index.md grep）",
+      "status": "completed",
+      "evidence": "audit_l0l1_v4.log + 本窗口收口复核：L1 限域（target_uri=SLICE）2 行全现（images/.overview.md 0.373、slice/.overview.md 0.353；全局无 target_uri 时被其它手册 overview 挤出 top-5 属排序竞争非缺失）；目录 ls：父目录 2 项 [slice, index.md]、slice 自身 15 项含 index.md（条目键 uri,size,isDir,modTime,abstract）；L0 向量（复核探针，全局 top-5）slice/.abstract.md 0.5976 + images/.abstract.md 0.6133；grep pattern=启动电机 → files_scanned=3 count=11，index.md 行 19/23 即带完整 viking URI 的目录条目（日志 /private/tmp/i100_audit_l0_grep.log）"
+    }
+  ],
+  "live_probes": {
+    "publication_gate": {
+      "script": "/private/tmp/i100_live_gate.py",
+      "log": "/private/tmp/i100_live_gate_output.log",
+      "results": {
+        "leases_at_rest": 0,
+        "rejects": [
+          "{'query': '液压', 'image_url': 'not-a-valid-url'} -> 400 0.0024s INVALID_ARGUMENT",
+          "{'query': '', 'target_uri': 'viking://resources'} -> 400 0.0025s INVALID_ARGUMENT"
+        ],
+        "leases_after_rejects": 0,
+        "accepted_search": "200 1.3827s hits=3; leases after=0",
+        "write_wait_true": "200 15.1006s statuses={'content_updated': True, 'semantic_status': 'complete', 'vector_status': 'complete'}; read-back matches=True",
+        "write_wait_false": "200 0.0270s {'semantic_status': 'queued', 'vector_status': 'queued'}",
+        "leases_after_whole_run": 0,
+        "teardown": "scratch viking://resources/i100_gate 删除 200；leases after teardown=0"
+      }
+    },
+    "ovpack_roundtrip": {
+      "log": "/tmp/ov-e2e/rt/run5.log",
+      "src_branch": "viking://resources/sany-manual_1",
+      "checks_passed": 12,
+      "checks_total": 12,
+      "numbers": {
+        "src_pkg": "511177 bytes, records=51 (L0/L1=22, chunks=29), dense=835584 bytes",
+        "import": "vector_mode=require 0.6s -> viking://resources/rt-scratch/sany-manual_1",
+        "dst_pkg": "346402 bytes, records=32, dense=524288",
+        "row_set_equal": "src=32 dst=32 missing=0 extra=0（51 条含重复代，collapse 后 32 规范行）",
+        "scalars": "0 rows differ（index_generation/index_plan_id 在 32 行上按设计抹掉）",
+        "texts": "0 differ",
+        "dense_vectors": "0 differ（逐字节全等）",
+        "file_tree": "src=21 dst=21 differ=[]",
+        "retrieval": "docs src=4 dst=4 missing=0 extra=0；uri 级 only_on_src=两条重复图片副本可换路径",
+        "dst_images_tree_retrievable": "['/images/844775934052881.jpg', '/images/844775934052882.jpg'] 双端一致"
+      }
+    },
+    "menus_legacy_plan": {
+      "log": "/private/tmp/i100_menus_full_plan.log",
+      "scanned": "viking://resources/raw/menus limit=none directories=9383 catalogued=0 authored_index_md=4674 elapsed=420.8s",
+      "applied": false,
+      "scratch_apply": "/private/tmp/i100_legacy_plan.jsonl + i100_legacy_apply.jsonl：viking://resources/i100_legacy/chapters/第1章-安装/index.md → 第1章-安装.md（would-relocate → relocated）"
+    },
+    "small_batch": {
+      "harness": "/tmp/ov-e2e/small_batch_i100.py",
+      "logs": {
+        "run3": "/tmp/ov-e2e/small_batch_i100c.log 绿（fresh/回填腿全过）",
+        "run4": "/tmp/ov-e2e/small_batch_i100d.log 红（artifact 4 腿失败：vikingsrc=[] captions=[] 404 raw markdown；OVPack 12/12 仍过）",
+        "run5": "background task b41n1uvoq.output ALL PASS（23 主 summary + artifact 4 腿 + reindex/OVPack）"
+      },
+      "defect": "投影遮蔽：persist_temp_tree 整树 cp 写工作树后，rewrite_image_uris 的 read_file 被 projected_content（openviking/indexing/content.py）替换为上一已发布修订；若该修订已规范化则 count=0、sidecar 被删、新 verbatim 正文发布，vikingsrc/caption 永久丢失（fresh URI 不复现，因无已发布修订）",
+      "fingerprint": "probe run#3（instrumented build）: rewrite_result chapter-10-2.md count=0 read_len=2384 read_vikingsrc=1，而工作树当时为 881 字符 verbatim 新副本；修复后 probe（delete→reingest）：disk 2711 vikingsrc_disk=1，随 semantic 提交后 live 2869 vikingsrc=1",
+      "probe_script": "/tmp/ov-e2e/probe_reingest.py（scratch viking://resources/i100-probe-a 回放删除→重投→前后检视；跑毕已 DELETE 清理）"
+    },
+    "menus_slice": {
+      "harness": "/tmp/ov-e2e/menus_slice_i100.py",
+      "scope": "menus 797120658580900 / 6.6_零部件位置-负载元件 切片：13 md 剥 vikingsrc + 40 图 none 模式重投 → reindex semantic_and_vectors wait:True",
+      "logs": {
+        "run1": "/tmp/ov-e2e/menus_slice_run1.log 16/18（2 条为检查侧格式误判）",
+        "run2": "/tmp/ov-e2e/menus_slice_run2.log 17/18（余 1 条为旧读法未计投影契约）",
+        "run3": "/tmp/ov-e2e/menus_slice_run3.log 18/18 绿"
+      },
+      "checks": "18 项：输入剥净 13/13、上传 53/53、工作树字节尺寸 13/13、reindex warnings=0、vikingsrc 40/40（前缀正确/目标存在/字节真伪=30521 字节 JPEG magic 且与磁盘原件全等）、figcaption 40/40、index.md 主题+父目录生成且列全 13 md+images 子目录、index.md 0 向量、levels 0/1/2=85 行、chunk 80 行 40 带父、图片向量 40、溯源 85/85、search 5 命中全带 meta+prov、grep 命中 index 1",
+      "notes": "已发布 URI 的 served read 在 reindex 发布新修订前持续返回上一版（投影契约，见 tests/enterprise_kb/test_remote_images.py:408）；落地校验改走 fs/stat 工作树逐文件字节尺寸比对"
+    },
+    "menus_cross_key_migration": {
+      "harness": "/tmp/ov-e2e/menus_migrate.py（与切片同一 goal；由并行会话执行，本窗口收口入账）",
+      "logs": {
+        "run1": "/tmp/ov-e2e/menu-mig/run1.log",
+        "run2": "/tmp/ov-e2e/menu-mig/run2.log",
+        "run3": "/tmp/ov-e2e/menu-mig/run3.log（SUMMARY: ALL PASS (24 checks)）"
+      },
+      "evidence_json": "/tmp/ov-e2e/menu-mig/evidence.json",
+      "source_uri": "viking://resources/raw/menus/797120658580900/6_电气系统/6.6_零部件位置-负载元件",
+      "destination": "同 URI 落回新账号 menumig（root /admin/accounts 建号 + /users/<uid>/key 铸键）",
+      "results": {
+        "export": "1.86MB / 59 文件 / l01=5 + chunks=80 + imgs=40；src consistency ok missing=0 expected=17",
+        "import": "vector_mode=require 10.3s；dst pkg 1850874B records=84",
+        "rows": "src=84 dst=84 missing=0 extra=0；scalars/texts 0 differ；dense 逐字节全等 0 differ",
+        "file_tree": "src=59 dst=59 differ=[]",
+        "consistency": "dst ok missing=0 expected=17",
+        "retrieval": "启动电机零部件位置 src=10 dst=10（meta=10 prov=10）；电喇叭 src=7 dst=7（meta=7 prov=7）；同文档集 missing=[]/extra=[]（两查询）",
+        "grep": "grep_locates_index_uri_new_key files_scanned=1 count=1",
+        "kept": "迁移分支保留在 menumig 账号（viking://resources/raw/menus/797120658580900/6_电气系统/6.6_零部件位置-负载元件）"
+      }
+    },
+    "disclosure_audit": {
+      "v4_log": "/tmp/ov-e2e/menu-mig/audit_l0l1_v4.log（L1_slice_row_scoped n=2/PASS；slice_ls_has_index_md n=15/PASS；parent_ls_lists_slice n=2/PASS）",
+      "closing_probe": "/private/tmp/i100_audit_l0_grep.log（本窗口 2026-10-11 21:1x 只读复核）",
+      "results": {
+        "l0_vector": "search level=0 全局 top-5：slice/.abstract.md 0.5976 + images/.abstract.md 0.6133（与并行会话 0.598/0.613 一致）",
+        "l1_vector_scoped": "target_uri=SLICE level=1 2 行全现（0.373/0.353）；全局无 target_uri 时被其它手册 overview 挤出 top-5（排序竞争非缺失）",
+        "directory_ls": "父目录 2 项 [slice, index.md]；slice 15 项含 index.md",
+        "index_md_grep": "pattern=启动电机 → files_scanned=3 count=11；index.md 行 19 [- [images](viking://…)] / 行 23 [- [6.6.10_MA4–启动电机零部件位置.md](viking://…)] 带完整 URI"
+      }
+    }
+  },
+  "code_changes_this_round": {
+    "openviking/service/search_service.py": "search/find 校验先行（_ensure_non_empty_query/_ensure_image_url_form），pin_query_snapshot 移至校验后",
+    "openviking/storage/viking_fs/_semantic.py": "fs 面 search/find 同序：pin 移到 _ensure_non_empty_search_query 之后",
+    "openviking/indexing/derived_access.py": "预捕获 view[0..3] 四元组 → lease, manifest = view.read(ctx, registry)",
+    "openviking/retrieve/lexical_recall.py": "同上改 view.read 单次读",
+    "openviking/retrieve/metadata_query.py": "同上；另 canonical_field_name(item.field) 先于 validate_meta_key",
+    "openviking/indexing/publication.py": "begin 同批非全 published 旧成员标 superseded（caption 回填重建不再被 refuse）；supersede()/is_superseded()；_retire(generation, state, reason) 通用化；capture() 回收过期 leases/gc_leases",
+    "openviking/storage/content_write.py": "read_if_exists 在 with draft_sources() 内读计划体——读=归档修订，避免 agent 面视图滞后误退好写入",
+    "openviking/storage/collection_schemas.py": "_skip_superseded_chunk：被更新尝试取代的队列 chunk 按成功丢弃（三处分支：publication 状态检查 / adapter 写入后复查 / acknowledge 后），success 记 vector_written，stats processed 合并",
+    "openviking/server/routers/content.py": "_resolve_payload（content/content_base64 恰一）+ _reserve_navigation_index(authored_index_collision) → 400 INVALID_ARGUMENT 带 canonical 提示；单写与 batch_write 同覆盖",
+    "openviking/core/directory_index.py": "authored_index_collision/is_generated_index_at/is_generated_directory_index 契约（frontmatter 标记判定，不按文件名）",
+    "openviking/indexing/metadata_integration.py": "_namespace_root(uri)：user 空间返回 viking://user/{id}，sidecar 不再拼到共享容器",
+    "openviking/telemetry/execution.py": "register_telemetry(collector)/unregister by id——queue worker 可按 id 重绑请求上下文",
+    "openviking/retrieve/hierarchical_retriever.py": "dense recall 包 with telemetry.measure('search.vector_retrieval')（补此前缺的 summary 键）",
+    "openviking/server/mcp_endpoint.py": "write 文档串更正：不存在时自动创建文件与缺失父目录",
+    "openviking/storage/ovpack/index.py": "PORTABLE_VECTOR_SCALAR_FIELDS 补 chunk 身份/父子/业务 meta/image context 字段；call_vector_filter limit 10→100_000 全量扫描 + timestamps 仅排序用；index_records_for_uri 全量保留（不再每级一行）+ _record_sort_key 旧前新胜",
+    "openviking/storage/ovpack/vectors.py": "restore 主键 chunk-aware（chunk_id 行 → vector_record_id_for_data）；剥 index_generation/index_plan_id；chunk 行 content=chunk_text",
+    "openviking/storage/ovpack/operations.py": "_index_scalar_overrides 同级非 chunk 行（摘要）优先于 chunk 行",
+    "openviking/storage/index_consistency.py": "一致性期望镜像管线排除：生成导航 index.md 按 frontmatter 标记跳过（legacy 正文存 index.md 仍期望）、CHAPTER_METADATA_FILENAMES 跳过——修现代分支带向量导出 400",
+    "scripts/maintenance/legacy_directory_index/relocate_legacy_directory_index.py": "新增：legacy {stem}/index.md → {stem}.md 迁移脚本，plan/apply 双模式，仅走运行中服务 HTTP",
+    "tests/conftest.py": "_private_publication_registry（会话级重写 ambient config 到临时文件）+ _per_test_publication_registry",
+    "tests/server/conftest.py": "_install_fake_reranker：API 测试确定性排序，不依赖 ambient rerank",
+    "tests/utils/mock_agfs.py": "FileNotFoundError → AGFSNotFoundError（生产错误类型对齐）",
+    "tests/server/test_request_wait_tracking.py": "fake pathlock 改 async（stale fake vs 生产 async API 修正），4 passed",
+    "tests/server/authored_content_helpers.py": "新增测试助手（导航 index.md 写入 400 契约）",
+    "openviking/indexing/plan.py": "figure_pieces 空渲染 figure 块返回 span 空渲染（保覆盖，不再抛 'Figure partition lost source content'）；markup-only 片段 absorb 不丢 span；chunk 组装的 overlap 源对空渲染 figure 不回退原始 markup；新增 PlanRejectionError(ValueError)，plan_resource 全部 ValueError 统一包裹",
+    "openviking/storage/queuefs/semantic_processor.py": "except 链新增 PlanRejectionError 分支：确定性计划拒绝 settle（error_count+mark_semantic_failed+ProcessResult.failed），不重投、不 record_failure",
+    "tests/enterprise_kb/test_index_plan.py": "新增 test_precaption_figure_block_plans_with_empty_render 与 test_plan_rejection_carries_dedicated_error_type（HEAD worktree 验证 2 红 → 修复后绿）",
+    "openviking/parse/image_rewrite.py": "kb:// scheme 引用按同目录 images/ 兄弟文件解析（_scheme_sibling：整名匹配或同 stem 单扩展名，排序取第一；无兄弟则保持原引用 + warning）；_mapped_uri 在 sidecar 映射后加 scheme 分支",
+    "tests/enterprise_kb/test_remote_images.py": "新增 scheme 兄弟解析 2 条（stem 命中 .jpg/.jpeg 且保留作者 tag 形态；无兄弟不动）+ PublishFS.ls 由文件键合出隐式目录",
+    "openviking/service/reindex_executor.py": "reindex(semantic_and_vectors) 在 semantic 阶段前新增 normalize:{uri} 阶段 → _normalize_figure_citations（rewrite_image_uris 以 run.lock 租约执行；无租约记 warning 跳过）——figure 的图片 occurrence 绑定与归档修订都依赖 vikingsrc 先补",
+    "tests/enterprise_kb/test_reindex_contract.py": "阶段序断言 normalize→semantic→vectors；新增 2 条：语义重投先规范化再摘要（lease 身份 + 事件序）；无租约跳过并记 warning",
+    "tests/server/test_api_snapshot.py": "快照跟踪生成清单的契约：to_write 期望补 index.md（与 .abstract.md/.overview.md 同为目录派生文件）；restore 应用后断言目录清单内容回到 v1（— v1）"
+  },
+  "tests": {
+    "targeted": "270 passed / 0 failed（8 组）：record_meta 15；reingest_visibility+metadata_integration+publication 33；api_search+recall_endpoint+find_without_rerank 73；request_wait_tracking 4；telemetry 39；ovpack_import_policy+index_consistency_expectations 26；api_content_write 23；image_publication+image_cache+directory_index+chapter_directory_layout+chapter_option_routing 57；另 figure 修复定向 44 passed（test_index_plan 19 + test_parent_child_recall 11 + test_figure_caption_backfill 14），其中 2 条新测在 HEAD worktree 红/修复后绿",
+    "failures_adjudication": "两分片合并后的当前树失败集 = 192 条唯一 ID（tests/server 56，含 ERROR 23；主分片 142；两清单重叠已去重并入 192）。裁定方法：在 HEAD worktree（/private/tmp/ov-head-check，68e2c725 干净树）单进程重跑全部 192 条（/tmp/i100_baseline_sweep.log，192/192 解析）。结果：157 FAILED + 33 ERROR 在基线同样失败 → 190 条存量缺陷，出本轮范围；2 条基线通过：(1) tests/server/test_api_snapshot.py::test_restore_acl_and_reindex_identity 为真回归——生成型 index.md 与 .abstract.md/.overview.md 一样被快照跟踪，v1/v2 两次目录语义写入使条目摘要不同，restore 计划的 to_write 因此多出 index.md；该断言写在本功能之前，已按新契约更新（to_write 期望含 index.md，并新增 restore 应用后目录清单内容回到 v1 的断言），当前树该测试通过。(2) tests/test_task_tracker_concurrency.py::test_owner_loop_dispatcher_rejects_calls_after_owner_loop_closes 为顺序性伪失败——单进程 8k 用例中更早用例把 nest_asyncio 应用于 asyncio.run 且泄漏至本用例（DID NOT RAISE），单测隔离与整文件上下文在当前树均通过，涉事文件（测试与模块）本轮均未改动。",
+    "broad_regression": "分片 A = tests/server（约 1394 条；其失败集合并入 192-ID 清单，含 ERROR 23）；分片 B = pytest tests --ignore=tests/integration --ignore=tests/server → 142 failed / 7979 passed / 148 skipped（46:48）。两分片失败 ID 去重合并 = 192。",
+    "broad_regression_adjudication": "192 条全部有基线结论：190 条存量缺陷（基线同败，出范围）；1 条真回归 = 快照目录清单期望（已定位根因、更新断言、当前树测绿）；1 条顺序性伪失败（隔离/整文件即过）。当前树不存在未归属的失败。",
+    "pre_existing_out_of_scope": true
+  },
+  "report_only": [
+    "menus 全树 4674 条 legacy index.md 未迁移：脚本 plan/apply 已备、plan 实测 9383 目录 420.8s，属可执行维护动作，按用户口径不擅动已发布语料",
+    "e2e 配置的 publication_path 仍指共享 44GB DB（延续 I099 观察）",
+    "run5 uri 级 only_on_src 两条重复图片副本可换路径（doc 级 4=4 一致），非缺陷",
+    "src 分支 19 条 superseded 行保留为验收反例（已发布数据不原地修补）",
+    "legacy 语料把分支正文放在 {stem}/index.md 时目录不生成清单（与生成清单同名判定冲突；迁移入口 = relocate 脚本）",
+    "menus 语料 136 md 的 1278 条 hehe-parser2 死外链按文档上报不中断整单（延续）"
+  ]
+}

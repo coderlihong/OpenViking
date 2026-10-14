@@ -1,0 +1,127 @@
+{
+  "record": "static-kb-chain-closure-I099",
+  "date": "2026-10-10",
+  "branch": "deploy/wolf-viking",
+  "source_state": "uncommitted working tree; 45 tracked files modified, 3 new modules untracked (openviking/core/directory_index.py, openviking/indexing/record_meta.py, openviking/parse/remote_images.py)",
+  "requirement_source": "用户 2026-10-09 静态知识库方案口述条款（file:///Users/wh/Documents/Qoder/2026-10-09/55d47964/企业知识库方案/知识库建设.html）",
+  "environment": {
+    "instance": "e2e 1940",
+    "config": "/tmp/ov-e2e/ov.conf",
+    "workspace": "/Users/wh/code/OpenViking/data-e2e",
+    "tenant": "e2etest (user_key from /tmp/ov-e2e/state.json)",
+    "pid_after_restart": 82183,
+    "restart_command": "nohup .venv/bin/python .venv/bin/openviking-server --config /tmp/ov-e2e/ov.conf >> /tmp/ov-e2e/server-1940e.log 2>&1 < /dev/null & disown",
+    "models": "embedding/vlm/rerank at 10.147.254.3 per ov.conf",
+    "note": "旧进程 75268 载检索改动前代码；重启后行数据无需重投（列早已入库）"
+  },
+  "corpus_under_test": {
+    "branch": "viking://resources/caption-live6",
+    "shape": "用户直接上传的已写好 MD（含 <img>/figcaption 与 - document_id/- chapter_uri/- page 块）+ 本地图片",
+    "tree_nodes": 8,
+    "vector_rows_in_branch": {
+      "text": 11,
+      "image": 2
+    }
+  },
+  "clauses": [
+    {
+      "clause": "统一入库 PDF 与其他文件的 MD，接入多模型，统一输出并成 TOC 章节目录树",
+      "status": "PASS",
+      "evidence": "PDF→TOC 树实机通过（tasks #10，I098 FLOW-D1 手册）；caption-live6 以「已写好 md 的目录 + parse_backend」整单入库 terminal success、0 拒单，tree n=8（ingest-closure6.log §1/§2）"
+    },
+    {
+      "clause": "已写 MD 识别 ![]() 与 <img>，取真实图片，生成 figcaption，回填 vikingsrc=viking URI",
+      "status": "PASS",
+      "evidence": "note.md L14 实读：<img src=\"images/pic.png\" vikingsrc=\"viking://resources/caption-live6/note/pic.png\"/>；caption 入库即填，3/5 md 行携带 caption；图片字节落地为真实文件（非外链）"
+    },
+    {
+      "clause": "解析完成后支持指定目录或 URI reindex；完成 L0/L1；MD 多层级父子向量；图片 VL embedding（图+上下文）",
+      "status": "PASS",
+      "evidence": "目录级与单文件 reindex 均实跑；head snapshot 中目录条目 semantic_levels=['0','1']；文本父子链在命中体可见（parent_chunk_id=82a82cec… 非空）；VL 行 chunker_version=image-occurrences-v3 且带 ±12 行上下文窗口与真实 tokenizer 预算"
+    },
+    {
+      "clause": "向量支持 meta 信息与 viking URI 溯源获取；meta 记机型/关键词",
+      "status": "PASS",
+      "evidence": "检索命中体新增 meta 与 provenance 两段，search 与 find 两面均回传；图片行 meta 含 machine_model=TEST10液压挖掘机、page=p.638-641、keywords=拆装, 注意事项, 盲堵、source_document_id、chapter_uri；provenance.chapter_uri=viking://resources/caption-live6/note/note.md"
+    },
+    {
+      "clause": "图片与文本在 meta 上以 category 区分：images / text",
+      "status": "PASS",
+      "evidence": "category=images 命中 2 张图；category=text 命中 note.md；复合 category=images AND machine_model 命中 1（note/pic.png）；category=images AND keywords contains 盲堵 命中 1（evidence6.log §4）"
+    },
+    {
+      "clause": "每目录 index.md 记录内容与 URI，供 grep 快速定位；index.md 不建向量以免噪声",
+      "status": "PASS",
+      "evidence": "caption-live6/index.md、images/index.md、note/index.md 实存；grep pattern=pic.png files_scanned=3 count=4，命中行即带完整 viking URI；head snapshot manifest 中 index.md 条目数=0，向量面 scroll 中 index_md_not_vectorized=0 行"
+    }
+  ],
+  "live_probes": {
+    "meta_and_provenance": {
+      "script": "/tmp/ov-e2e/hit_provenance.py",
+      "assertions_passed": 13,
+      "assertions_total": 13,
+      "image_hit": {
+        "uri": "viking://resources/caption-live6/note/pic.png",
+        "score_search": 0.6402,
+        "meta": {
+          "category": "images",
+          "source_document_id": "900000000000004",
+          "chapter_uri": "kb://chapters/900000000000004",
+          "page": "p.638-641",
+          "machine_model": "TEST10液压挖掘机",
+          "keywords": "拆装, 注意事项, 盲堵",
+          "source_uri": "viking://resources/caption-live6/note/note.md",
+          "image_uri": "viking://resources/caption-live6/note/pic.png"
+        },
+        "provenance": {
+          "chapter_uri": "viking://resources/caption-live6/note/note.md",
+          "content_revision": "2812888a9eacafb65634a401334019d621822a4e08f3bb70e2a339de08057a8d",
+          "chunk_id": "image:a99116f62788114dc0724f2e6ae87cb1bb965afdad956f6821ebe71fd224174b"
+        },
+        "matches_image_context_uri": "viking://resources/caption-live6/note/note.md"
+      },
+      "text_hit": {
+        "uri": "viking://resources/caption-live6/note/note.md",
+        "score_search": 0.8064,
+        "meta_category": "text",
+        "provenance_parent_chunk_id": "82a82ceca8e2aa218b128e959c5b862a36ba2270c05df17191c07a9be35c1200",
+        "provenance_chunk_id": "71e53ba28f7852ae14ab60945c53f3a50a72f0aba9ab6c9334bc256827533aac"
+      },
+      "find_surface": "POST /api/v1/search/find 同样回传 meta/provenance（note/pic.png 0.6982）；请求键是 target_uri，打 uri 键报 400"
+    },
+    "grep_locate": {
+      "endpoint": "POST /api/v1/search/grep",
+      "body": {
+        "uri": "viking://resources/caption-live6",
+        "pattern": "pic.png"
+      },
+      "files_scanned": 3,
+      "count": 4
+    }
+  },
+  "code_changes_this_round": {
+    "openviking/storage/viking_vector_index_backend.py": "RETRIEVAL_OUTPUT_FIELDS 补 image_context_uri/image_context_hash/business_meta_payload",
+    "openviking/indexing/record_meta.py": "新增 meta_view()/provenance_view() 读回侧（raw 优先避免回显规范化大写；无值不编造）",
+    "openviking/retrieve/hierarchical_retriever.py": "MatchedContext 构造带 meta/provenance；同 URI 分组时子行补齐父行空值",
+    "openviking_cli/retrieve/types.py": "MatchedContext 增 meta/provenance 字段，序列化按需输出",
+    "openviking/core/directory_index.py": "目录清单自述改为「不建向量也不进 BM25，定位靠 grep 或 content/read」",
+    "tests": "tests/enterprise_kb/test_record_meta.py 增读回与命中回传两用例；test_directory_index.py 断言清单文法"
+  },
+  "tests": {
+    "targeted": "tests/enterprise_kb/test_record_meta.py + tests/server/test_api_search.py + tests/server/test_recall_endpoint.py + tests/misc/test_vikingfs_find_without_rerank.py = 84 passed / 4 failed",
+    "failures_adjudication": "4 项在 HEAD 基线同样失败（git worktree add --detach /tmp/ov-head-check HEAD + 拷 ragfs_python.abi3.so 与 _native.abi3.so 并 codesign --force --sign - 重签后跑同批：4 failed 同项同名）；rejects_empty_query[find/search] 根因是开发者 ~/.openviking/ov.conf 的 chunking.publication_path 漏进单测进程，publication 快照门 query_snapshot 早于参数校验调用 VikingFS.__new__ 裸对象的 _ctx_or_default；telemetry 两项为 summary 键漂移（有 tokens、缺 search.vector_retrieval）",
+    "broad_regression": "tests/enterprise_kb + tests/parse + tests/retrieve + tests/storage + tests/misc + tests/unit/test_vectorize_file_strategy.py = 3261 passed / 30 failed / 39 skipped in 541s",
+    "broad_regression_adjudication": "30 项在 HEAD worktree 基线逐条同红且签名一致：test_mkdir 8 项与 retrieval_enable_intent 1 项为 'VikingFS' object has no attribute 'acl_manager'，resource_processor_mv 2 项为 '_FakeVikingFS' object has no attribute '_ensure_access'，actor_peer_view 2 项为 _MemoryAGFS.ls() 不认 limit，其余为 CI/打包/配置/模型观测面漂移。无一涉及本轮改动的 meta/provenance 或检索投影",
+    "pre_existing_out_of_scope": true
+  },
+  "report_only": [
+    "图片联合行 parent_chunk_id 仍为空：溯源靠 chapter_uri/content_revision 而非 chunk 链，agent 用 content/read 即可精读",
+    "同一图片的多份拷贝（images/pic.png 与 note/pic.png）各建一行；后者带章节 meta，前者只有 category 与自身 URI，provenance.chapter_uri 回落到自身（不编造所引章节）",
+    "已生成的旧目录清单缺「grep 或 content/read」用法说明，下次目录 reindex 才刷新（实读 caption-live6/index.md 无过度声明）",
+    "legacy 语料把分支正文放在 {stem}/index.md 时不再生成清单（与生成清单同名判定冲突）",
+    "盲堵关键词在共享实例的全局限流排序中排不进前 8，属我自己重复分支的测试数据噪声；限定 target_uri 后该分支 note.md 排第 1（0.8863）",
+    "e2e 配置的 publication_path 仍指用户共享的 ~/.openviking/state/publication.db（44GB）",
+    "teleocr/logics/mineru 缺 pdf.model_endpoints 时硬 400；端点不可达时软丢文件",
+    "menus 语料 136 md 的 1278 条 hehe-parser2 死外链按文档上报而非中断整单"
+  ]
+}

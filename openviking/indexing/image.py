@@ -62,6 +62,26 @@ async def enqueue_image_plan(message, embedding_config, queue, source_ref=None, 
     revision = hashlib.sha256(json.dumps([image_parts, records], sort_keys=True).encode()).hexdigest()
     registry = configured_store(embedding_config)
     from openviking.indexing.metadata_integration import prepare_meta, bind_meta, write_meta
+    from openviking.indexing.record_meta import IMAGE_CATEGORY, stamp_record_meta
+
+    # Joint image embeddings are stamped as the ``images`` category and point back
+    # at the chapter they illustrate, so an image hit never gets mistaken for a
+    # text chunk (or filtered out of one) at query time. The chapter's own
+    # provenance fields ride along from the occurrence, otherwise a query narrowed
+    # to a machine model would answer with its body text and silently drop its
+    # figures.
+    provenance = {}
+    for record in records:
+        for key, value in (record.get("source_meta") or {}).items():
+            provenance.setdefault(key, value)
+    stamp_record_meta(
+        fields,
+        category=IMAGE_CATEGORY,
+        contents=[record.get("context") or record.get("summary") for record in records],
+        source_uri=next((r.get("context_uri") for r in records if r.get("context_uri")), None),
+        image_uri=fields.get("uri"),
+        values=provenance,
+    )
     document_id = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
     prepared = prepare_meta(fields, registry, document_id, source_ref["sha256"] if source_ref else revision) if registry else None
     plan = hashlib.sha256(

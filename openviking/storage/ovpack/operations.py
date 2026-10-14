@@ -98,12 +98,27 @@ def _index_records_by_level(
 def _index_scalar_overrides(
     index_records: list[dict[str, Any]], rel_path: str
 ) -> dict[int, dict[str, Any]]:
-    overrides: dict[int, dict[str, Any]] = {}
-    for level, record in _index_records_by_level(index_records, rel_path).items():
+    """Per-level scalars for the recompute path.
+
+    One file carries a summary row plus one row per chunk at L2; the summary
+    row is what re-vectorization rebuilds, so it wins over a chunk row.
+    """
+    best: dict[int, tuple[bool, dict[str, Any]]] = {}
+    for record in index_records:
+        if not isinstance(record, dict) or record.get("path") != rel_path:
+            continue
         scalars = record.get("scalars")
-        if isinstance(scalars, dict):
-            overrides[level] = dict(scalars)
-    return overrides
+        if not isinstance(scalars, dict) or not scalars:
+            continue
+        try:
+            level = int(record.get("level", 2))
+        except (TypeError, ValueError):
+            continue
+        is_chunk = bool(scalars.get("chunk_id"))
+        current = best.get(level)
+        if current is None or (current[0] and not is_chunk):
+            best[level] = (is_chunk, dict(scalars))
+    return {level: scalars for level, (_, scalars) in best.items()}
 
 
 async def _root_exists(viking_fs, root_uri: str, ctx: RequestContext) -> bool:

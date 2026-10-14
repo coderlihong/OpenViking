@@ -273,7 +273,10 @@ const apiReferenceSidebar = {
       },
       {
         text: '检索',
-        items: [['06-retrieval.md', '检索']]
+        items: [
+          ['06-retrieval.md', '检索'],
+          ['26-retrieval-interfaces.md', '检索接口参考']
+        ]
       },
       {
         text: '数据生命周期',

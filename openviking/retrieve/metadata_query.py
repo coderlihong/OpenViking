@@ -7,6 +7,7 @@ import json
 from openviking.indexing.business_meta import AuthoritativeMeta, MetaLimits, validate_meta_key
 from openviking.indexing.metadata_integration import TOKEN_COLUMN, field_token, value_token
 from openviking.indexing.publication import _view, configured_store
+from openviking.indexing.record_meta import canonical_field_name
 from openviking.retrieve.meta_dictionary import BusinessDictionary, MetaFilter, MetaHint, resolve_query
 from openviking_cli.exceptions import FailedPreconditionError, InvalidArgumentError
 
@@ -19,7 +20,10 @@ def parse_constraints(filters):
         if not isinstance(item, dict) or set(item) - {"field", "values", "op", "include_unknown"}:
             raise InvalidArgumentError("Invalid business metadata filter")
         try:
-            field = validate_meta_key(item.get("field"), MetaLimits())
+            # Resolved before validation: an authored Chinese key is the same field
+            # as its canonical spelling, and ``document_id`` only becomes the legal
+            # ``source_document_id`` once that alias is applied.
+            field = validate_meta_key(canonical_field_name(item.get("field")), MetaLimits())
         except ValueError as exc:
             raise InvalidArgumentError(str(exc)) from exc
         values = item.get("values")
@@ -50,12 +54,13 @@ def token_filter(resolution):
 async def resolve_metadata(fs, ctx, target_uri, meta_filters, meta_hints=()):
     registry = configured_store()
     view = _view.get()
-    if registry is None or view is None or view[0] != ctx.account_id:
+    if registry is None or view is None:
         raise FailedPreconditionError("Business metadata queries require a publication snapshot")
+    lease, manifest = await asyncio.to_thread(view.read, ctx.account_id, registry)
     targets = [target_uri] if isinstance(target_uri, str) and target_uri else (target_uri or [])
-    uris = [uri for uri in view[3] if not targets or any(uri == root.rstrip("/") or uri.startswith(root.rstrip("/") + "/") for root in targets)]
+    uris = [uri for uri in manifest if not targets or any(uri == root.rstrip("/") or uri.startswith(root.rstrip("/") + "/") for root in targets)]
     permitted = await fs._can_access_many(uris, ctx)
-    rows = await asyncio.to_thread(registry.metadata_read, ctx.account_id, view[2], [uri for uri in uris if permitted.get(uri, False)])
+    rows = await asyncio.to_thread(registry.metadata_read, ctx.account_id, lease, [uri for uri in uris if permitted.get(uri, False)])
     dependencies = list({ref["uri"] for row in rows for ref in row["dependencies"] if ref["sha256"] is not None})
     dependency_rights = await fs._can_access_many(dependencies, ctx) if dependencies else {}
     rows = [row for row in rows if all(ref["sha256"] is None or dependency_rights.get(ref["uri"], False) for ref in row["dependencies"])]
@@ -71,7 +76,7 @@ async def resolve_metadata(fs, ctx, target_uri, meta_filters, meta_hints=()):
         if not isinstance(item, dict) or set(item) - {"field", "value", "op"}:
             raise InvalidArgumentError("Invalid business metadata hint")
         try:
-            field = validate_meta_key(item.get("field"), MetaLimits())
+            field = validate_meta_key(canonical_field_name(item.get("field")), MetaLimits())
         except ValueError as exc:
             raise InvalidArgumentError(str(exc)) from exc
         value = item.get("value")

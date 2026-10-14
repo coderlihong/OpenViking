@@ -134,6 +134,11 @@ export interface ReindexOptions {
   tagMode?: "replace" | "append";
   extra?: JsonObject;
 }
+/** Normalize citations request options. */
+export interface NormalizeCitationsOptions {
+  recursive?: boolean;
+  extra?: JsonObject;
+}
 /** Semantic retrieval options shared by find and search. */
 export interface FindOptions {
   targetUri?: TargetURI;

@@ -21,9 +21,7 @@ async def denied_derived_uris(manager, ctx, *, registry=None):
     if owned:
         lease, manifest = await asyncio.to_thread(registry.capture, ctx.account_id)
     else:
-        if view[0] != ctx.account_id or view[1].path != registry.path:
-            raise RuntimeError('Derived content view belongs to another account or registry')
-        lease, manifest = view[2], view[3]
+        lease, manifest = await asyncio.to_thread(view.read, ctx.account_id, registry)
     try:
         dependencies = {uri: tuple(item.get('content', {}).get('image_context_epochs', {}))
                         for uri, item in manifest.items()

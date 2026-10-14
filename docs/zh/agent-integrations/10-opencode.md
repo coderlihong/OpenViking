@@ -133,7 +133,7 @@ API key 会由 hooks 和 MCP proxy 作为 `Authorization: Bearer ...` 发送；`
 
 ## 验证
 
-安装后重启 OpenCode。进入 OpenCode session 后，插件应暴露 `openviking` MCP server，透传服务端完整 MCP 工具集（15 个工具）。OpenCode 会给 MCP 工具加 `openviking_` 前缀：
+安装后重启 OpenCode。进入 OpenCode session 后，插件应暴露 `openviking` MCP server，透传服务端完整 MCP 工具集（17 个工具）。OpenCode 会给 MCP 工具加 `openviking_` 前缀：
 
 - `openviking_find`、`openviking_search`（`openviking_search` 的 `mode="context"` 替代原 recall 工具）
 - `openviking_read`、`openviking_list`、`openviking_tree`、`openviking_grep`、`openviking_glob`

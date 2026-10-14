@@ -90,10 +90,7 @@ class ParserRouter:
         return ext in extensions
 
     def should_use_understanding_directly(self, source: str, **kwargs) -> bool:
-        if any(
-            kwargs.get(key) is not None
-            for key in ("structure_policy", "parse_backend", "model_mode", "backend_options")
-        ):
+        if self.chapter_options_requested(kwargs):
             return False
         parser_backend = normalize_parser_backend(kwargs.get("parser_backend"))
         if parser_backend is ParserBackend.INTERNAL:
@@ -115,6 +112,29 @@ class ParserRouter:
             source = parsed.path
         return Path(source).suffix.lower().lstrip(".")
 
+    @staticmethod
+    def _is_directory_source(source_path: Union[str, Path]) -> bool:
+        """Whether the source is a local folder whose files route per extension."""
+        try:
+            return Path(str(source_path)).is_dir()
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
+    def _display_name(source_path: Union[str, Path]) -> str:
+        if isinstance(source_path, str) and source_path.startswith(("http://", "https://")):
+            return "<url>"
+        try:
+            return Path(str(source_path)).name or "<path>"
+        except (OSError, ValueError):
+            return "<path>"
+
+    #: Options that only the PDF chapter pipeline can honour.
+    CHAPTER_OPTION_KEYS = ("structure_policy", "parse_backend", "model_mode", "backend_options")
+
+    def chapter_options_requested(self, kwargs: dict) -> bool:
+        return any(kwargs.get(key) is not None for key in self.CHAPTER_OPTION_KEYS)
+
     async def parse(self, source: Union[str, Path, "LocalResource"], **kwargs) -> ParseResult:
         """
         Parse with ParserRegistry or UnderstandingAPI based on the routing decision.
@@ -134,14 +154,26 @@ class ParserRouter:
                 **kwargs,
             )
 
-        chapter_requested = any(
-            kwargs.get(key) is not None
-            for key in ("structure_policy", "parse_backend", "model_mode", "backend_options")
-        )
-        if chapter_requested and extension != "pdf":
-            raise InvalidArgumentError(
-                "structure_policy/parse_backend currently require a PDF source"
+        chapter_requested = self.chapter_options_requested(kwargs)
+        if chapter_requested and extension != "pdf" and not self._is_directory_source(source_path):
+            # A folder is not one format: naming a PDF model there means "use it for
+            # the PDFs inside", and DirectoryParser forwards it to exactly those
+            # children.  A single markdown file has no such children -- its chapter
+            # tree comes from its own headings -- so the option has nothing to act
+            # on.  Say so on the log and drop it rather than refusing the ingest:
+            # rejecting an authored-markdown upload would cost the whole chapter set.
+            dropped = [key for key in self.CHAPTER_OPTION_KEYS if kwargs.get(key) is not None]
+            for key in dropped:
+                kwargs.pop(key, None)
+            logger.info(
+                f"[ParserRouter] Ignored {', '.join(dropped)} for {self._display_name(source_path)}: "
+                f"chapter options act on PDF sources only "
+                f"(source extension '{extension or 'none'}')"
             )
+            # `chapter_requested` stays True on purpose.  The caller asked for a
+            # chapter tree, and that request is what keeps the file on the internal
+            # registry instead of the external parser's extension whitelist -- an
+            # option the caller never asked for.
 
         parser_backend = normalize_parser_backend(kwargs.pop("parser_backend", None))
 

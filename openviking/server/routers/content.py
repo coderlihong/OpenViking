@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from openviking.core.directory_index import authored_index_collision
 from openviking.core.namespace import (
     is_hidden_by_actor_peer_view,
     may_include_hidden_actor_peers,
@@ -121,7 +122,50 @@ class ReindexRequest(BaseModel):
     tag_mode: str = "replace"
 
 
+class NormalizeCitationsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    uri: str
+    recursive: bool = True
+
+
 router = APIRouter(prefix="/api/v1/content", tags=["content"])
+
+
+def _resolve_payload(uri: str, content: str | None, content_base64: str | None) -> str | bytes:
+    """Return the write body, requiring exactly one of the two payload fields."""
+
+    if content is not None:
+        if content_base64 is not None:
+            raise InvalidArgumentError("exactly one of content or content_base64 is required")
+        return content
+    if content_base64 is None:
+        raise InvalidArgumentError("exactly one of content or content_base64 is required")
+    try:
+        return base64.b64decode(content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise InvalidArgumentError(f"content_base64 is invalid: {uri}") from exc
+
+
+def _reserve_navigation_index(uri: str, content: str | bytes) -> None:
+    """Refuse an authored body at ``{dir}/index.md``, the catalogue's name.
+
+    The navigation index is what an agent greps to list a directory, so a chapter
+    body that takes the name leaves that directory with no catalogue -- and the
+    indexer will not overwrite prose to get one. Corpora uploaded file-by-file hit
+    this because upstream docs use ``index.md`` for a section's landing page.
+    Pointing at ``{dir}/{dir}.md`` gives the caller the name the parser itself
+    produces for a branch chapter.
+    """
+
+    canonical = authored_index_collision(uri, content)
+    if canonical is None:
+        return
+    raise InvalidArgumentError(
+        f"{uri} is reserved for the generated directory catalogue. "
+        f"Write this chapter body to {canonical} instead.",
+        details={"uri": uri, "write_to": canonical},
+    )
 
 
 def _authorize_reindex_uri(uri: str, ctx: RequestContext) -> str:
@@ -256,18 +300,8 @@ async def write(
 ):
     """Write text or base64-encoded binary content to a file and refresh semantics/vectors."""
     uri = validate_request_viking_uri(resolve_path_variables(request.uri), _ctx)
-    content: str | bytes
-    if request.content is not None:
-        if request.content_base64 is not None:
-            raise InvalidArgumentError("exactly one of content or content_base64 is required")
-        content = request.content
-    elif request.content_base64 is not None:
-        try:
-            content = base64.b64decode(request.content_base64, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise InvalidArgumentError(f"content_base64 is invalid: {uri}") from exc
-    else:
-        raise InvalidArgumentError("exactly one of content or content_base64 is required")
+    content = _resolve_payload(uri, request.content, request.content_base64)
+    _reserve_navigation_index(uri, content)
     service = get_service()
     execution = await run_operation(
         operation="content.write",
@@ -301,9 +335,10 @@ async def batch_write(
     root_uri = validate_request_viking_uri(resolve_path_variables(request.root_uri), _ctx)
     operations = [operation.model_dump(exclude_none=True) for operation in request.operations]
     for operation in operations:
-        operation["uri"] = validate_request_viking_uri(
-            resolve_path_variables(operation["uri"]), _ctx
-        )
+        uri = validate_request_viking_uri(resolve_path_variables(operation["uri"]), _ctx)
+        operation["uri"] = uri
+        payload = _resolve_payload(uri, operation.get("content"), operation.get("content_base64"))
+        _reserve_navigation_index(uri, payload)
     execution = await run_operation(
         operation="content.batch_write",
         telemetry=request.telemetry,
@@ -374,4 +409,23 @@ async def reindex(
     result = await service.reindex(
         **reindex_kwargs,
     )
+    return Response(status="ok", result=result)
+
+
+@router.post("/normalize_citations")
+async def normalize_citations(
+    body: NormalizeCitationsRequest = Body(...),
+    ctx: RequestContext = require_role(Role.ROOT, Role.ADMIN, Role.USER),
+):
+    """Complete figure citations (vikingsrc pointers + figcaption bodies).
+
+    Runs BEFORE reindex: the vector phase archives the published markdown, so
+    captions must already be in it. Accepts a single markdown URI or a
+    directory URI walked recursively.
+    """
+    uri = validate_request_viking_uri(resolve_path_variables(body.uri), ctx)
+    uri = _authorize_reindex_uri(uri, ctx)
+    from openviking.indexing.citation_stage import normalize_citations
+
+    result = await normalize_citations(uri, ctx=ctx, recursive=body.recursive)
     return Response(status="ok", result=result)

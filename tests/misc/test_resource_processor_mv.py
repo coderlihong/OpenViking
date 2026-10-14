@@ -92,6 +92,9 @@ class _FakeVikingFS:
             return uri in self._existing_uris
         return self._exists_result
 
+    async def _ensure_access(self, uri, ctx, *, action):
+        return None
+
     async def mkdir(self, uri, exist_ok=False, ctx=None):
         return None
 

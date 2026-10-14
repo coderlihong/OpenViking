@@ -22,7 +22,7 @@ from openviking.storage.ovpack.format import (
     sha256_hex,
 )
 from openviking.storage.ovpack.manifest import manifest_dense_info, manifest_entry_target_uri
-from openviking.storage.vector_ids import vector_record_id
+from openviking.storage.vector_ids import vector_record_id, vector_record_id_for_data
 from openviking.storage.ovpack.validation import dense_record_count, record_dense_ref
 from openviking.utils.time_utils import get_current_timestamp
 from openviking_cli.exceptions import InvalidArgumentError
@@ -255,8 +255,20 @@ def choose_vector_restore_action(
     return "restore"
 
 
-def _vector_record_id(target_uri: str, level: int, ctx: RequestContext) -> str:
-    return vector_record_id(ctx.account_id, target_uri, level)
+def _vector_record_id(payload: dict[str, Any], ctx: RequestContext) -> str:
+    """Rebuild the primary key the write path would have produced.
+
+    Chunked files hold many L2 rows under one URI, so the level-derived key
+    would let them overwrite each other; a row carrying ``chunk_id`` keys off
+    its chunk identity instead, exactly as ``vector_record_id_for_data`` does
+    on the write path. Call this on the sanitized restore payload so a
+    generation dropped by the restore is dropped from the key too.
+    """
+    if payload.get("chunk_id"):
+        return vector_record_id_for_data(payload)
+    return vector_record_id(
+        ctx.account_id, str(payload["uri"]), int(payload.get("level", 2))
+    )
 
 
 async def _upsert_vector_snapshot_record(
@@ -268,11 +280,15 @@ async def _upsert_vector_snapshot_record(
 ) -> None:
     level = int(record.get("level", 2))
     scalars = dict(record.get("scalars") or {})
+    # A restore is not a managed generation write: those identifiers point at a
+    # builds row of the exporting instance, and carrying them over would demand
+    # the destination's publication authority for a generation it never saw.
+    scalars.pop("index_generation", None)
+    scalars.pop("index_plan_id", None)
     owner_fields = owner_fields_for_uri(target_uri)
     timestamp = get_current_timestamp()
     payload = {
         **scalars,
-        "id": _vector_record_id(target_uri, level, ctx),
         "uri": target_uri,
         "context_type": context_type_for_uri(target_uri),
         "level": level,
@@ -285,8 +301,12 @@ async def _upsert_vector_snapshot_record(
     }
     if not payload.get("abstract"):
         payload["abstract"] = str(record.get("text") or "")
-    if "content" not in payload:
+    chunk_text = payload.get("chunk_text")
+    if isinstance(chunk_text, str) and chunk_text:
+        payload["content"] = chunk_text
+    elif "content" not in payload:
         payload["content"] = str(record.get("text") or "")
+    payload["id"] = _vector_record_id(payload, ctx)
 
     try:
         await vector_store.upsert(payload, ctx=ctx)

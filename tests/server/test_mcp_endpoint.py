@@ -391,6 +391,36 @@ async def test_find_tool_omits_chunk_lines_when_no_matches(service, monkeypatch)
     assert "[" not in result.split("summary")[1]
 
 
+async def test_vector_search_tool_applies_min_score_to_final_scores(service, monkeypatch):
+    captured = {}
+
+    def _row(uri: str, score: float) -> SimpleNamespace:
+        return SimpleNamespace(uri=uri, abstract="summary", overview="", score=score, matches=[])
+
+    async def fake_find(**kwargs):
+        captured.update(kwargs)
+        result = SimpleNamespace(
+            memories=[],
+            resources=[
+                _row("viking://resources/high.md", 0.9),
+                _row("viking://resources/low.md", 0.3),
+            ],
+            skills=[],
+        )
+        return result
+
+    monkeypatch.setattr(service.search, "find", fake_find)
+
+    result = await mcp_endpoint.vector_search(query="x", min_score=0.5)
+
+    assert captured["score_threshold"] == 0.5
+    assert "high.md" in result
+    assert "low.md" not in result
+
+    result = await mcp_endpoint.vector_search(query="x")
+    assert "high.md" in result and "low.md" in result
+
+
 async def test_search_tool_rejects_read_content_in_context_mode():
     with pytest.raises(InvalidArgumentError, match="read_content"):
         await mcp_endpoint.search(query="visible", mode="context", read_content=True)
@@ -502,9 +532,9 @@ async def test_search_context_mode_rejects_target_uri():
         )
 
 
-async def test_search_mode_defaults_preserve_list_threshold_but_not_context_threshold(
-    service, monkeypatch
-):
+async def test_search_mode_defaults_leave_threshold_unset_like_http(service, monkeypatch):
+    """MCP must not invent its own score floor: with no min_score, both modes
+    pass None so the retriever applies the same config threshold as HTTP."""
     captured = {}
 
     async def fake_search(**kwargs):
@@ -521,7 +551,7 @@ async def test_search_mode_defaults_preserve_list_threshold_but_not_context_thre
     await search(query="list default")
     await search(query="context default", mode="context")
 
-    assert captured == {"list_threshold": 0.35, "context_threshold": None}
+    assert captured == {"list_threshold": None, "context_threshold": None}
 
 
 async def test_search_context_schema_uses_portable_scalar_types():
@@ -1550,11 +1580,13 @@ async def test_write_append_appends_to_existing(service):
     assert body == "line1\nline2\n"
 
 
-async def test_write_append_missing_file_fails(service):
-    with pytest.raises(NotFoundError):
-        await write(
-            uri="viking://resources/test_write_append_missing.md", content="x", mode="append"
-        )
+async def test_write_append_creates_missing_file(service):
+    # Append shares replace's create-or-write contract; only mode="create" refuses
+    # an existing file. Keeping the two surfaces in step matters because both
+    # delegate to the same content-write coordinator.
+    uri = "viking://resources/test_write_append_missing.md"
+    await write(uri=uri, content="x", mode="append")
+    assert await service.fs.read(uri, ctx=DEFAULT_CTX) == "x"
 
 
 async def test_write_create_rejects_disallowed_extension(service):

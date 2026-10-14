@@ -22,6 +22,15 @@ from markdown_it import MarkdownIt
 VERSION = "markdown-parents-v2"
 
 
+class PlanRejectionError(ValueError):
+    """Content or configuration the chunk plan rejects deterministically.
+
+    Re-planning the same input fails identically, so callers must settle the
+    work as failed rather than requeue it — an endless retry also poisons the
+    API circuit breaker for unrelated messages.
+    """
+
+
 def digest(*values) -> str:
     return hashlib.sha256(
         json.dumps(values, ensure_ascii=False, sort_keys=True).encode()
@@ -139,6 +148,13 @@ def figure_pieces(block: str, rendered: str, budget: int, count, kind):
     vikingsrc pointer line, so each fragment still ties back to the asset.
     Source spans concatenate back to the full block, preserving coverage.
     """
+    if not rendered.strip():
+        # A figure with an empty caption and no vikingsrc renders empty. That is
+        # the normal pre-caption state: joint-index enqueue runs before caption
+        # backfill, and the captioned markdown is re-vectorized after. The span
+        # still rides with the plan (an empty render contributes no text), so
+        # source coverage holds and the block is not "lost".
+        return [(block, "", False, kind)]
     pointer = _FIGURE_VIKINGSRC_RE.search(block)
     pointer_tokens = count(f"Image: {pointer.group(1)}\n") if pointer else 0
     lines = block.splitlines(keepends=True)
@@ -168,13 +184,14 @@ def figure_pieces(block: str, rendered: str, budget: int, count, kind):
     for group_lines in groups:
         span = "".join(group_lines)
         piece_rendered = figure_embedding_text(span)
-        if not piece_rendered:
-            continue
-        # A continuation may sit before the asset pointer line; re-append the
-        # pointer so every fragment still ties back to the asset.
-        if pointer and "Image:" not in piece_rendered:
-            stripped_lines = [l.strip() for l in piece_rendered.splitlines() if l.strip()]
-            piece_rendered = "\n".join(stripped_lines) + f"\nImage: {pointer.group(1)}\n\n"
+        # A render can be empty only for markup-only spans; keep the span so
+        # coverage survives, it simply contributes no embedding text.
+        if piece_rendered.strip():
+            # A continuation may sit before the asset pointer line; re-append the
+            # pointer so every fragment still ties back to the asset.
+            if pointer and "Image:" not in piece_rendered:
+                stripped_lines = [l.strip() for l in piece_rendered.splitlines() if l.strip()]
+                piece_rendered = "\n".join(stripped_lines) + f"\nImage: {pointer.group(1)}\n\n"
         pieces.append((span, piece_rendered, bool(pieces), kind))
     if "".join(p[0] for p in pieces) != block:
         raise ValueError("Figure partition lost source content")
@@ -428,7 +445,11 @@ def build_plan(
             overlap = ""
             # Overlap extends the previous child's RENDERED text (markup-free),
             # never its raw source: a figure block's tail must not leak tags.
-            overlap_source = previous_rendered or previous
+            # A figure that rendered empty (pre-caption) falls back to nothing,
+            # not to its raw span, for the same reason.
+            overlap_source = previous_rendered
+            if not overlap_source and not _FIGURE_TAG_RE.search(previous):
+                overlap_source = previous
             if overlap_source and config.overlap_tokens:
                 # Suffix measured with the same model tokenizer as the child.
                 low, high = 0, len(overlap_source)
@@ -485,29 +506,35 @@ def build_plan(
 
 
 def plan_resource(source: str, uri: str, account_id: str, embedding) -> IndexPlan:
-    config = embedding.chunking
-    tokenizer = load_tokenizer(config.tokenizer_path, config.tokenizer_sha256)
-    model = embedding.hybrid or embedding.dense
-    credentials = model.credentials
-    first = credentials[0] if credentials else None
-    provider = first.provider if first and first.provider else model.provider
-    model_name = first.model if first and first.model else model.model
-    if any(
-        (c.provider or model.provider) != provider or (c.model or model.model) != model_name
-        for c in credentials
-    ):
-        raise ValueError("Chunk embedding failover must stay in the same declared vector space")
-    space = digest(provider, model_name, model.version, model.dimension, config.tokenizer_sha256)
-    if model.wire_format != "input":
-        space = digest(space, "wire", model.wire_format)
-    return build_plan(
-        source,
-        uri,
-        account_id,
-        config,
-        space,
-        lambda text: len(tokenizer.encode(text, add_special_tokens=False).ids),
-    )
+    """Plan a resource, raising ``PlanRejectionError`` for deterministic rejects."""
+    try:
+        config = embedding.chunking
+        tokenizer = load_tokenizer(config.tokenizer_path, config.tokenizer_sha256)
+        model = embedding.hybrid or embedding.dense
+        credentials = model.credentials
+        first = credentials[0] if credentials else None
+        provider = first.provider if first and first.provider else model.provider
+        model_name = first.model if first and first.model else model.model
+        if any(
+            (c.provider or model.provider) != provider or (c.model or model.model) != model_name
+            for c in credentials
+        ):
+            raise ValueError("Chunk embedding failover must stay in the same declared vector space")
+        space = digest(provider, model_name, model.version, model.dimension, config.tokenizer_sha256)
+        if model.wire_format != "input":
+            space = digest(space, "wire", model.wire_format)
+        return build_plan(
+            source,
+            uri,
+            account_id,
+            config,
+            space,
+            lambda text: len(tokenizer.encode(text, add_special_tokens=False).ids),
+        )
+    except ValueError as exc:
+        if isinstance(exc, PlanRejectionError):
+            raise
+        raise PlanRejectionError(str(exc)) from exc
 
 
 def chunk_fields(plan: IndexPlan, chunk: Chunk) -> dict:

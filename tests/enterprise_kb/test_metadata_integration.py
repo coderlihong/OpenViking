@@ -12,7 +12,14 @@ from test_wiki_namespaces import domains as domains, prepared as prepared, RAW, 
 
 from openviking.indexing.business_meta import build_meta
 from openviking.indexing.batch import text_publication_batch
-from openviking.indexing.metadata_integration import load_business_meta, project_meta, SIDECAR, TOKEN_COLUMN
+from openviking.indexing.metadata_integration import (
+    load_business_meta,
+    project_meta,
+    SIDECAR,
+    TOKEN_COLUMN,
+    field_token,
+    value_token,
+)
 from openviking.indexing.publication import query_snapshot
 from openviking.indexing.registry_authority import AuthorityRepository
 from openviking.indexing.image import enqueue_image_plan
@@ -58,16 +65,113 @@ async def test_real_text_semantic_and_image_share_provenance(environment, embedd
     finally:
         embedding.chunking.publish_content = old
     image_fields = e.queue.messages[0].context_data
-    all_fields = [message.context_data for message in messages + semantic] + [image_fields]
-    assert len({fields["business_meta_source_fingerprint"] for fields in all_fields}) == 1
-    assert len({tuple(fields[TOKEN_COLUMN]) for fields in all_fields}) == 1
+    text_fields_list = [message.context_data for message in messages + semantic]
+    all_fields = text_fields_list + [image_fields]
+    # The corpus sidecar is inherited verbatim by every producer, but each record
+    # additionally states its own modality: joint image embeddings are the
+    # ``images`` category, text chunks and directory summaries are ``text``.
+    sidecar_tokens = {
+        field_token("modelid"), value_token("modelid", "SY215-C"),
+        field_token("subject_code"), value_token("subject_code", "SY021NCB62788"),
+    }
+    for fields in all_fields:
+        assert sidecar_tokens <= set(fields[TOKEN_COLUMN])
+    assert value_token("category", "IMAGES") in set(image_fields[TOKEN_COLUMN])
+    for fields in text_fields_list:
+        assert value_token("category", "TEXT") in set(fields[TOKEN_COLUMN])
+    assert value_token("category", "TEXT") not in set(image_fields[TOKEN_COLUMN])
     assert len({fields["content_revision"] for fields in all_fields}) == 3
     for fields in all_fields:
         payload = json.loads(fields["business_meta_payload"])
         assert payload["index_generation"] == fields["index_generation"]
         assert payload["content_revision"] == fields["content_revision"]
-        assert payload["values"][0]["canonical"] == "SY215-C"
-        assert "@sha256:" in payload["values"][0]["source"]
+        model = next(value for value in payload["values"] if value["field"] == "modelid")
+        assert model["canonical"] == "SY215-C"
+        assert "@sha256:" in model["source"]
+        category = next(value for value in payload["values"] if value["field"] == "category")
+        # A derived key states that the file's own block produced it, even when
+        # the same record also inherits a corpus sidecar.
+        assert "inline:" in category["source"]
+        source = next(value for value in payload["values"] if value["field"] == "source_uri")
+        assert source["canonical"] == fields["uri"].upper()
+
+
+async def test_a_chapter_narrowed_by_model_still_answers_with_its_figure(environment, embedding):
+    """``机型`` + ``images`` is one query, not two disjoint result sets.
+
+    The joint image row stated its own modality and pointed at the chapter, but it
+    carried none of the chapter's authored fields: an occurrence is a VLM summary
+    plus a token-budgeted context window, and the ``- 机型:`` block is a property
+    of the source document's opening, not of the window. So filtering a machine
+    model and asking for its figures answered empty over a manual that has both,
+    while the same filter over text hit the chapter.
+    """
+    e = environment
+    body = (
+        "# 10.2 进行操作时的注意事项\n\n"
+        "- 机型: SY215-C\n"
+        "- page: p.638-641\n\n"
+        "进行装置的拆卸或安装（分解或装配）时，必须遵行下列注意事项。\n"
+    )
+    messages = await text(e, body)
+    image_uri = ROOT + "/diagram.png"
+    occurrence = {
+        "summary": "pump diagram",
+        # The shape the occurrence builder really produces: a decorated, budgeted
+        # window the leading-block scan cannot read a provenance bullet out of.
+        "context": f"Source URI: {URI}\nChapter: 拆装\nNeighboring source text:\n起吊时选用足够强度的设备。\n",
+        "context_uri": URI,
+        "context_hash": "h" * 64,
+        "source_meta": {"machine_model": "SY215-C", "page": "p.638-641"},
+    }
+    image = EmbeddingMsg(
+        [
+            {"type": "text", "text": "pump diagram"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AQ=="}},
+        ],
+        {
+            "uri": image_uri,
+            "account_id": "acct",
+            "namespace_id": "resources",
+            "context_type": "resource",
+            "level": 2,
+            "abstract": "pump diagram",
+            "_require_joint_image_embedding": True,
+        },
+    )
+    old = embedding.chunking.publish_content
+    embedding.chunking.publish_content = False
+    e.queue.messages.clear()
+    try:
+        await enqueue_image_plan(image, embedding, e.queue, occurrences=[occurrence])
+    finally:
+        embedding.chunking.publish_content = old
+
+    image_fields = e.queue.messages[0].context_data
+    text_fields = [message.context_data for message in messages]
+
+    def predicate(*pairs):
+        dictionary = BusinessDictionary("manuals")
+        for field, value in pairs:
+            dictionary.add_value(field, value)
+        return token_filter(
+            resolve_query(dictionary, meta_filters=[MetaFilter(field, (value,)) for field, value in pairs])
+        )
+
+    schema = {TOKEN_COLUMN: "list<string>"}
+    figures = predicate(("category", "images"), ("machine_model", "SY215-C"))
+    prose = predicate(("category", "text"), ("machine_model", "SY215-C"))
+    assert matches_filter(image_fields, figures, schema)
+    assert not any(matches_filter(fields, figures, schema) for fields in text_fields)
+    assert any(matches_filter(fields, prose, schema) for fields in text_fields)
+    assert not matches_filter(image_fields, prose, schema)
+    # The chapter stays the record's citation target, so the hit is traceable.
+    payload = json.loads(image_fields["business_meta_payload"])
+    source = next(value for value in payload["values"] if value["field"] == "source_uri")
+    assert source["canonical"] == URI.upper()
+    page = next(value for value in payload["values"] if value["field"] == "page")
+    assert page["raw"] == "p.638-641"
+    assert "inline:" in page["source"]
 
 
 async def test_metadata_change_publishes_with_content_and_old_lease_stays_fixed(environment):
@@ -126,6 +230,27 @@ async def test_directory_inheritance_nearest_sidecar_and_batch_edit_rejection(en
     selected = await load_business_meta(e.fs, child + "/part.md", e.ctx)
     assert selected["values"]["modelid"] == "SY75-C"
     assert selected["source"].startswith(child + "/" + SIDECAR)
+
+
+async def test_user_sidecar_walk_stops_at_the_user_space(environment):
+    """The shared ``viking://user`` container is not a directory: probing
+    ``viking://user/.business_meta.json`` names another user and is denied, so
+    the walk must stop at the caller's own user space instead."""
+    e = environment
+    probed: list[str] = []
+    original = e.fs.read_file_bytes
+
+    async def recording_read(uri, *args, **kwargs):
+        probed.append(uri)
+        return await original(uri, *args, **kwargs)
+
+    e.fs.read_file_bytes = recording_read
+    uri = "viking://user/default/resources/manual/chapter.md"
+    bundle = await load_business_meta(e.fs, uri, e.ctx)
+    assert bundle["values"] is None
+    assert probed[0] == "viking://user/default/resources/manual/" + SIDECAR
+    assert probed[-1] == "viking://user/default/" + SIDECAR
+    assert "viking://user/" + SIDECAR not in probed
 
 
 def test_same_field_or_cross_field_and_and_unknown_are_real_list_filters():

@@ -21,7 +21,7 @@
 
 ## 1.1 Active tool surface (agentic calls)
 
-- **MCP-based harnesses (claude-code, codex/trae-cli, cursor, trae/trae-cn, zcode, opencode) share an identical active tool surface comprising 15 tools.** The server centrally defines these tools. The plugin reads `~/.openviking/ovcli.conf` via its proxy and establishes a connection to the server-defined MCP tools.
+- **MCP-based harnesses (claude-code, codex/trae-cli, cursor, trae/trae-cn, zcode, opencode) share an identical active tool surface comprising 17 tools.** The server centrally defines these tools. The plugin reads `~/.openviking/ovcli.conf` via its proxy and establishes a connection to the server-defined MCP tools.
 
 - `trae-cli` means TraeCode CLI 2.0 (2.0 only). It is installed via a `codex` plugin alias and maintains format compatibility with `codex`. Therefore, it is consolidated into the `codex` row in the matrices below.
 
@@ -87,21 +87,23 @@ These tools are defined on the server side, and future updates will be centrally
 
 | # | Tool | What it does | Key parameters (definition line) |
 |---|---|---|---|
-| 1 | `find` | Fast semantic search requiring no session context | `query, target_uri="", limit=10, min_score=0.35, level, context_type` (`:259`) |
+| 1 | `find` | Fast semantic search requiring no session context | `query, target_uri="", limit=10, min_score=0.35, level, context_type` (`:252`) |
 | 2 | `search` | Deep search, featuring optional `session_id` integration and intent analysis | The session is only loaded if the server has `retrieval.enable_intent` enabled (defaults to true) (`:285`, `:302-304`) |
-| 3 | `read` | Read the full text of one or more `viking://` files | Uses a concurrency semaphore of 10; a single failure yields `(nothing found at <uri>)` rather than raising an exception (`:389`) |
-| 4 | `list` | List a directory (function name `ls`, explicitly registered as `list`) | `recursive=False` (`:423`) |
-| 5 | `tree` | Recursive directory tree | `level_limit=3, node_limit=1000, include_abstract=False` (`:449`) |
+| 3 | `read` | Read the full text of one or more `viking://` files | Uses a concurrency semaphore of 10; a single failure yields `(nothing found at <uri>)` rather than raising an exception (`:581`) |
+| 4 | `list` | List a directory (function name `ls`, explicitly registered as `list`) | `recursive=False` (`:724`) |
+| 5 | `tree` | Recursive directory tree | `level_limit=3, node_limit=1000, include_abstract=False` (`:786`) |
 | 6 | `remember` | Write long-term memory | Internally creates a one-shot session (`mcp-store-<uuid12>`) and immediately calls `commit_async` (`:504-523`). This is the only commit entry point on the MCP surface, as there is no explicit commit tool. |
 | 7 | `write` | Write a `viking://` file | `mode=replace\|append\|create`; `replace` falls back to `create` if not found. New files must use an extension from the allowlist: `.md .txt .json .yaml .yml .toml .py .js .ts`. Writable domains are limited to `resources/user/agent`; directories like `skills/`, `peers/`, `privacy/`, and `sessions/` under the user root are read-only. Existing `.abstract.md` / `.overview.md` sidecars may be body-updated, but public APIs cannot create them (`:529`; `content_write.py:60-81`) |
-| 8 | `edit` | Exact string replacement | Supplying an empty `old_string`, finding zero matches, or finding multiple matches without `replace_all` will raise an error and leave the file content unchanged (`:569`) |
+| 8 | `edit` | Exact string replacement | Supplying an empty `old_string`, finding zero matches, or finding multiple matches without `replace_all` will raise an error and leave the file content unchanged (`:927`) |
 | 9 | `add_resource` | Resource ingestion (remote URL / signed upload of a local file / Connector) | `watch_interval` is defined in minutes (0 disables watching). The local-path branch generates a signed upload URL (default TTL of 600s), and ingestion triggers automatically post-upload without requiring a subsequent API call (`:723-947`) |
-| 10 | `list_watches` | List watch subscriptions; not yet supported on the commercial edition | Returns an error string if the scheduler is not running (`:958`) |
-| 11 | `cancel_watch` | Cancel by `to_uri`; not yet supported on the commercial edition | Deliberately does not expose pause/resume/trigger/update (`:990`) |
-| 12 | `grep` | Regex content search | Multiple patterns run concurrently (semaphore of 10), `node_limit=10` (`:1032`) |
-| 13 | `glob` | Filename glob | `node_limit=100` (`:1084`) |
-| 14 | `forget` | Permanently deletes a URI (unrecoverable) | `recursive=False` by default; type boundaries in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:1110-1117`) |
-| 15 | `health` | Health check | No parameters (`:1123`) |
+| 10 | `list_watches` | List watch subscriptions; not yet supported on the commercial edition | Returns an error string if the scheduler is not running (`:1340`) |
+| 11 | `cancel_watch` | Cancel by `to_uri`; not yet supported on the commercial edition | Deliberately does not expose pause/resume/trigger/update (`:1372`) |
+| 12 | `grep` | Regex content search | Multiple patterns run concurrently (semaphore of 10), `node_limit=10` (`:1415`) |
+| 13 | `glob` | Filename glob | `node_limit=100` (`:1481`) |
+| 14 | `index_search` | Keyword search over directory catalogues (`index.md`) under a URI — the agent locate leg; catalogue entries only, no body content, vectors, or BM25 rows | `uri`, `query` required; `limit=20`, `case_insensitive=False`, `level_limit=10`, `include_content=False` (`:1522`) |
+| 15 | `vector_search` | Semantic retrieval over the vector + BM25 hybrid fusion; no session context, query expansion, or context assembly | Same recall caliber as `find`; `min_score` names the score floor (`:1569`) |
+| 16 | `forget` | Permanently deletes a URI (unrecoverable) | `recursive=False` by default; type boundaries in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:1110-1117`) |
+| 17 | `health` | Health check | No parameters (`:1641`) |
 
 Supporting mechanisms:
 
@@ -171,7 +173,7 @@ Core modules at a glance (detailed further in the per-dimension sections):
 | opencode | npm plugin `@openviking/opencode-plugin` (its config hook dynamically injects the MCP entry) | One-line `--harness opencode` (uses npm registration with a proxy snapshot fallback) / manual npm / from source | `oc-<id>`; subagents use `oc-<parent>__subagent-<child>` | `openviking-config.json` (searched at 4 levels) + env | ✅ |
 | dsh | In-process Cordis plugin (`cordis.patch.yml` plugin group) | Unified installer (asks for the profile, default `web`), or `dsh plugin --profile web add @openviking/dsh-memory-plugin` | `dsh-<session.id as-is>`; each subagent is assigned its own session | cordis patch config + 4 env vars (credentials: patch > env; behavior toggles: env > patch) | ❌ |
 | pi | Native pi extension (loaded from a directory, with TypeScript transpiled on the fly via jiti) | One-line `--harness pi` (including `pi install` registration) | `pi-<piSessionId>` | `config.json` (credential fields are resolved via the shared credential chain) + env | ✅ |
-| openclaw | context-engine plugin (`ownsCompaction:true`) + 15 tools + 5 slash + 4 hooks + HTTP routes | ClawHub: run `openclaw plugins install clawhub:@openviking/openclaw-plugin` alongside `openclaw openviking setup` / npm installer / TOS offline bundle | A UUID is lowercased as-is, otherwise `sha256(sessionKey)`; `memory_store` temporary sessions use `memory-store-<ts>-<rand>` | `plugins.entries.openviking.config` in `openclaw.json` (strictly validated: unknown keys or invalid values force the plugin into setup-only mode) + a few env vars | ✅ `openclaw openviking setup` (interactive/non-interactive + key role probing + version compatibility check) |
+| openclaw | context-engine plugin (`ownsCompaction:true`) + 17 tools + 5 slash + 4 hooks + HTTP routes | ClawHub: run `openclaw plugins install clawhub:@openviking/openclaw-plugin` alongside `openclaw openviking setup` / npm installer / TOS offline bundle | A UUID is lowercased as-is, otherwise `sha256(sessionKey)`; `memory_store` temporary sessions use `memory-store-<ts>-<rand>` | `plugins.entries.openviking.config` in `openclaw.json` (strictly validated: unknown keys or invalid values force the plugin into setup-only mode) + a few env vars | ✅ `openclaw openviking setup` (interactive/non-interactive + key role probing + version compatibility check) |
 | hermes | Hermes bundled MemoryProvider (ships with Hermes; no plugin installation required) | Run `hermes memory setup openviking` (interactive curses wizard), or manually run `config set memory.provider openviking` + `.env` | Hermes generates `%Y%m%d_%H%M%S_<hex6>`; the plugin uses it verbatim | `.env` (`OPENVIKING_*`) or linked ovcli.conf (`use_ovcli_config` mode clears the 5 corresponding variables from .env) + config.yaml | ✅ (multi-level menu) |
 | ov CLI | Native Rust binary | npm `@openviking/cli` / `uv tool install openviking` / cargo / GitHub Releases | Does not manage its own session (`ov chat` defaults to the machine-uid) | `ovcli.conf` (multiple profiles) + a few env vars | ✅ `ov config` (TUI wizard) |
 
@@ -519,7 +521,7 @@ Each card serves as a quick-reference entry point. It records only the facts and
 ## claude-code
 
 - **Integration docs**: [Claude Code Memory Plugin](./02-claude-code.md)
-- **Form**: A Claude Code plugin (marketplace) featuring a four-in-one architecture: 9 hooks, an MCP proxy (passing through 15 tools), a slash command, a statusline, and 1 experience skill. Version 0.4.4.
+- **Form**: A Claude Code plugin (marketplace) featuring a four-in-one architecture: 9 hooks, an MCP proxy (passing through 17 tools), a slash command, a statusline, and 1 experience skill. Version 0.4.4.
 - **Capability highlights**: The harness with the broadest hook coverage — `SessionStart` (120s) / `UserPromptSubmit` (60s) / `PostToolUse:Read` (5s, the skill-experience hook, off by default) / `PreToolUse:Read|Glob|Grep` (5s, `uri-guard`) / `Stop` (45s) / `PreCompact` (30s) / `SessionEnd` (30s) / `SubagentStart` (10s) / `SubagentStop` (45s). Recall digesting is enabled by default (local `claude -p`, falling back to the server-side rewrite automatically when the local CLI is unavailable, [§3.2.5](#_3-2-5-recall-digest)). Provides full sub-session isolation via `SubagentStart`/`Stop` ([§3.3.5](#_3-3-5-subagent-session-comparison)), along with a statusline, slash command, and `uri-guard`. All shutdown paths except `kill -9` trigger a commit ([§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix)).
 - **Behavior notes**: The session ID format is `cc-<raw_CC_session_id>`, while subagents use `…__subagent-<agent_id>`. `Stop` commits at a threshold of 20000 (keep 10), and `PreCompact` commits synchronously. Automatic recall excludes resources ([§3.2.1](#_3-2-1-mechanism-foundation-one-shared-pipeline-two-server-side-paths)). The incremental cursor is stored in `/tmp` (if cleared by the system, the entire session is pushed again).
 - **Configuration**: Configured via environment variables, `ovcli.conf` (`plugin.claude_code`), and `ov.conf` (`claude_code` as per [§3.1.4](#_3-1-4-configuration-layers)), offering roughly 40 tunable parameters. The compressor command and model are hardcoded to `claude`/`sonnet`/`low`/30s.
@@ -670,13 +672,13 @@ If your preferred agent or harness is not among the 11 listed previously, you ca
 
 | Path | Effort | Agent-initiated tool surface | Auto recall/capture hooks | Session/commit | Compaction takeover |
 |---|---|---|---|---|---|
-| ① [Direct MCP connection](./06-mcp-clients.md) | Minutes (fill in one config block) | ✅ All 15 tools | ❌ The model calls them itself | Only `remember` creates a temporary session | ❌ |
+| ① [Direct MCP connection](./06-mcp-clients.md) | Minutes (fill in one config block) | ✅ All 17 tools | ❌ The model calls them itself | Only `remember` creates a temporary session | ❌ |
 | ② HTTP API / SDK / [LangChain](./07-langchain-langgraph.md) | Hours (requires code) | Flexible (call REST as needed) | Custom implementation | Custom implementation (or use the LangChain middleware) | ❌ |
-| ③ Reuse shared-core / the [Agent Plugins portable package](./15-agent-plugins.md) | Days (requires hook adapters) | ✅ 15 tools (through the MCP proxy) | ✅ Full recall/capture/commit/pending set | ✅ | Depends on which events you wire up |
+| ③ Reuse shared-core / the [Agent Plugins portable package](./15-agent-plugins.md) | Days (requires hook adapters) | ✅ 17 tools (through the MCP proxy) | ✅ Full recall/capture/commit/pending set | ✅ | Depends on which events you wire up |
 
 ## 6.2 Path ①: Direct MCP connection (recommended starting point)
 
-Any MCP-capable agent simply needs to point its `mcpServers` configuration to the server's `/mcp` endpoint (refer to [MCP Clients](./06-mcp-clients.md) to locate this configuration for each client). Doing so instantly unlocks all 15 tools ([§2.1](#_2-1-server-side-mcp-tool-surface)). The minimal configuration looks like this:
+Any MCP-capable agent simply needs to point its `mcpServers` configuration to the server's `/mcp` endpoint (refer to [MCP Clients](./06-mcp-clients.md) to locate this configuration for each client). Doing so instantly unlocks all 17 tools ([§2.1](#_2-1-server-side-mcp-tool-surface)). The minimal configuration looks like this:
 
 ```json
 {
@@ -718,8 +720,8 @@ If you need the full spectrum of automation—recall, capture, commit, and pendi
 |---|---|---|---|---|---|
 | **A. [Open WebUI](./08-community-plugins.md)** | Standalone FastAPI OpenAPI tool server | 7 local OpenAPI routes (`ov_search`/`ov_recall_memories`/`ov_add_memory`/`ov_list_memories`/`ov_read_resource`/`ov_add_resource`/`ov_session_status`), no deletion tool | No session concept | Most lightweight: bare `httpx`, no retries or negative caching; `/health` only echoes the config and does not probe OpenViking. | Inactive until the process is explicitly started. |
 | **B. [LangChain/LangGraph](./07-langchain-langgraph.md)** | Python SDK adapter layer (retriever/tools/store/middleware/recorder) | `create_openviking_tools()` provides 12 StructuredTools (`viking_forget` is not in the agent profile by default) | `thread_id`/`session_id` come from the caller; `CommitPolicy` defaults to `never` | Most robust in this group: read-only methods automatically retry once, writes never retry (to prevent duplicates), and partial successes raise a structured exception that can be retried as a slice. | Requires explicit construction before taking effect. |
-| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | Portable package: `plugin.json` + `skills/` + `mcp.json` (stdio→HTTP proxy) | MCP passthrough for all 15 tools; intentionally excludes hooks (recall relies on a skill instructing the model). | Only `remember` creates a temporary session | Retries handled at the MCP proxy layer (401/403 triggers credential swap, 400/404 triggers re-initialization; max 1 retry each). | Active as soon as loaded by the client. |
-| **D. [Direct MCP Connection](./06-mcp-clients.md)** | No local components, connects straight to `/mcp` | Same as C (15 tools) | Same as C | Depends entirely on the client. | `/mcp` is always on. |
+| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | Portable package: `plugin.json` + `skills/` + `mcp.json` (stdio→HTTP proxy) | MCP passthrough for all 17 tools; intentionally excludes hooks (recall relies on a skill instructing the model). | Only `remember` creates a temporary session | Retries handled at the MCP proxy layer (401/403 triggers credential swap, 400/404 triggers re-initialization; max 1 retry each). | Active as soon as loaded by the client. |
+| **D. [Direct MCP Connection](./06-mcp-clients.md)** | No local components, connects straight to `/mcp` | Same as C (17 tools) | Same as C | Depends entirely on the client. | `/mcp` is always on. |
 | **E. [Log Ingestion](./09-log-ingestion.md)** | `openviking-server ingest` CLI (runs on the machine hosting the logs, importing them in reverse) | None (write-only, no recall) | Session ID `{prefix}__{harness}__{sanitized native id}`; commit token 6000 / idle 5s / keep 0 | The only integration featuring crash recovery: utilizes a SQLite cursor store, single-instance locking, and a reconciliation process to verify batch delivery. | Disabled by default on two levels (`ingest.enabled` and each harness's individual `enabled` flag are both false); adapters available for claude_code, codex, hermes, opencode, openclaw, and cursor. |
 | **F. [OpenViking Helper](./14-openviking-helper.md)** | Closed-source desktop app | — | — | — | Outside the scope of this codebase. |
 

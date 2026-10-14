@@ -190,6 +190,32 @@ async def test_run_with_telemetry_returns_usage_and_payload():
 
 
 @pytest.mark.asyncio
+async def test_run_with_telemetry_is_resolvable_by_a_queue_worker():
+    """A worker continuing the request only carries its telemetry id across threads.
+
+    Registry resolution is how it rebinds the request context; without a handle the
+    work it enqueues is attributed to a fresh id and the request's wait settles early.
+    """
+    import asyncio
+
+    from openviking.telemetry.context import get_current_telemetry
+    from openviking.telemetry.execution import run_with_telemetry
+    from openviking.telemetry.registry import resolve_telemetry
+
+    async def _run():
+        telemetry_id = get_current_telemetry().telemetry_id
+        worker_view = await asyncio.to_thread(resolve_telemetry, telemetry_id)
+        return telemetry_id, worker_view
+
+    execution = await run_with_telemetry(operation="content.write", telemetry=False, fn=_run)
+
+    telemetry_id, worker_view = execution.result
+    assert worker_view is not None
+    assert worker_view.telemetry_id == telemetry_id
+    assert resolve_telemetry(telemetry_id) is None
+
+
+@pytest.mark.asyncio
 async def test_run_with_telemetry_raises_invalid_argument_for_bad_request():
     from openviking.telemetry.execution import run_with_telemetry
 

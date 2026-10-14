@@ -30,7 +30,21 @@ from openviking.server.user_config import (
     read_user_config,
     user_config_backup_uri,
 )
-from openviking.session.memory.account_templates import EDITABLE_MEMORY_TEMPLATE_FIELDS
+from openviking.session.memory.account_templates import (
+    EDITABLE_MEMORY_TEMPLATE_FIELDS,
+    account_memory_template_path,
+    resolve_account_memory_registry,
+)
+from openviking.session.memory.extract_loop import ExtractLoop
+from openviking.session.memory.memory_isolation_handler import MemoryIsolationHandler
+from openviking.session.memory.memory_type_registry import (
+    MemoryTypeRegistry,
+    get_default_registry,
+)
+from openviking.session.memory.patch_merge_context_provider import PatchMergeContextProvider
+from openviking.session.memory.session_extract_context_provider import (
+    SessionExtractContextProvider,
+)
 from openviking.service.core import OpenVikingService
 from openviking.service.deletion import setup_deletion
 from openviking.service.task_store import (

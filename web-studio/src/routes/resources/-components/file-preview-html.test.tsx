@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { VikingFsEntry } from '../-types/viking-fm'
 import { FilePreview } from './file-preview'
+import { getContentDownload } from '#/lib/ov-client'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -34,6 +35,17 @@ const markdown = [
   '<script>window.__pwned = true</script>',
 ].join('\n')
 
+const figureMarkdown = [
+  '<figure>',
+  '    <img src="kb://images/844935734363811" vikingsrc="viking://resources/doc/images/844935734363811.jpg"/>',
+  '    <figcaption>',
+  '    caption',
+  '    </figcaption>',
+  '</figure>',
+].join('\n')
+
+const previewContent = { markdown }
+
 vi.mock('../-hooks/viking-fm', () => ({
   useInvalidateVikingFs: () => ({
     invalidateList: vi.fn(),
@@ -46,7 +58,7 @@ vi.mock('../-hooks/viking-fm', () => ({
     isFetching: false,
     isLoading: false,
     preview: {
-      content: markdown,
+      content: previewContent.markdown,
       fileType: 'markdown',
       shouldAutoRead: true,
     },
@@ -89,6 +101,11 @@ function renderPreview() {
 }
 
 describe('FilePreview Markdown raw HTML', () => {
+  beforeEach(() => {
+    previewContent.markdown = markdown
+    vi.mocked(getContentDownload).mockReset()
+  })
+
   it('renders raw HTML elements instead of escaping them', () => {
     const { container } = renderPreview()
 
@@ -114,5 +131,34 @@ describe('FilePreview Markdown raw HTML', () => {
     const { container } = renderPreview()
 
     expect(container.querySelector('script')).toBeNull()
+  })
+
+  it('downloads a figure image through its vikingsrc pointer', async () => {
+    previewContent.markdown = figureMarkdown
+    vi.mocked(getContentDownload).mockResolvedValue({
+      data: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }),
+    } as never)
+    // jsdom does not implement object URLs; the preview turns the blob into one.
+    const objectUrls = URL as typeof URL & {
+      createObjectURL?: (blob: Blob) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const createObjectURL = vi.fn(() => 'blob:preview')
+    objectUrls.createObjectURL = createObjectURL
+    objectUrls.revokeObjectURL = vi.fn()
+
+    const { container } = renderPreview()
+
+    await waitFor(() => {
+      const image = container.querySelector('img')
+      expect(image?.getAttribute('src')).toBe('blob:preview')
+    })
+    expect(getContentDownload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: {
+          uri: 'viking://resources/doc/images/844935734363811.jpg',
+        },
+      }),
+    )
   })
 })

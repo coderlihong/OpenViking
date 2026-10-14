@@ -86,6 +86,22 @@ def _normalize(title: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", title)).casefold()
 
 
+#: A line that *reads* like a chapter anchor: an Arabic section number (``10.2``)
+#: or a Chinese chapter marker (``第 10 章``).  Spacing between the marker and the
+#: number/title is not under the corpus author's control -- extracted PDF text
+#: renders ``第 10 章 故障诊断`` with the very spaces the typeset title carries --
+#: so the marker is matched with explicit whitespace tolerance instead of the
+#: unspelled form only.  ``\s*\S`` at the end keeps a bare ``第 1 章`` line, which
+#: states nothing, from becoming an anchor.
+_NUMBERED_TITLE = re.compile(
+    r"(?:"
+    r"\d+(?:[.．]\d+)*[.、．]?"
+    r"|第\s*[0-9０-９]+\s*[章节篇部]"
+    r"|第\s*[一二三四五六七八九十百零两]+\s*[章节篇部]"
+    r")\s*\S"
+)
+
+
 def _ast(content: str) -> tuple[list[Any], list[int]]:
     offsets = [0]
     for line in content.splitlines(keepends=True):
@@ -142,7 +158,7 @@ def _bookmark_plan(
         pos = offsets[first]
         for line in lines:
             title = line.strip()
-            numbered = re.match(r"^(?:\d+(?:[.．]\d+)*[.、．]?\s*|第.+?[章节篇])\S", title)
+            numbered = _NUMBERED_TITLE.match(title)
             if _normalize(title) in titles and (numbered or len(lines) == 1) and pos not in starts:
                 candidates.append(Heading(pos, pos + len(line), title, 1))
                 starts.add(pos)

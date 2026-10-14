@@ -23,6 +23,7 @@ from openviking.storage.ovpack.operations import (
     import_ovpack,
     restore_ovpack,
 )
+from openviking.storage.vector_ids import chunk_vector_record_id, vector_record_id
 from openviking_cli.exceptions import InvalidArgumentError, NotFoundError
 from openviking_cli.session.user_id import UserIdentifier
 
@@ -1119,3 +1120,366 @@ async def test_import_top_level_scope_package_requires_root_target(
         await import_ovpack(
             FakeVikingFS(), str(temp_ovpack_path), "viking://resources", request_ctx
         )
+
+
+HIERARCHICAL_ROOT = "viking://resources/big"
+HIERARCHICAL_FILE = f"{HIERARCHICAL_ROOT}/chapter.md"
+
+
+class HierarchicalExportVikingFS(FakeExportVikingFS):
+    """One directory with L0/L1 sidecars plus one chunked markdown file."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.text_files = {
+            f"{HIERARCHICAL_ROOT}/.abstract.md": "big root abstract",
+            f"{HIERARCHICAL_ROOT}/.overview.md": "big root overview",
+        }
+        self.binary_files = {HIERARCHICAL_FILE: b"# chapter\nbody body body\n"}
+
+    async def tree(
+        self,
+        uri: str,
+        show_all_hidden: bool = False,
+        node_limit=None,
+        level_limit=None,
+        ctx=None,
+    ):
+        assert uri == HIERARCHICAL_ROOT
+        return [
+            {
+                "rel_path": ".abstract.md",
+                "uri": f"{HIERARCHICAL_ROOT}/.abstract.md",
+                "isDir": False,
+                "size": 17,
+            },
+            {
+                "rel_path": ".overview.md",
+                "uri": f"{HIERARCHICAL_ROOT}/.overview.md",
+                "isDir": False,
+                "size": 17,
+            },
+            {
+                "rel_path": "chapter.md",
+                "uri": HIERARCHICAL_FILE,
+                "isDir": False,
+                "size": 25,
+            },
+        ]
+
+
+def hierarchical_vector_rows() -> list[dict[str, object]]:
+    """Directory L0/L1 rows plus one file summary row and twelve chunk rows."""
+    rows: list[dict[str, object]] = [
+        {
+            "uri": HIERARCHICAL_ROOT,
+            "type": "text",
+            "context_type": "resource",
+            "level": 0,
+            "abstract": "big root abstract",
+            "vector": [10.0, 10.5, 10.25],
+        },
+        {
+            "uri": HIERARCHICAL_ROOT,
+            "type": "text",
+            "context_type": "resource",
+            "level": 1,
+            "abstract": "big root overview",
+            "vector": [11.0, 11.5, 11.25],
+        },
+        {
+            "uri": HIERARCHICAL_FILE,
+            "type": "text",
+            "context_type": "resource",
+            "level": 2,
+            "name": "chapter.md",
+            "abstract": "chapter summary",
+            "vector": [12.0, 12.5, 12.25],
+        },
+    ]
+    for ordinal in range(12):
+        rows.append(
+            {
+                "uri": HIERARCHICAL_FILE,
+                "type": "text",
+                "context_type": "resource",
+                "level": 2,
+                "chunk_id": f"chunk-{ordinal:02d}",
+                "parent_chunk_id": "parent-01",
+                "chunk_ordinal": ordinal,
+                "chunk_text": f"chunk body {ordinal:02d}",
+                "parent_text": "parent body",
+                "content_revision": "rev-1",
+                "chunker_version": "test-chunker",
+                "index_plan_id": "plan-1",
+                "index_generation": "gen-1",
+                "image_context_uri": HIERARCHICAL_FILE,
+                "business_meta_payload": json.dumps(
+                    {"category": "text", "machine_model": "TEST10"}, ensure_ascii=False
+                ),
+                "search_tags": ["TEST10"],
+                "abstract": f"chunk body {ordinal:02d}",
+                "vector": [float(ordinal), float(ordinal) + 0.5, float(ordinal) + 0.25],
+            }
+        )
+    return rows
+
+
+class RowTableVectorStore(FakeVectorStore):
+    """Honours the query limit, like engines that cap how many rows they return."""
+
+    def __init__(self, rows: list[dict[str, object]] | None = None) -> None:
+        super().__init__()
+        self.rows = rows or []
+
+    async def filter(self, **kwargs):
+        uri = kwargs["filter"].value
+        limit = kwargs.get("limit", 10)
+        matched = [dict(row) for row in self.rows if row.get("uri") == uri]
+        return matched[:limit]
+
+
+def _exported_index_records(path: Path, root_name: str) -> list[dict[str, object]]:
+    with zipfile.ZipFile(path, "r") as zf:
+        return [
+            json.loads(line)
+            for line in zf.read(f"{root_name}/_ovpack/index_records.jsonl")
+            .decode("utf-8")
+            .splitlines()
+        ]
+
+
+@pytest.mark.asyncio
+async def test_export_ovpack_carries_every_row_and_chunk_linkage(
+    temp_ovpack_path: Path, request_ctx: RequestContext
+):
+    await export_ovpack(
+        HierarchicalExportVikingFS(),
+        HIERARCHICAL_ROOT,
+        str(temp_ovpack_path),
+        ctx=request_ctx,
+        vector_store=RowTableVectorStore(hierarchical_vector_rows()),
+        include_vectors=True,
+    )
+
+    index_records = _exported_index_records(temp_ovpack_path, "big")
+    assert {record["level"] for record in index_records if record["path"] == ""} == {0, 1}
+
+    chapter_records = [record for record in index_records if record["path"] == "chapter.md"]
+    assert len(chapter_records) == 13
+    summary = [record for record in chapter_records if not record["scalars"].get("chunk_id")]
+    assert len(summary) == 1
+    assert summary[0]["scalars"]["abstract"] == "chapter summary"
+
+    chunk_records = sorted(
+        (record for record in chapter_records if record["scalars"].get("chunk_id")),
+        key=lambda record: record["scalars"]["chunk_ordinal"],
+    )
+    assert [record["scalars"]["chunk_id"] for record in chunk_records] == [
+        f"chunk-{ordinal:02d}" for ordinal in range(12)
+    ]
+    linked = next(
+        record for record in chunk_records if record["scalars"]["chunk_id"] == "chunk-03"
+    )
+    assert linked["scalars"]["parent_chunk_id"] == "parent-01"
+    assert linked["scalars"]["parent_text"] == "parent body"
+    assert linked["scalars"]["chunk_text"] == "chunk body 03"
+    assert linked["scalars"]["chunk_ordinal"] == 3
+    assert linked["scalars"]["content_revision"] == "rev-1"
+    assert linked["scalars"]["image_context_uri"] == HIERARCHICAL_FILE
+    assert json.loads(linked["scalars"]["business_meta_payload"]) == {
+        "category": "text",
+        "machine_model": "TEST10",
+    }
+    assert linked["scalars"]["search_tags"] == ["TEST10"]
+
+
+@pytest.mark.asyncio
+async def test_import_ovpack_restores_hierarchical_vectors_with_canonical_ids(
+    temp_ovpack_path: Path, request_ctx: RequestContext, monkeypatch: pytest.MonkeyPatch
+):
+    embedding_metadata = {
+        "provider": "test",
+        "model": "demo",
+        "input": "text",
+        "dimensions": 3,
+    }
+    monkeypatch.setattr(
+        "openviking.storage.ovpack.vectors.embedding_snapshot_metadata",
+        lambda dimensions: {**embedding_metadata, "dimensions": dimensions},
+    )
+    monkeypatch.setattr(
+        "openviking.storage.ovpack.vectors.current_embedding_metadata",
+        lambda: embedding_metadata,
+    )
+
+    await export_ovpack(
+        HierarchicalExportVikingFS(),
+        HIERARCHICAL_ROOT,
+        str(temp_ovpack_path),
+        ctx=request_ctx,
+        vector_store=RowTableVectorStore(hierarchical_vector_rows()),
+        include_vectors=True,
+    )
+
+    vector_store = RowTableVectorStore()
+    result = await import_ovpack(
+        FakeVikingFS(),
+        str(temp_ovpack_path),
+        "viking://resources/imported",
+        request_ctx,
+        vector_mode="require",
+        vector_store=vector_store,
+    )
+
+    assert result == "viking://resources/imported/big"
+    imported_root = result
+    imported_file = f"{imported_root}/chapter.md"
+    account_id = request_ctx.account_id
+    assert len(vector_store.upserts) == 15
+    by_id = {str(row["id"]): row for row in vector_store.upserts}
+    assert len(by_id) == 15
+
+    abstract_row = by_id[vector_record_id(account_id, imported_root, 0)]
+    assert abstract_row["abstract"] == "big root abstract"
+    assert abstract_row["vector"] == pytest.approx([10.0, 10.5, 10.25])
+    overview_row = by_id[vector_record_id(account_id, imported_root, 1)]
+    assert overview_row["abstract"] == "big root overview"
+    assert overview_row["vector"] == pytest.approx([11.0, 11.5, 11.25])
+
+    summary_row = by_id[vector_record_id(account_id, imported_file, 2)]
+    assert summary_row["abstract"] == "chapter summary"
+    assert summary_row["vector"] == pytest.approx([12.0, 12.5, 12.25])
+
+    for ordinal in range(12):
+        chunk = by_id[
+            chunk_vector_record_id(account_id, imported_file, f"chunk-{ordinal:02d}")
+        ]
+        assert chunk["uri"] == imported_file
+        assert chunk["level"] == 2
+        assert chunk["parent_chunk_id"] == "parent-01"
+        assert chunk["parent_text"] == "parent body"
+        assert chunk["chunk_text"] == f"chunk body {ordinal:02d}"
+        assert chunk["content"] == f"chunk body {ordinal:02d}"
+        assert chunk["chunk_ordinal"] == ordinal
+        assert chunk["content_revision"] == "rev-1"
+        assert chunk["chunker_version"] == "test-chunker"
+        assert chunk["image_context_uri"] == HIERARCHICAL_FILE
+        assert json.loads(chunk["business_meta_payload"]) == {
+            "category": "text",
+            "machine_model": "TEST10",
+        }
+        assert chunk["search_tags"] == ["TEST10"]
+        assert chunk["vector"] == pytest.approx(
+            [float(ordinal), float(ordinal) + 0.5, float(ordinal) + 0.25]
+        )
+        assert "index_generation" not in chunk
+        assert "index_plan_id" not in chunk
+    assert {row["uri"] for row in vector_store.upserts} == {imported_root, imported_file}
+
+
+def stale_generation_rows() -> list[dict[str, object]]:
+    """One directory L0 record left live in three generations, out of order.
+
+    An interrupted publisher leaves older generations untombstoned; each carries
+    its own abstract and vector, and only the newest is current.
+    """
+    rows = hierarchical_vector_rows()
+    for row in rows:
+        if row["uri"] == HIERARCHICAL_ROOT and row["level"] == 0:
+            row["abstract"] = "abstract v1"
+            row["vector"] = [1.0, 1.0, 1.0]
+            row["created_at"] = "2026-10-10T17:27:02.000Z"
+            row["updated_at"] = "2026-10-10T17:27:02.000Z"
+    rows.append(
+        {
+            "uri": HIERARCHICAL_ROOT,
+            "context_type": "resource",
+            "level": 0,
+            "abstract": "abstract v3",
+            "vector": [3.0, 3.0, 3.0],
+            "created_at": "2026-10-10T17:43:23.000Z",
+            "updated_at": "2026-10-10T17:43:23.000Z",
+        }
+    )
+    rows.append(
+        {
+            "uri": HIERARCHICAL_ROOT,
+            "context_type": "resource",
+            "level": 0,
+            "abstract": "abstract v2",
+            "vector": [2.0, 2.0, 2.0],
+            "created_at": "2026-10-10T18:15:51.000Z",
+            "updated_at": "2026-10-10T18:15:51.000Z",
+        }
+    )
+    return rows
+
+
+def _level0_abstracts(path: Path) -> list[str]:
+    return [
+        record["scalars"]["abstract"]
+        for record in _exported_index_records(path, "big")
+        if record["path"] == "" and record["level"] == 0
+    ]
+
+
+@pytest.mark.asyncio
+async def test_export_orders_duplicate_generations_oldest_first(
+    temp_ovpack_path: Path, request_ctx: RequestContext
+):
+    await export_ovpack(
+        HierarchicalExportVikingFS(),
+        HIERARCHICAL_ROOT,
+        str(temp_ovpack_path),
+        ctx=request_ctx,
+        vector_store=RowTableVectorStore(stale_generation_rows()),
+        include_vectors=True,
+    )
+
+    assert _level0_abstracts(temp_ovpack_path) == ["abstract v1", "abstract v3", "abstract v2"]
+
+
+@pytest.mark.asyncio
+async def test_import_keeps_newest_generation_of_duplicate_rows(
+    temp_ovpack_path: Path, request_ctx: RequestContext, monkeypatch: pytest.MonkeyPatch
+):
+    embedding_metadata = {
+        "provider": "test",
+        "model": "demo",
+        "input": "text",
+        "dimensions": 3,
+    }
+    monkeypatch.setattr(
+        "openviking.storage.ovpack.vectors.embedding_snapshot_metadata",
+        lambda dimensions: {**embedding_metadata, "dimensions": dimensions},
+    )
+    monkeypatch.setattr(
+        "openviking.storage.ovpack.vectors.current_embedding_metadata",
+        lambda: embedding_metadata,
+    )
+
+    await export_ovpack(
+        HierarchicalExportVikingFS(),
+        HIERARCHICAL_ROOT,
+        str(temp_ovpack_path),
+        ctx=request_ctx,
+        vector_store=RowTableVectorStore(stale_generation_rows()),
+        include_vectors=True,
+    )
+
+    vector_store = RowTableVectorStore()
+    result = await import_ovpack(
+        FakeVikingFS(),
+        str(temp_ovpack_path),
+        "viking://resources/imported",
+        request_ctx,
+        vector_mode="require",
+        vector_store=vector_store,
+    )
+
+    level0_id = vector_record_id(request_ctx.account_id, result, 0)
+    writes = [row for row in vector_store.upserts if str(row["id"]) == level0_id]
+    assert [row["abstract"] for row in writes] == ["abstract v1", "abstract v3", "abstract v2"]
+    assert writes[-1]["vector"] == pytest.approx([2.0, 2.0, 2.0])
+    assert "index_generation" not in writes[-1]

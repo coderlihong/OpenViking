@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import default_target_directories
+from openviking.indexing.record_meta import meta_view, provenance_view
 from openviking.models.embedder.base import EmbedResult, embed_compat
 from openviking.models.rerank import RerankClient
 from openviking.retrieve.fusion import (
@@ -132,6 +133,7 @@ class HierarchicalRetriever:
         score_gte: bool = False,
         scope_dsl: Optional[FilterExpr | Dict[str, Any]] = None,
         level: Optional[List[int]] = None,
+        rerank_enabled: bool = True,
     ) -> QueryResult:
         """
         Execute hierarchical retrieval.
@@ -142,6 +144,9 @@ class HierarchicalRetriever:
             score_gte: True uses >=, False uses >
             scope_dsl: Additional scope constraints passed from public find/search filter
             level: Optional result level filter (0=L0, 1=L1, 2=L2)
+            rerank_enabled: False skips the rerank provider call and ranks by
+                fused order; scores then come from the RRF fusion, not the
+                reranker's 0-1 relevance domain.
         """
         t0 = time.monotonic()
         telemetry = get_current_telemetry()
@@ -214,6 +219,7 @@ class HierarchicalRetriever:
                 limit=limit,
                 root_uris=root_uris,
                 t0=t0,
+                rerank_enabled=rerank_enabled,
             )
 
         if mode == RetrieverMode.QUICK:
@@ -411,6 +417,7 @@ class HierarchicalRetriever:
         limit: int,
         root_uris: List[str],
         t0: float,
+        rerank_enabled: bool = True,
     ) -> QueryResult:
         """Unified pipeline: recall -> RRF -> rerank -> MMR -> expand -> aggregate.
 
@@ -418,23 +425,24 @@ class HierarchicalRetriever:
         navigation, rerank or ACL are enabled, so the leaf fallback can never be
         silently dropped by a config toggle (spec 7.1 / TC-6.4).
         """
-        profile = self.fusion_profile
+        profile = self.fusion_profile.with_row_budget(limit)
         telemetry = get_current_telemetry()
 
         recall_limit = max(profile.recall_limit, limit)
         # Leaf global recall — independent of navigation and rerank toggles.
         leaf_results = []
-        dense_searched = query_vector is not None and await vector_proxy.collection_exists_bound()
-        if dense_searched:
-            leaf_results = await vector_proxy.search_in_tenant(
-                query_vector=query_vector,
-                sparse_query_vector=sparse_query_vector,
-                context_type=context_type,
-                target_directories=target_dirs,
-                extra_filter=scope_dsl,
-                level=[2] if level is None else [lv for lv in level if lv == 2] or [2],
-                limit=recall_limit,
-            )
+        with telemetry.measure("search.vector_retrieval"):
+            dense_searched = query_vector is not None and await vector_proxy.collection_exists_bound()
+            if dense_searched:
+                leaf_results = await vector_proxy.search_in_tenant(
+                    query_vector=query_vector,
+                    sparse_query_vector=sparse_query_vector,
+                    context_type=context_type,
+                    target_directories=target_dirs,
+                    extra_filter=scope_dsl,
+                    level=[2] if level is None else [lv for lv in level if lv == 2] or [2],
+                    limit=recall_limit,
+                )
         telemetry.count("vector.searches", int(dense_searched))
         telemetry.count("vector.scored", len(leaf_results))
         telemetry.count("vector.scanned", len(leaf_results))
@@ -468,16 +476,18 @@ class HierarchicalRetriever:
 
         # The pipeline is pure CPU work plus one blocking provider call; run it off
         # the event loop rather than stalling concurrent requests on rerank.
+        fusion_reranker = self._build_fusion_reranker(query.query) if rerank_enabled else None
         fusion_result = await asyncio.to_thread(
             run_fusion,
             ranked_paths,
             profile=profile,
-            rerank=self._build_fusion_reranker(query.query),
+            rerank=fusion_reranker,
             estimate=estimate_text_tokens,
         )
 
         for key, value in fusion_result.trace.items():
             telemetry.set(f"hybrid.{key}", value)
+        telemetry.set("hybrid.rerank_requested", rerank_enabled)
 
         candidates = [candidate.as_dict() for candidate in fusion_result.selected]
         matched = await self._convert_to_matched_contexts(candidates, ctx=ctx)
@@ -847,6 +857,10 @@ class HierarchicalRetriever:
                     score=final_score,
                     search_tags=normalize_search_tags(c.get("search_tags"), discard_invalid=True),
                     type=str(c.get("type", "") or ""),
+                    # The record's own declaration of what it is and where it
+                    # came from, read back from the columns it was written to.
+                    meta=meta_view(c.get("business_meta_payload")),
+                    provenance=provenance_view(c),
                 )
             )
 
@@ -872,6 +886,14 @@ class HierarchicalRetriever:
                 grouped[key] = result
             else:
                 previous.matches.extend(result.matches)
+                # A directory summary row declares no business meta, so a group
+                # that leads with it still has to answer with what its children
+                # cite -- otherwise the record's own provenance is dropped by
+                # whichever chunk happened to rank first.
+                if not previous.meta:
+                    previous.meta = result.meta
+                if not previous.provenance:
+                    previous.provenance = result.provenance
                 if result.score > previous.score:
                     previous.score = result.score
                     previous.abstract = result.abstract

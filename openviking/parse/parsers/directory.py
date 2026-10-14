@@ -50,6 +50,11 @@ logger = get_logger(__name__)
 # Everything else hidden stays filtered, like a default ls.
 _MERGE_SIDECAR_ALLOWLIST = frozenset({IMAGE_MAPPINGS_FILENAME})
 
+#: Options only the PDF chapter pipeline can honour. A folder upload that names
+#: one of these means "use this model for the PDFs in here"; the request has to
+#: reach each PDF child, or the folder silently ingests with the default route.
+_CHAPTER_OPTION_KEYS = ("structure_policy", "parse_backend", "model_mode", "backend_options")
+
 # DirectoryParser instances share one limiter in the server event loop so
 # concurrent directory imports cannot multiply UnderstandingAPI concurrency.
 _UNDERSTANDING_LIMITERS: WeakKeyDictionary[
@@ -302,6 +307,14 @@ class DirectoryParser(BaseParser):
 
                         parse_options["_response_checkpoint"] = record
                     job["parse_options"] = parse_options
+                elif Path(cf.path).suffix.lower() == ".pdf":
+                    forwarded = {
+                        key: kwargs[key]
+                        for key in _CHAPTER_OPTION_KEYS
+                        if kwargs.get(key) is not None
+                    }
+                    if forwarded:
+                        job["parse_options"] = forwarded
                 file_jobs.append(job)
                 if use_understanding:
                     understanding_jobs.append(job)
@@ -435,6 +448,7 @@ class DirectoryParser(BaseParser):
                         preserve_structure=preserve_structure,
                         import_root=str(source_path),
                         split_content=split_content,
+                        parse_options=job.get("parse_options"),
                     )
 
                 file_entry = self._file_status_entry(cf, parser_name, detail)
@@ -868,6 +882,7 @@ class DirectoryParser(BaseParser):
         preserve_structure: bool = True,
         import_root: Optional[str] = None,
         split_content: bool = True,
+        parse_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Process one file into the VikingFS directory temp.
 
@@ -879,6 +894,8 @@ class DirectoryParser(BaseParser):
             preserve_structure: When True, files keep their relative directory
                 hierarchy.  When False, all files are placed directly under
                 *target_uri* (flat).
+            parse_options: Per-file options the folder request carries, such as
+                the PDF chapter model named for this file's kind.
 
         Returns:
             Per-file status detail including the parser error when processing fails.
@@ -895,6 +912,7 @@ class DirectoryParser(BaseParser):
                     preserve_structure=preserve_structure,
                     import_root=import_root,
                     split_content=split_content,
+                    parse_options=parse_options,
                 )
                 await DirectoryParser._merge_parser_result(
                     classified_file,

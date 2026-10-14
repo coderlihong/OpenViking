@@ -6,10 +6,11 @@ Search Service for OpenViking.
 Provides semantic search operations: search, find.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openviking.server.identity import RequestContext
-from openviking.indexing.publication import query_snapshot
+from openviking.indexing.publication import pin_query_snapshot, query_snapshot
 from openviking.storage.viking_fs import VikingFS
 from openviking.utils.image_search import (
     image_bytes_to_data_uri,
@@ -45,6 +46,16 @@ def _ensure_non_empty_query(
     )
 
 
+def _ensure_image_url_form(image_url: Optional[str]) -> None:
+    """Reject a malformed image reference before anything is read or leased."""
+    if image_url and not (
+        is_viking_uri(image_url) or is_data_image_uri(image_url) or is_http_url(image_url)
+    ):
+        raise InvalidArgumentError(
+            "image_url must be a data:image base64 URI, http(s) URL, or viking:// URI."
+        )
+
+
 class SearchService:
     """Semantic search service."""
 
@@ -77,17 +88,14 @@ class SearchService:
         image_url: Optional[str],
         ctx: RequestContext,
     ) -> Optional[str]:
+        _ensure_image_url_form(image_url)
         if not image_url:
             return None
         if is_viking_uri(image_url):
             viking_fs = self._ensure_initialized()
             content = await viking_fs.read_file_bytes(image_url, ctx=ctx)
             return image_bytes_to_data_uri(content, image_url)
-        if is_data_image_uri(image_url) or is_http_url(image_url):
-            return image_url
-        raise InvalidArgumentError(
-            "image_url must be a data:image base64 URI, http(s) URL, or viking:// URI."
-        )
+        return image_url
 
     @query_snapshot
     async def search(
@@ -103,6 +111,7 @@ class SearchService:
         image_url: Optional[str] = None,
         meta_filters: Optional[List[Dict]] = None,
         meta_hints: Optional[List[Dict]] = None,
+        rerank_enabled: bool = True,
     ) -> Any:
         """Complex search with session context.
 
@@ -114,13 +123,18 @@ class SearchService:
             score_threshold: Score threshold
             filter: Metadata filters
             level: Filter by level (0=abstract, 1=overview, 2=file)
+            rerank_enabled: False skips the rerank provider call
 
         Returns:
             FindResult
         """
-        resolved_image_url = await self._resolve_image_url(image_url, ctx)
-        _ensure_non_empty_query(query, resolved_image_url)
+        # ``search`` has no filter-only branch downstream (VikingFS.search embeds the
+        # query), so the gate here must not accept what that layer would reject.
+        _ensure_non_empty_query(query, image_url)
+        _ensure_image_url_form(image_url)
         viking_fs = self._ensure_initialized()
+        await asyncio.to_thread(pin_query_snapshot, ctx)
+        resolved_image_url = await self._resolve_image_url(image_url, ctx)
         metadata_trace = None
         if meta_filters or meta_hints:
             from openviking.retrieve.metadata_query import resolve_metadata
@@ -142,6 +156,7 @@ class SearchService:
             filter=filter,
             level=level,
             image_url=resolved_image_url,
+            rerank_enabled=rerank_enabled,
         )
         if metadata_trace is not None:
             from openviking.retrieve.metadata_query import MetadataResult
@@ -161,6 +176,7 @@ class SearchService:
         image_url: Optional[str] = None,
         meta_filters: Optional[List[Dict]] = None,
         meta_hints: Optional[List[Dict]] = None,
+        rerank_enabled: bool = True,
     ) -> Any:
         """Semantic search without session context.
 
@@ -171,13 +187,16 @@ class SearchService:
             score_threshold: Score threshold
             filter: Metadata filters
             level: Filter by level (0=abstract, 1=overview, 2=file)
+            rerank_enabled: False skips the rerank provider call
 
         Returns:
             FindResult
         """
-        resolved_image_url = await self._resolve_image_url(image_url, ctx)
-        _ensure_non_empty_query(query, resolved_image_url, filter or meta_filters)
+        _ensure_non_empty_query(query, image_url, filter or meta_filters)
+        _ensure_image_url_form(image_url)
         viking_fs = self._ensure_initialized()
+        await asyncio.to_thread(pin_query_snapshot, ctx)
+        resolved_image_url = await self._resolve_image_url(image_url, ctx)
         metadata_trace = None
         if meta_filters or meta_hints:
             from openviking.retrieve.metadata_query import resolve_metadata
@@ -192,6 +211,7 @@ class SearchService:
             filter=filter,
             level=level,
             image_url=resolved_image_url,
+            rerank_enabled=rerank_enabled,
         )
         if metadata_trace is not None:
             from openviking.retrieve.metadata_query import MetadataResult

@@ -121,7 +121,7 @@ claude mcp add --transport http openviking \
 
 ## 可用的 MCP 工具
 
-连接后，OpenViking MCP 端点暴露 15 个工具：
+连接后，OpenViking MCP 端点暴露 17 个工具：
 
 | 工具 | 说明 | 主要参数 |
 |------|------|----------|
@@ -138,6 +138,8 @@ claude mcp add --transport http openviking \
 | `cancel_watch` | 按目标 URI 取消（删除）watch 任务。若需调整刷新周期或临时暂停，请取消后使用新的 `watch_interval` 重新添加 | `to_uri`（必须匹配 watch 任务的 `to` 值，例如 `viking://resources/...`） |
 | `grep` | 在 `viking://` 文件中进行正则内容搜索 | `uri`, `pattern`（字符串或数组）, `case_insensitive`, `node_limit` |
 | `glob` | 按 glob 模式匹配文件 | `pattern`, `uri`(可选范围), `node_limit` |
+| `index_search` | 目录清单（`index.md`）关键词定位——agent 定位腿。关键词用竖线分隔表示「或」，条目名命中权重高于描述；返回条目 URI 供 `read` 下钻 | `uri`, `query`, `limit`(默认 20), `case_insensitive`(可选), `level_limit`(默认 10), `include_content`(可选) |
+| `vector_search` | 向量+BM25 混合融合的语义检索；不带会话意图、查询扩展与上下文组装 | `query`, `image_url`(可选), `target_uri`(可选), `limit`(默认 10), `min_score`(可选), `level`, `context_type`, `meta_filters`, `meta_hints`, `tags`, `since`, `until`, `time_field`, `include_provenance`, `read_content` |
 | `forget` | 删除任意 `viking://` URI（先用 `search` 查找；删除目录需 `recursive=true`） | `uri`, `recursive`(可选) |
 | `health` | 检查 OpenViking 服务健康状态 | 无 |
 

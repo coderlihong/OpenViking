@@ -264,7 +264,13 @@ async def test_restore_acl_and_reindex_identity(client_with_resource, service, m
         dry_run=True,
         ctx=writer,
     )
-    assert [item["path"] for item in write_plan["diff"]["to_write"]] == ["document.md"]
+    # index.md is the generated navigation catalogue and is tracked like the
+    # other directory sidecars: v1's entry summary ("v1") differs from the
+    # working tree's ("v2"), so the restore plan rewrites it too.
+    assert [item["path"] for item in write_plan["diff"]["to_write"]] == [
+        "document.md",
+        "index.md",
+    ]
 
     await service.fs.write(extra_uri, content="remove", mode="create", wait=True, ctx=admin)
     await service.fs.commit(message="acl restore delete", paths=[root], ctx=admin)
@@ -298,6 +304,9 @@ async def test_restore_acl_and_reindex_identity(client_with_resource, service, m
         ctx=writer,
     )
     assert result["result"] == "applied"
+    # The catalogue travels with the snapshot it describes: restoring v1 must
+    # bring back v1's entry summary, not the working tree's.
+    assert "— v1" in (await service.fs.read(f"{root}/index.md", ctx=writer))
 
     for _ in range(100):
         if reindex_contexts:

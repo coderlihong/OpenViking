@@ -232,7 +232,7 @@ async def test_cached_fallback_summary_keeps_asset_binding_after_restore(image_e
 
 async def test_cache_gc_roots_include_pending_and_held_query_versions(image_env):
     from copy import deepcopy
-    from openviking.indexing.publication import query_snapshot
+    from openviking.indexing.publication import pin_query_snapshot, query_snapshot
     e = image_env
     old = await prepare(e)
     await consume(e, await stage(e, old))
@@ -241,6 +241,8 @@ async def test_cache_gc_roots_include_pending_and_held_query_versions(image_env)
     newer["image_occurrences"][0]["summary"] = "changed meaning"
     @query_snapshot
     async def held(*, ctx):
+        # A query pins its view as soon as it passes validation, before any read.
+        pin_query_snapshot(ctx)
         messages = await stage(e, newer)
         with e.store.db() as db:
             import json

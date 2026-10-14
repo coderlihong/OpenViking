@@ -27,9 +27,48 @@ PORTABLE_VECTOR_SCALAR_FIELDS = [
     "name",
     "description",
     "tags",
+    "search_tags",
     "abstract",
+    # Chunk identity and parent/child linkage. A file legitimately owns many L2
+    # chunk rows; without these fields a restored package keeps the rows but
+    # loses which chunk is which and how the hierarchy hangs together.
+    "chunk_id",
+    "parent_chunk_id",
+    "chunk_ordinal",
+    "chunk_continuation",
+    "chunk_text",
+    "parent_text",
+    "content_revision",
+    "chunker_version",
+    "document_id",
+    "embedding_space_id",
+    "index_plan_id",
+    "index_generation",
+    # A joint image row cites the markdown it illustrates; the record's own
+    # business meta (modality category, chapter/page, machine model, keywords)
+    # is what meta queries filter on.
+    "image_context_uri",
+    "image_context_hash",
+    "business_meta_payload",
+    "business_meta_tokens",
+    "business_meta_fingerprint",
+    "business_meta_source_fingerprint",
 ]
 EXPORT_VECTOR_FIELDS = [*PORTABLE_VECTOR_SCALAR_FIELDS, "vector"]
+
+# Recency is fetched for ordering only; the package carries no timestamps. A
+# store can still hold several live generations of one record (an interrupted
+# publisher leaves them untombstoned), and restore collapses them onto the
+# canonical record id -- so the export must emit each logical record oldest
+# first, newest last, and the surviving row is then the current generation.
+EXPORT_TIMESTAMP_FIELDS = ["created_at", "updated_at"]
+
+# A package must carry every index record under the exported subtree. Offset
+# pagination is not a reachable cursor here: the filter path behind it samples
+# with a random query vector, so successive pages can repeat or skip rows. One
+# query whose limit exceeds any realistic per-URI row count returns the whole
+# match set instead (same bound the descendant sweep uses).
+OVPACK_VECTOR_SCAN_LIMIT = 100_000
 
 
 def portable_scalars(record: dict[str, Any]) -> dict[str, Any]:
@@ -45,6 +84,19 @@ def record_level(record: dict[str, Any], default: int = 2) -> int:
         return int(record.get("level", default))
     except (TypeError, ValueError):
         return default
+
+
+def _record_sort_key(record: dict[str, Any]) -> tuple[int, int, str, str]:
+    try:
+        ordinal = int(record.get("chunk_ordinal", 0))
+    except (TypeError, ValueError):
+        ordinal = 0
+    return (
+        record_level(record),
+        ordinal,
+        str(record.get("chunk_id") or ""),
+        str(record.get("updated_at") or record.get("created_at") or ""),
+    )
 
 
 def coerce_dense_vector(value: Any) -> list[float]:
@@ -70,8 +122,11 @@ async def call_vector_filter(
 
     kwargs = {
         "filter": Eq("uri", uri),
-        "limit": 10,
-        "output_fields": EXPORT_VECTOR_FIELDS if include_vectors else PORTABLE_VECTOR_SCALAR_FIELDS,
+        "limit": OVPACK_VECTOR_SCAN_LIMIT,
+        "output_fields": [
+            *(EXPORT_VECTOR_FIELDS if include_vectors else PORTABLE_VECTOR_SCALAR_FIELDS),
+            *EXPORT_TIMESTAMP_FIELDS,
+        ],
     }
     try:
         return await vector_store.filter(**kwargs, ctx=ctx)
@@ -111,12 +166,12 @@ async def index_records_for_uri(
     include_vectors: bool = False,
 ) -> list[dict[str, Any]]:
     records = await call_vector_filter(vector_store, uri, ctx, include_vectors=include_vectors)
-    records_by_level = {record_level(record): record for record in records}
     texts = await directory_vector_texts(viking_fs, uri, ctx) if is_dir else {}
 
-    index_records: list[dict[str, Any]] = []
-    for level in sorted(records_by_level):
-        source_record = records_by_level[level]
+    indexed: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    indexed_levels: set[int] = set()
+    for source_record in records:
+        level = record_level(source_record)
         item = {
             "level": level,
             "scalars": portable_scalars(source_record),
@@ -128,25 +183,25 @@ async def index_records_for_uri(
             dense = coerce_dense_vector(source_record.get("vector"))
             if dense:
                 item["_dense_vector"] = dense
-        index_records.append(item)
+        indexed.append((_record_sort_key(source_record), item))
+        indexed_levels.add(level)
 
     if is_dir:
         abstract = texts.get(0, "")
         for level, text in texts.items():
-            if text and level not in records_by_level:
-                index_records.append(
-                    {
+            if text and level not in indexed_levels:
+                item = {
+                    "level": level,
+                    "text": text,
+                    "scalars": {
+                        "context_type": context_type_for_uri(uri),
                         "level": level,
-                        "text": text,
-                        "scalars": {
-                            "context_type": context_type_for_uri(uri),
-                            "level": level,
-                            "abstract": abstract,
-                        },
-                    }
-                )
+                        "abstract": abstract,
+                    },
+                }
+                indexed.append((_record_sort_key({"level": level}), item))
 
-    return sorted(index_records, key=lambda item: int(item.get("level", 2)))
+    return [item for _, item in sorted(indexed, key=lambda pair: pair[0])]
 
 
 def append_index_records(

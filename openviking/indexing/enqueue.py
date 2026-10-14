@@ -20,6 +20,12 @@ async def enqueue_text_plan(base_message, content, embedding_config, enqueue) ->
     """
     base = dict(base_message.context_data)
     source_ref = base.pop("_source_snapshot", None)
+    from openviking.indexing.record_meta import TEXT_CATEGORY, stamp_record_meta
+
+    # Text parent/child chunks are stamped as the ``text`` category and carry the
+    # chapter's own provenance block, so a hit can be filtered by modality and
+    # cited back to document/chapter/page.
+    stamp_record_meta(base, category=TEXT_CATEGORY, contents=(content,), source_uri=base.get("uri"))
     plan = plan_resource(content, base["uri"], base["account_id"], embedding_config)
     if embedding_config.chunking.publish_content:
         if source_ref is None:

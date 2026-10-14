@@ -447,6 +447,29 @@ def test_run_fusion_applies_recall_and_fused_budgets():
     assert len(result.selected) == 2
 
 
+def test_with_row_budget_only_raises_caps_below_the_requested_limit():
+    profile = profile_for("hybrid")
+    assert profile.with_row_budget(5) is profile  # every cap already >= limit
+    slight = profile.with_row_budget(20)
+    assert slight.mmr_top == 20  # the only cap below the request
+    assert (slight.recall_limit, slight.fused_limit, slight.rerank_limit) == (100, 100, 50)
+    wide = profile.with_row_budget(120)
+    assert (wide.recall_limit, wide.fused_limit, wide.rerank_limit, wide.mmr_top) == (
+        120,
+        120,
+        120,
+        120,
+    )
+
+
+def test_run_fusion_can_exceed_default_mmr_top_when_budget_is_raised():
+    dense = [_c(f"viking://d{i}", f"c{i}", text=f"distinct text {i}") for i in range(15)]
+    default = run_fusion({"dense": dense}, profile=profile_for("hybrid"))
+    assert len(default.selected) == 10  # default MMR top caps the row count
+    raised = run_fusion({"dense": dense}, profile=profile_for("hybrid").with_row_budget(15))
+    assert len(raised.selected) == 15
+
+
 def test_candidate_roundtrip_keeps_provenance_fields():
     result = {
         "uri": "viking://doc",

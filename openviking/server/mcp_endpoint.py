@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import contextvars
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -46,11 +47,13 @@ from openviking.core.uri_validation import (
 from openviking.parse.mode import ParseMode, normalize_parse_mode
 from openviking.resource.processing_mode import DEFAULT_PROCESSING_MODE, ProcessingMode
 from openviking.retrieve.context_assembler import (
+    DEFAULT_LIMIT,
     DEFAULT_MAX_TOKENS,
     MAX_EXCLUDE_URIS,
     AssembleParams,
     assemble_context,
 )
+from openviking.retrieve.index_navigation import search_navigation_indexes
 from openviking.server.auth import (
     _build_request_context,
     _extract_api_key,
@@ -64,10 +67,18 @@ from openviking.server.local_input_guard import (
     is_remote_resource_source,
 )
 from openviking.server.resource_ingest import ingest_temp_upload
+from openviking.server.search_request import (
+    TimeField,
+    filter_hits_by_score as _filter_hits_by_score,
+    resolve_image_url as _resolve_image_url,
+    resolve_search_filter as _resolve_search_filter,
+    resolve_search_limit as _resolve_search_limit,
+    resolve_uri_or_uris as _resolve_uri_or_uris,
+)
 from openviking.server.temp_upload_store import TempUploadStore
 from openviking.server.upload_token_store import upload_token_store
 from openviking.utils.media_limits import MAX_INLINE_TOOL_RESULT_MEDIA_BYTES
-from openviking.utils.search_filters import SearchContextTypeInput, merge_search_filter
+from openviking.utils.search_filters import _resolve_levels
 from openviking_cli.exceptions import (
     InvalidArgumentError,
     NotFoundError,
@@ -237,51 +248,83 @@ mcp = FastMCP(
 # -- find / search ---------------------------------------------------------
 
 
-def _resolve_context_type_filter(
-    context_type: Optional[SearchContextTypeInput],
-) -> Optional[Dict[str, Any]]:
-    try:
-        return merge_search_filter(None, context_type=context_type)
-    except ValueError as exc:
-        raise InvalidArgumentError(str(exc)) from exc
-
-
 @mcp.tool()
 async def find(
-    query: str,
-    target_uri: str = "",
-    limit: int = 10,
-    min_score: float = 0.35,
-    level: Optional[List[int]] = None,
+    query: str = "",
+    image_url: Optional[str] = None,
+    target_uri: Union[str, List[str]] = "",
+    limit: int = DEFAULT_LIMIT,
+    node_limit: Optional[int] = None,
+    min_score: Optional[float] = None,
+    level: Optional[Union[int, str, List[int]]] = None,
     context_type: Optional[Union[str, List[str]]] = None,
+    meta_filters: Optional[List[Dict[str, Any]]] = None,
+    meta_hints: Optional[List[Dict[str, Any]]] = None,
+    tags: Optional[List[str]] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    time_field: Optional[TimeField] = None,
+    include_provenance: bool = False,
     read_content: bool = False,
+    rerank: bool = True,
 ) -> str:
-    """Fast semantic retrieval without session context. Returns ranked memories, resources, and skills with URI, abstract, and score."""
+    """Fast semantic retrieval without session context. Returns ranked memories, resources, and skills with URI, abstract, and score.
+
+    Mirrors ``POST /api/v1/search/find``: pass ``image_url`` for image search,
+    ``meta_filters``/``meta_hints`` for business metadata constraints, ``tags``
+    for explicit k=v tags, and ``since``/``until`` for a time window. ``query``
+    is required unless ``image_url``, ``meta_filters``, or ``filter`` is given.
+    Set ``rerank=false`` to skip the rerank provider call (faster, fused-order ranking).
+    """
     service = get_service()
     ctx = _get_ctx()
-    if target_uri:
-        target_uri = _resolve_mcp_workspace_uri(target_uri, ctx)
+    effective_filter = _resolve_search_filter(
+        None, context_type, since, until, time_field, tags
+    )
+    resolved_target_uri = _resolve_uri_or_uris(target_uri, ctx) if target_uri else ""
     result = await service.search.find(
         query=query,
         ctx=ctx,
-        target_uri=target_uri,
-        limit=limit,
+        target_uri=resolved_target_uri,
+        limit=_resolve_search_limit(limit, node_limit),
         score_threshold=min_score,
-        filter=_resolve_context_type_filter(context_type),
-        level=level,
+        filter=effective_filter,
+        **(
+            {"meta_filters": meta_filters, "meta_hints": meta_hints}
+            if meta_filters or meta_hints
+            else {}
+        ),
+        level=_resolve_levels(level) or None,
+        image_url=_resolve_image_url(image_url, ctx),
+        rerank_enabled=rerank,
     )
-    return await _format_search_result(result, service=service, ctx=ctx, read_content=read_content)
+    return await _format_search_result(
+        result,
+        service=service,
+        ctx=ctx,
+        read_content=read_content,
+        include_provenance=include_provenance,
+    )
 
 
 @mcp.tool()
 async def search(
-    query: str,
-    target_uri: str = "",
+    query: str = "",
+    image_url: Optional[str] = None,
+    target_uri: Union[str, List[str]] = "",
     session_id: Optional[str] = None,
-    limit: int = 10,
+    limit: int = DEFAULT_LIMIT,
+    node_limit: Optional[int] = None,
     min_score: Optional[float] = None,
-    level: Optional[List[int]] = None,
+    level: Optional[Union[int, str, List[int]]] = None,
     context_type: Optional[Union[str, List[str]]] = None,
+    meta_filters: Optional[List[Dict[str, Any]]] = None,
+    meta_hints: Optional[List[Dict[str, Any]]] = None,
+    tags: Optional[List[str]] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    time_field: Optional[TimeField] = None,
+    include_provenance: bool = False,
     mode: Literal["list", "context"] = "list",
     query_expansion: Literal["off", "auto"] = "auto",
     max_tokens: Annotated[int, Field(ge=64, le=32000)] = DEFAULT_MAX_TOKENS,
@@ -297,6 +340,7 @@ async def search(
     rewrite: Literal["off", "auto"] = "off",
     rewrite_max_bullets: Annotated[int, Field(ge=1, le=20)] = 6,
     read_content: bool = False,
+    rerank: bool = True,
 ) -> str:
     """Deep semantic retrieval with optional session context and intent analysis.
 
@@ -304,16 +348,26 @@ async def search(
     abstract, and score. ``mode="context"`` returns an injection-ready,
     token-budgeted context block and supports category quotas, purpose presets,
     detail tiers, cross-turn deduplication, peer scoping, and optional rewriting.
-    ``target_uri`` is only supported in list mode.
+    ``target_uri`` is only supported in list mode. List mode also mirrors
+    ``POST /api/v1/search/search``: ``image_url``, ``meta_filters``,
+    ``meta_hints``, ``tags``, and ``since``/``until`` behave as they do on HTTP.
+    Set ``rerank=false`` to skip the rerank provider call (faster, fused-order ranking).
     """
     service = get_service()
     ctx = _get_ctx()
-    context_filter = _resolve_context_type_filter(context_type)
+    effective_filter = _resolve_search_filter(
+        None, context_type, since, until, time_field, tags
+    )
+    actual_limit = _resolve_search_limit(limit, node_limit)
     if mode == "context":
         if read_content:
             raise InvalidArgumentError("read_content is only supported in mode='list'")
         if target_uri:
             raise InvalidArgumentError("target_uri is not supported in mode='context'")
+        if meta_filters or meta_hints:
+            raise InvalidArgumentError(
+                "Business metadata constraints currently require list mode"
+            )
         if detail != "auto" and detail_by_category:
             raise InvalidArgumentError(
                 "detail cannot be combined with detail_by_category in mode='context'"
@@ -332,9 +386,10 @@ async def search(
             ctx=ctx,
             params=AssembleParams(
                 query=query,
-                limit=limit,
+                image_url=_resolve_image_url(image_url, ctx),
+                limit=actual_limit,
                 score_threshold=min_score,
-                filter=context_filter,
+                filter=effective_filter,
                 session_id=session_id,
                 query_expansion=query_expansion,
                 max_tokens=max_tokens,
@@ -355,8 +410,7 @@ async def search(
             return result.rendered
         return "No matching context found."
 
-    if target_uri:
-        target_uri = _resolve_mcp_workspace_uri(target_uri, ctx)
+    resolved_target_uri = _resolve_uri_or_uris(target_uri, ctx) if target_uri else ""
     session = None
     # Intent off: skip session.load — SearchService will not scan session either.
     if session_id and service.search.is_intent_enabled():
@@ -365,17 +419,37 @@ async def search(
     result = await service.search.search(
         query=query,
         ctx=ctx,
-        target_uri=target_uri,
+        target_uri=resolved_target_uri,
         session=session,
-        limit=limit,
-        score_threshold=0.35 if min_score is None else min_score,
-        filter=context_filter,
-        level=level,
+        limit=actual_limit,
+        score_threshold=min_score,
+        filter=effective_filter,
+        **(
+            {"meta_filters": meta_filters, "meta_hints": meta_hints}
+            if meta_filters or meta_hints
+            else {}
+        ),
+        level=_resolve_levels(level) or None,
+        image_url=_resolve_image_url(image_url, ctx),
+        rerank_enabled=rerank,
     )
-    return await _format_search_result(result, service=service, ctx=ctx, read_content=read_content)
+    return await _format_search_result(
+        result,
+        service=service,
+        ctx=ctx,
+        read_content=read_content,
+        include_provenance=include_provenance,
+    )
 
 
-async def _format_search_result(result, *, service, ctx, read_content: bool = False) -> str:
+async def _format_search_result(
+    result,
+    *,
+    service,
+    ctx,
+    read_content: bool = False,
+    include_provenance: bool = False,
+) -> str:
     items = []
     for ctx_type, contexts in [
         ("memory", result.memories),
@@ -410,6 +484,14 @@ async def _format_search_result(result, *, service, ctx, read_content: bool = Fa
         ).strip()
         score = getattr(m, "score", 0.0)
         line = f"- [{ctx_type} {score * 100:.0f}%] {m.uri}\n    {abstract}"
+        meta = getattr(m, "meta", None)
+        if meta:
+            line += "\n    meta: " + json.dumps(meta, ensure_ascii=False, sort_keys=True)
+        provenance = getattr(m, "provenance", None)
+        if include_provenance and provenance:
+            line += "\n    provenance: " + json.dumps(
+                provenance, ensure_ascii=False, sort_keys=True
+            )
         for chunk in getattr(m, "matches", None) or ():
             text = (chunk.get("text") or "").replace("\n", " ").strip()
             line += f"\n    [{chunk.get('chunk_id', '')}] {text}"
@@ -506,8 +588,9 @@ async def read(
     uris: str | list[str],
     offset: int = 0,
     limit: int = -1,
+    raw: bool = False,
 ) -> str | list[ContentBlock]:
-    """Read one or more viking:// file URIs. Text reads accept line-based offset/limit. Raster images and supported audio return native MCP content blocks. For directory listing, use the list tool instead."""
+    """Read one or more viking:// file URIs. Text reads accept line-based offset/limit. Raster images and supported audio return native MCP content blocks. For directory listing, use the list tool instead. Pass raw=true to return stored content without memory-field cleanup (mirrors the HTTP raw flag)."""
     import asyncio
 
     service = get_service()
@@ -604,7 +687,8 @@ async def read(
                     if is_image:
                         return _mcp_image_content(data, mime_type)
                     return _mcp_audio_content(data, mime_type)
-                content = await service.fs.read_visible(
+                reader = service.fs.read if raw else service.fs.read_visible
+                content = await reader(
                     resolved_uri,
                     ctx=ctx,
                     offset=offset,
@@ -817,8 +901,8 @@ async def write(
 
     - mode="replace" (default): overwrite the file; creates it and any missing parent directories if needed.
     - mode="create": fail if the file already exists.
-    - Any new file (whether created by "replace" or "create") must end in one of: .md .txt .json .yaml .yml .toml .py .js .ts
-    - mode="append": append to the end of an existing file; fails if the file does not exist.
+    - mode="append": append to the end of the file; creates it and any missing parent directories if it does not exist.
+    - Any newly created file must end in one of: .md .txt .json .yaml .yml .toml .py .js .ts
 
     Writable scopes: viking://resources/, viking://user/{user_id}/, viking://agent/. The viking://~ home alias expands to the caller's user root. The managed user subtrees skills/, peers/, privacy/ and sessions/ are read-only. After a write, semantic search indexes refresh in the background; pass wait=true to block until search reflects the change."""
     service = get_service()
@@ -1335,7 +1419,14 @@ async def cancel_watch(to_uri: str) -> str:
 
 @mcp.tool()
 async def grep(
-    uri: str, pattern: str | list[str], case_insensitive: bool = False, node_limit: int = 10
+    uri: str,
+    pattern: str | list[str],
+    exclude_uri: Optional[str] = None,
+    case_insensitive: bool = False,
+    node_limit: int = 256,
+    level_limit: int = 10,
+    tags: Optional[List[str]] = None,
+    include_tags: bool = False,
 ) -> str:
     """Search content in viking:// files using regex patterns (like grep). Supports multiple patterns searched concurrently. Use this for exact text matching; use the search tool for semantic retrieval."""
     import asyncio
@@ -1343,6 +1434,9 @@ async def grep(
     service = get_service()
     ctx = _get_ctx()
     resolved_uri = _resolve_mcp_workspace_uri(uri, ctx)
+    resolved_exclude_uri = (
+        _resolve_mcp_workspace_uri(exclude_uri, ctx) if exclude_uri else None
+    )
     patterns = [pattern] if isinstance(pattern, str) else pattern
     semaphore = asyncio.Semaphore(10)
 
@@ -1353,8 +1447,12 @@ async def grep(
                     resolved_uri,
                     p,
                     ctx=ctx,
+                    exclude_uri=resolved_exclude_uri,
                     case_insensitive=case_insensitive,
                     node_limit=node_limit,
+                    level_limit=level_limit,
+                    tags=tags,
+                    include_tags=include_tags,
                 )
                 return (p, result.get("matches", []))
             except Exception:
@@ -1386,14 +1484,29 @@ async def grep(
 
 
 @mcp.tool()
-async def glob(pattern: str, uri: str = "viking://", node_limit: int = 100) -> str:
+async def glob(
+    pattern: str,
+    uri: str = "viking://",
+    node_limit: int = 256,
+    extra_fields: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    include_tags: bool = False,
+) -> str:
     """Find viking:// files matching a glob pattern (e.g. **/*.md, *.py). Use this for filename matching; use the search tool for content-based retrieval."""
     service = get_service()
     ctx = _get_ctx()
     resolved_uri = _resolve_mcp_workspace_uri(uri, ctx)
 
     try:
-        result = await service.fs.glob(pattern, ctx=ctx, uri=resolved_uri, node_limit=node_limit)
+        result = await service.fs.glob(
+            pattern,
+            ctx=ctx,
+            uri=resolved_uri,
+            node_limit=node_limit,
+            extra_fields=extra_fields,
+            tags=tags,
+            include_tags=include_tags,
+        )
     except Exception as e:
         return f"Error: {e}"
 
@@ -1406,6 +1519,115 @@ async def glob(pattern: str, uri: str = "viking://", node_limit: int = 100) -> s
         m_uri = m.get("uri", str(m)) if isinstance(m, dict) else str(m)
         lines.append(f"  {m_uri}")
     return "\n".join(lines)
+
+
+# -- index_search / vector_search ------------------------------------------
+
+
+@mcp.tool()
+async def index_search(
+    uri: str,
+    query: str,
+    limit: int = 20,
+    case_insensitive: bool = False,
+    level_limit: int = 10,
+    include_content: bool = False,
+) -> str:
+    """Locate knowledge by keyword in directory catalogues (index.md) under a URI. Keywords are OR-ed with `|`; entry names rank above descriptions. Returns entry URIs to open with the read tool. Catalogue only -- does not search body content, vectors, or BM25 rows; use grep for body text and vector_search for semantics.
+
+    Mirrors ``POST /api/v1/index/search``. ``level_limit`` bounds how many directory levels below ``uri`` are scanned (0 = only ``uri``'s own index.md)."""
+    service = get_service()
+    ctx = _get_ctx()
+    resolved_uri = _resolve_mcp_workspace_uri(uri, ctx)
+    try:
+        result = await search_navigation_indexes(
+            viking_fs=service.viking_fs,
+            ctx=ctx,
+            uri=resolved_uri,
+            query=query,
+            limit=limit,
+            case_insensitive=case_insensitive,
+            level_limit=level_limit,
+            include_content=include_content,
+        )
+    except OpenVikingError as exc:
+        return f"Error: {exc.message}"
+
+    matches = result.get("matches", [])
+    if not matches:
+        return (
+            f"No catalogue entries matched under {resolved_uri} "
+            f"(keywords: {query}; indexes scanned: {result.get('index_files_scanned', 0)})."
+        )
+    lines = [f"Found {len(matches)} entries:"]
+    for match in matches:
+        lines.append(f"- [{match.get('kind')} {match.get('score')}] {match.get('uri')}")
+        if match.get("description"):
+            lines.append(f"    {match['description']}")
+        if match.get("content"):
+            lines.append(f"    {match['content']}")
+    lines.append("")
+    lines.append("Use the read tool to open an entry.")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def vector_search(
+    query: str = "",
+    image_url: Optional[str] = None,
+    target_uri: Union[str, List[str]] = "",
+    limit: int = DEFAULT_LIMIT,
+    min_score: Optional[float] = None,
+    level: Optional[Union[int, str, List[int]]] = None,
+    context_type: Optional[Union[str, List[str]]] = None,
+    meta_filters: Optional[List[Dict[str, Any]]] = None,
+    meta_hints: Optional[List[Dict[str, Any]]] = None,
+    tags: Optional[List[str]] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    time_field: Optional[TimeField] = None,
+    include_provenance: bool = False,
+    read_content: bool = False,
+    rerank: bool = True,
+) -> str:
+    """Semantic retrieval over the vector + BM25 hybrid fusion recall. Same recall caliber as `find` but without session context, query expansion, or context assembly. Returns ranked memories, resources, and skills with URI, abstract, and score.
+
+    Mirrors ``POST /api/v1/vector/search`` (HTTP calls the score floor ``score_threshold``).
+    Set ``rerank=false`` to skip the rerank provider call (faster, fused-order ranking)."""
+    service = get_service()
+    ctx = _get_ctx()
+    effective_filter = _resolve_search_filter(
+        None, context_type, since, until, time_field, tags
+    )
+    resolved_target_uri = _resolve_uri_or_uris(target_uri, ctx) if target_uri else ""
+    result = await service.search.find(
+        query=query,
+        ctx=ctx,
+        target_uri=resolved_target_uri,
+        limit=limit,
+        score_threshold=min_score,
+        filter=effective_filter,
+        **(
+            {"meta_filters": meta_filters, "meta_hints": meta_hints}
+            if meta_filters or meta_hints
+            else {}
+        ),
+        level=_resolve_levels(level) or None,
+        image_url=_resolve_image_url(image_url, ctx),
+        rerank_enabled=rerank,
+    )
+    if min_score is not None:
+        result.memories = _filter_hits_by_score(result.memories, min_score)
+        result.resources = _filter_hits_by_score(result.resources, min_score)
+        result.skills = _filter_hits_by_score(result.skills, min_score)
+        result.total = len(result.memories) + len(result.resources) + len(result.skills)
+    return await _format_search_result(
+        result,
+        service=service,
+        ctx=ctx,
+        read_content=read_content,
+        include_provenance=include_provenance,
+    )
 
 
 # -- forget ----------------------------------------------------------------
@@ -1532,8 +1754,9 @@ async def mcp_lifespan():
     """Run the MCP session manager. Call this inside the FastAPI lifespan."""
     async with mcp.session_manager.run():
         logger.info(
-            "MCP endpoint ready (15 tools: find, search, read, write, edit, list, "
-            "tree, remember, add_resource, list_watches, cancel_watch, grep, glob, forget, health)"
+            "MCP endpoint ready (17 tools: find, search, read, write, edit, list, "
+            "tree, remember, add_resource, list_watches, cancel_watch, grep, glob, "
+            "index_search, vector_search, forget, health)"
         )
         yield
 

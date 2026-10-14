@@ -503,6 +503,7 @@ class SemanticProcessor(DequeueHandlerBase):
                                 generation_trigger=msg.generation_trigger,
                                 aggregate_directory=msg.aggregate_directory,
                                 copy_source_uri=msg.copy_source_uri,
+                                allow_vlm=msg.allow_vlm,
                             )
                             from openviking.indexing.image_cache import image_twin_cache
 
@@ -566,6 +567,24 @@ class SemanticProcessor(DequeueHandlerBase):
                 if msg is not None:
                     return await self._requeue_semantic_msg_after_error(msg, e)
                 return ProcessResult.failed(str(e))
+
+            if isinstance(e, ValueError):
+                from openviking.indexing.plan import PlanRejectionError
+
+                if isinstance(e, PlanRejectionError):
+                    # Deterministic: the same content re-plans to the same
+                    # rejection, so retrying can never succeed and would poison
+                    # the API circuit breaker for every other message.
+                    logger.error(
+                        f"Plan rejection processing semantic message, dropping: {e}",
+                        exc_info=True,
+                    )
+                    if msg is not None:
+                        self._merge_request_stats(msg.telemetry_id, error_count=1)
+                        get_request_wait_tracker().mark_semantic_failed(
+                            msg.telemetry_id, msg.id, str(e)
+                        )
+                    return ProcessResult.failed(str(e))
 
             error_class = classify_api_error(e)
             if error_class == ERROR_CLASS_INPUT_TOO_LARGE:
@@ -1081,11 +1100,14 @@ class SemanticProcessor(DequeueHandlerBase):
         file_path: str,
         llm_sem: Optional[asyncio.Semaphore] = None,
         ctx: Optional[RequestContext] = None,
+        allow_vlm: bool = True,
     ) -> Dict[str, Any]:
         """Generate summary for a single file.
 
         Args:
             file_path: File path
+            allow_vlm: Forwarded to image summary generation; False settles an
+                uncaptioned image as undescribed instead of calling the VLM.
 
         Returns:
             {"name": file_name, "summary": summary_content}
@@ -1108,13 +1130,14 @@ class SemanticProcessor(DequeueHandlerBase):
             from openviking.indexing.image_context import collect_image_contexts
 
             active_ctx = ctx or self._default_ctx
-            chunking = getattr(
-                getattr(get_openviking_config(), "embedding", None), "chunking", None
-            )
-            strict = bool(chunking and chunking.enabled)
             contexts = await collect_image_contexts(get_viking_fs(), file_path, active_ctx)
             return await generate_image_summary(
-                file_path, file_name, llm_sem, ctx=active_ctx, contexts=contexts, strict=strict
+                file_path,
+                file_name,
+                llm_sem,
+                ctx=active_ctx,
+                contexts=contexts,
+                allow_vlm=allow_vlm,
             )
         elif media_type == "audio":
             return await generate_audio_summary(file_path, file_name, llm_sem, ctx=ctx)

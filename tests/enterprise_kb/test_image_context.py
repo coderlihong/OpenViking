@@ -8,6 +8,7 @@ from test_content_publication import environment as environment
 from test_index_plan import embedding as embedding
 
 from openviking.indexing.image_context import collect_image_contexts, extract_occurrences
+from openviking.indexing.record_meta import extract_inline_metadata
 from openviking.models.embedder.base import EmbedResult
 from openviking.parse.parsers.media import utils as media
 from openviking.storage.queuefs.embedding_msg import EmbeddingMsg
@@ -16,6 +17,39 @@ from openviking.utils.token_estimation import estimate_text_tokens
 
 URI = "viking://resources/manual/chapter.md"
 IMAGE = "viking://resources/manual/images/a.png"
+
+
+def test_occurrence_carries_the_chapter_provenance_whether_or_not_the_window_reaches_it():
+    """The figure row must stay filterable by the chapter it illustrates.
+
+    A late figure in a long chapter gets a context window that does not contain
+    the chapter's ``- 机型:``/``- page:`` block at all, and even for an early
+    figure the window opens with a ``Source URI:`` header that the leading-block
+    scan cannot get past.  So the provenance is read off the source document here
+    and travels with every occurrence.
+    """
+    head = (
+        "# 10.2 进行操作时的注意事项\n\n"
+        "- document_id: 797105495448853\n"
+        "- chapter_uri: kb://chapters/843907453002281\n"
+        "- page: p.638-641\n"
+        "- 机型: SY215C9液压挖掘机\n"
+        "- 关键词: 拆装, 注意事项, 盲堵\n\n"
+    )
+    body = "".join(f"第 {i} 条：拆开软管或钢管后，须进行遮盖或装上盲堵以避免污物或灰尘进入。\n\n" for i in range(40))
+    figure = '<figure>\n    <img src="images/a.png"/>\n    <figcaption>回转支承螺栓力矩 320 N·m</figcaption>\n</figure>\n'
+    found = extract_occurrences(head + body + figure, URI, IMAGE)
+    assert found
+    meta = found[0]["source_meta"]
+    assert meta["page"] == "p.638-641"
+    assert meta["machine_model"] == "SY215C9液压挖掘机"
+    assert meta["source_document_id"] == "797105495448853"
+    assert meta["keywords"] == "拆装, 注意事项, 盲堵"
+    # The window alone could not have produced this: the block is far outside it.
+    assert "document_id" not in found[0]["context"]
+    assert extract_inline_metadata(found[0]["context"]) == {}
+    # A chapter with no declared block contributes nothing invented.
+    assert extract_occurrences("## 液压阀\n\n![阀](images/a.png)\n", URI, IMAGE)[0]["source_meta"] == {}
 
 
 def test_ast_uses_real_reference_headings_and_neighbors():
@@ -283,7 +317,7 @@ async def test_vlm_receives_each_occurrence_with_image_and_uncertainty_prompt(
         },
     ]
     result = await media.generate_image_summary(
-        IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
+        IMAGE, "a.png", contexts=contexts, ctx=e.ctx
     )
     assert [o["summary"] for o in result["image_occurrences"]] == ["用途A", "用途B"]
     calls = vlm.get_vision_completion_async.await_args_list
@@ -292,10 +326,12 @@ async def test_vlm_receives_each_occurrence_with_image_and_uncertainty_prompt(
     assert "uncertainty" in calls[0].kwargs["prompt"]
     assert all(len(call.kwargs["images"]) == 1 for call in calls)
     vlm.get_vision_completion_async.side_effect = RuntimeError("VLM offline")
-    with pytest.raises(RuntimeError, match="offline"):
-        await media.generate_image_summary(
-            IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
-        )
+    result_offline = await media.generate_image_summary(
+        IMAGE, "a.png", contexts=contexts, ctx=e.ctx
+    )
+    # A VLM outage is a failed description, not a crash: the caller records
+    # the image as unsupported and the reindex continues.
+    assert "generation failed" in result_offline["summary"]
 
 
 async def test_trusted_caption_short_circuits_vlm_and_missing_caption_regenerates(
@@ -325,7 +361,7 @@ async def test_trusted_caption_short_circuits_vlm_and_missing_caption_regenerate
         {"context": "Chapter B", "context_uri": URI + "b", "context_hash": "B", "caption": "  "},
     ]
     result = await media.generate_image_summary(
-        IMAGE, "a.png", contexts=contexts, strict=True, ctx=e.ctx
+        IMAGE, "a.png", contexts=contexts, ctx=e.ctx
     )
     records = result["image_occurrences"]
     # The trusted caption is reused verbatim; only the caption-less occurrence
@@ -355,7 +391,7 @@ async def test_empty_vlm_response_retries_then_settles_low_information_placehold
     vlm = SimpleNamespace(get_vision_completion_async=AsyncMock(side_effect=["", "恢复摘要"]))
     monkeypatch.setattr(media, "get_viking_fs", lambda: e.fs)
     monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm))
-    result = await media.generate_image_summary(IMAGE, "a.png", strict=True, ctx=e.ctx)
+    result = await media.generate_image_summary(IMAGE, "a.png", ctx=e.ctx)
     assert result["summary"] == "恢复摘要"
     assert vlm.get_vision_completion_async.await_count == 2
 
@@ -363,7 +399,7 @@ async def test_empty_vlm_response_retries_then_settles_low_information_placehold
     # low-information placeholder instead of raising SEMANTICS_REQUIRED forever.
     vlm2 = SimpleNamespace(get_vision_completion_async=AsyncMock(return_value="  "))
     monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm2))
-    result2 = await media.generate_image_summary(IMAGE, "a.png", strict=True, ctx=e.ctx)
+    result2 = await media.generate_image_summary(IMAGE, "a.png", ctx=e.ctx)
     assert "Low-information image" in result2["summary"]
     assert vlm2.get_vision_completion_async.await_count == 2
 
@@ -409,20 +445,20 @@ async def test_actual_image_producer_and_consumer_send_joint_input(
 
 
 @pytest.mark.parametrize("failure", ["summary", "provider"])
-async def test_enterprise_image_producer_rejects_missing_semantics_or_text_only_provider(
+async def test_enterprise_image_producer_skips_undescribed_or_text_only_provider(
     environment, embedding, monkeypatch, failure
 ):
+    """A captionless image (or a text-only embedder) enqueues nothing: skip."""
     e = environment
     model = SimpleNamespace(supports_multimodal=False)
     monkeypatch.setattr(type(embedding), "get_embedder", lambda self: model)
     await e.fs.write(IMAGE, b"image bytes", ctx=e.ctx)
-    with pytest.raises(ValueError):
-        await vectorize_file(
-            IMAGE,
-            {"name": "a.png", "summary": "" if failure == "summary" else "valid summary"},
-            IMAGE.rsplit("/", 1)[0],
-            ctx=e.ctx,
-        )
+    assert not await vectorize_file(
+        IMAGE,
+        {"name": "a.png", "summary": "" if failure == "summary" else "valid summary"},
+        IMAGE.rsplit("/", 1)[0],
+        ctx=e.ctx,
+    )
     assert not e.queue.messages
 
 
@@ -531,8 +567,20 @@ async def test_uri_image_reindex_uses_same_joint_producer(environment, embedding
     executor._chunk_reindex_ingest_options = AsyncMock(return_value=None)
     executor._upsert_context = AsyncMock(side_effect=AssertionError("text-only path forbidden"))
     counters = reindex._ReindexCounters()
+    # Reindex never calls the VLM itself: the citation stage generated the
+    # caption before this run, and its result rides in as image_summaries.
+    details = {
+        "name": IMAGE.rsplit("/", 1)[-1],
+        "summary": "阀芯检修图",
+        "image_occurrences": [{"summary": "阀芯检修图"}],
+    }
     await executor._reindex_resource_vectors_from_entries(
-        root_uri=IMAGE, directories=[], files=[IMAGE], counters=counters, ctx=e.ctx
+        root_uri=IMAGE,
+        directories=[],
+        files=[IMAGE],
+        counters=counters,
+        ctx=e.ctx,
+        image_summaries={IMAGE: details},
     )
     assert counters.failed_records == 0, counters.warnings
     assert counters.rebuilt_records == 1
@@ -540,3 +588,179 @@ async def test_uri_image_reindex_uses_same_joint_producer(environment, embedding
     assert message.context_data["_require_joint_image_embedding"] is True
     assert {part["type"] for part in message.message} == {"text", "image_url"}
     executor._upsert_context.assert_not_awaited()
+
+
+TWIN_RECORD = {
+    "name": "a.png",
+    "summary": "另一分支的图描述",
+    "image_occurrences": [
+        {
+            "summary": "另一分支的图描述",
+            "context_status": "twin_reuse",
+            "asset_sha256": "b" * 64,
+            "semantics_signature": "published-twin",
+        }
+    ],
+}
+
+
+async def _twin_sandbox(environment, monkeypatch):
+    """One published twin asset plus a mock VLM that counts its calls."""
+    import io
+    from pathlib import Path
+
+    from PIL import Image
+
+    from openviking.prompts.manager import PromptManager
+
+    e = environment
+    raw = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(raw, format="PNG")
+    await e.fs.write(IMAGE, raw.getvalue(), ctx=e.ctx)
+    monkeypatch.setattr(
+        media, "render_prompt", PromptManager(templates_dir=Path("openviking/prompts/templates")).render
+    )
+    vlm = SimpleNamespace(get_vision_completion_async=AsyncMock(return_value="本章上下文下的描述"))
+    monkeypatch.setattr(media, "get_viking_fs", lambda: e.fs)
+    monkeypatch.setattr(media, "get_openviking_config", lambda: SimpleNamespace(vlm=vlm))
+    twin = AsyncMock(return_value=TWIN_RECORD)
+    monkeypatch.setattr("openviking.indexing.image_cache.load_twin_image_semantics", twin)
+    return e, vlm, twin
+
+
+async def test_cited_copy_describes_its_own_context_instead_of_a_byte_identical_twin(
+    environment, monkeypatch
+):
+    """Twin reuse serves uncited copies only; a citing copy keeps its own context.
+
+    The twin's description was written from another branch's chapter context, and
+    the semantics cache binds every summary to its reference context. Returning it
+    for a copy this run's markdown cites also left that markdown's ``<figcaption>``
+    empty forever: the reused record carries no ``context_uri``, so caption
+    backfill had nothing to target.
+    """
+    e, vlm, twin = await _twin_sandbox(environment, monkeypatch)
+    contexts = [
+        {
+            "context": "Chapter: 10.2 进行操作时的注意事项\nNeighboring source text:\n装上盲堵",
+            "context_uri": URI,
+            "context_hash": "A",
+            "caption": "",
+        }
+    ]
+    result = await media.generate_image_summary(
+        IMAGE, "a.png", contexts=contexts, ctx=e.ctx
+    )
+    assert twin.await_count == 1
+    assert result is not TWIN_RECORD
+    assert vlm.get_vision_completion_async.await_count == 1
+    records = result["image_occurrences"]
+    assert [r["context_uri"] for r in records] == [URI]
+    assert records[0]["summary"] == "本章上下文下的描述"
+
+    # The same asset in a directory whose markdown cites nothing has no context
+    # of its own, so the published twin still wins and no VLM call is billed.
+    vlm.get_vision_completion_async.reset_mock()
+    uncited = await media.generate_image_summary(
+        IMAGE, "a.png", contexts=[], ctx=e.ctx
+    )
+    assert uncited is TWIN_RECORD
+    assert vlm.get_vision_completion_async.await_count == 0
+
+
+class _CaptionFS:
+    """The VikingFS surface caption backfill needs: read a md, write it back."""
+
+    def __init__(self, files):
+        self.files = dict(files)
+        self.writes = []
+
+    async def read_file(self, uri, ctx=None):
+        return self.files[uri]
+
+    async def write_file(self, uri, content, ctx=None, lease_ref=None):
+        self.files[uri] = content
+        self.writes.append((uri, lease_ref))
+
+
+_CAPTION_SUMMARY = {
+    "name": "a.png",
+    "summary": "本章上下文下的描述",
+    "image_occurrences": [
+        {"context_uri": URI, "summary": "本章上下文下的描述", "ordinal": 0}
+    ],
+}
+_EMPTY_FIGURE_MARKDOWN = (
+    "# 10.2 进行操作时的注意事项\n\n<figure>\n"
+    f'    <img src="images/a.png" vikingsrc="{IMAGE}"/>\n'
+    "    <figcaption></figcaption>\n</figure>\n"
+)
+
+
+async def test_citation_stage_backfills_the_generated_caption_into_the_corpus(
+    environment, monkeypatch
+):
+    """The citation stage writes its generated description into the corpus.
+
+    Caption generation belongs to the citation-normalization stage, not to
+    reindex: the backfill fills the empty ``<figcaption>`` of every figure
+    citing the described image, inside the caller's pathlock lease.
+    """
+    from openviking.indexing import citation_stage
+
+    e = environment
+    fs = _CaptionFS({URI: _EMPTY_FIGURE_MARKDOWN})
+    monkeypatch.setattr(citation_stage, "get_logger", lambda name: _NullLogger())
+    from openviking.parse.figure_caption import backfill_image_captions
+
+    written = await backfill_image_captions(
+        fs, IMAGE, _CAPTION_SUMMARY, ctx=e.ctx, lock={"lease_ref": "stage-lease"}
+    )
+    assert written == [URI]
+    assert "本章上下文下的描述" in fs.files[URI]
+    # The write stays inside the stage's pathlock lease.
+    assert fs.writes == [(URI, {"lease_ref": "stage-lease"})]
+
+
+class _NullLogger:
+    def warning(self, *args, **kwargs):
+        pass
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def debug(self, *args, **kwargs):
+        pass
+
+
+async def test_reindex_does_not_backfill_captions_but_forwards_semantic_summaries(
+    environment, monkeypatch
+):
+    """Reindex is pure compute over published bytes.
+
+    The vector phase receives whatever image summaries the semantic phase
+    produced, but reindex itself never rewrites the markdown it archives —
+    caption generation runs in the citation stage before reindex starts.
+    """
+    from openviking.service import reindex_executor as reindex
+
+    e = environment
+    executor = reindex.ReindexExecutor()
+    order: list[str] = []
+
+    async def semantic(**kwargs):
+        order.append("semantic")
+        return {"image_summaries": {IMAGE: _CAPTION_SUMMARY}}
+
+    async def vectors(**kwargs):
+        order.append("vectors")
+        assert kwargs.get("image_summaries") == {IMAGE: _CAPTION_SUMMARY}
+
+    monkeypatch.setattr(executor, "_run_semantic_processor", semantic)
+    monkeypatch.setattr(executor, "_reindex_resource_vectors", vectors)
+    monkeypatch.setattr(executor, "_update_stage", AsyncMock())
+    run = reindex._ReindexRunContext(
+        ctx=e.ctx, counters=reindex._ReindexCounters(), lock={"lease_ref": "l"}
+    )
+    await executor._reindex_resource(uri=URI, mode="semantic_and_vectors", run=run)
+    assert order == ["semantic", "vectors"]

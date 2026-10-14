@@ -492,6 +492,19 @@ impl HttpClient {
         self.post("/api/v1/content/reindex", &body).await
     }
 
+    pub async fn normalize_citations(
+        &self,
+        uri: &str,
+        recursive: bool,
+    ) -> Result<serde_json::Value> {
+        let body = serde_json::json!({
+            "uri": uri,
+            "recursive": recursive,
+        });
+        self.post("/api/v1/content/normalize_citations", &body)
+            .await
+    }
+
     pub async fn consistency(&self, uri: &str) -> Result<serde_json::Value> {
         let body = serde_json::json!({
             "uri": uri,

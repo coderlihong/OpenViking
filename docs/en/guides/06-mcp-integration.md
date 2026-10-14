@@ -129,7 +129,7 @@ If you already have HTTPS configured, just connect to `https://your-server.com/m
 
 ## Available MCP Tools
 
-Once connected, OpenViking exposes 15 tools:
+Once connected, OpenViking exposes 17 tools:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -146,6 +146,8 @@ Once connected, OpenViking exposes 15 tools:
 | `cancel_watch` | Cancel (delete) a watch task by its target URI. To change the cadence or pause temporarily, cancel and re-add with a new `watch_interval` | `to_uri` (must match the watch task's `to` value, e.g. `viking://resources/...`) |
 | `grep` | Regex content search across `viking://` files | `uri`, `pattern` (string or array), `case_insensitive`, `node_limit` |
 | `glob` | Find files matching a glob pattern | `pattern`, `uri` (optional scope), `node_limit` |
+| `index_search` | Keyword search over directory catalogues (`index.md`) under a URI — the agent locate leg. Keywords are OR-ed with `\|`; entry names rank above descriptions. Returns entry URIs to hand to `read` | `uri`, `query`, `limit` (default 20), `case_insensitive` (optional), `level_limit` (default 10), `include_content` (optional) |
+| `vector_search` | Semantic retrieval over the vector + BM25 hybrid fusion, without session context, query expansion, or context assembly | `query`, `image_url` (optional), `target_uri` (optional), `limit` (default 10), `min_score` (optional), `level`, `context_type`, `meta_filters`, `meta_hints`, `tags`, `since`, `until`, `time_field`, `include_provenance`, `read_content` |
 | `forget` | Delete any `viking://` URI (use `search` to find it first; pass `recursive=true` to delete a directory) | `uri`, `recursive` (optional) |
 | `health` | Check OpenViking service health | none |
 

@@ -660,6 +660,33 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             else inserted_data["abstract"][:VIKINGDB_CONTENT_MAX_SIZE]
         )
 
+    def _skip_superseded_chunk(
+        self,
+        embedding_msg: EmbeddingMsg,
+        publication_store,
+        generation: str,
+        uri: str,
+        *,
+        vector_written: bool = False,
+    ) -> ProcessResult:
+        """Drop a queued chunk whose source a newer index attempt now owns.
+
+        A caption backfill re-indexes the chapter and the figures it rewrote, and
+        the replacement can land between the publication gate and the adapter
+        write. The condemned chunk is obsolete rather than wrong: failing it
+        reported a failed ingestion for work whose replacement had published, and
+        left its batch waiting for a receipt that could never arrive.
+        """
+        logger.info(
+            "Dropping chunk of a superseded index generation: uri=%s generation=%s",
+            uri,
+            generation,
+        )
+        publication_store.supersede(generation)
+        self._merge_request_stats(embedding_msg.telemetry_id, processed=1)
+        self._record_request_success(embedding_msg, vector_written=vector_written)
+        return ProcessResult.success()
+
     async def on_dequeue(self, data: Optional[Dict[str, Any]]) -> ProcessResult:
         """Process dequeued message and add embedding vector(s)."""
         if not data:
@@ -699,10 +726,23 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     if publication_store.state(generation)["state"] == "published":
                         self._record_request_success(embedding_msg)
                         return ProcessResult.success()  # Idempotent duplicate of published work.
-                    request_failed_message = (
-                        "Index generation is failed or superseded; cannot publish"
+                    if publication_store.is_superseded(generation):
+                        return self._skip_superseded_chunk(
+                            embedding_msg,
+                            publication_store,
+                            generation,
+                            inserted_data.get("uri", ""),
+                        )
+                    # A sibling chunk already failed this generation. Dropping the rest
+                    # is right, but the request is still waiting on each of their roots:
+                    # an unsettled one holds `wait=true` open forever.
+                    error_msg = self._embedding_error_msg(
+                        embedding_msg,
+                        "Index generation failed; cannot publish",
                     )
-                    return ProcessResult.failed(request_failed_message)
+                    self._merge_request_stats(embedding_msg.telemetry_id, error_count=1)
+                    request_failed_message = error_msg
+                    return ProcessResult.failed(error_msg)
             account_id = inserted_data.get("account_id", "default")
             context_user = inserted_data.get("user") or {}
             user_id = context_user.get("user_id") or inserted_data.get("owner_user_id") or "default"
@@ -961,6 +1001,20 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                         self._merge_request_stats(embedding_msg.telemetry_id, processed=1)
                         self._record_request_success(embedding_msg)
                         return ProcessResult.success()
+                    # The write window re-checks publication ownership just before the
+                    # adapter call, so a source re-indexed after the gate above -- the
+                    # caption backfill rebuilding the chapter it rewrote -- refuses this
+                    # row. Whether or not the row could have been stored, a newer attempt
+                    # owns this URI now, so the chunk is obsolete rather than wrong.
+                    if publication_store is not None and publication_store.is_superseded(
+                        generation
+                    ):
+                        return self._skip_superseded_chunk(
+                            embedding_msg,
+                            publication_store,
+                            generation,
+                            inserted_data.get("uri", ""),
+                        )
                     error_msg = self._embedding_error_msg(
                         embedding_msg,
                         f"Failed to write to vector database: {db_err}",
@@ -977,7 +1031,17 @@ class TextEmbeddingHandler(DequeueHandlerBase):
 
                     publication_store.acknowledge(generation, publication_member_id(inserted_data))
                     state = publication_store.state(generation)
-                    if state["state"] in {"failed", "superseded"}:
+                    if state["state"] == "superseded":
+                        # The row is in the store; a newer attempt for the same source
+                        # owns publication and its own write lands the current revision.
+                        return self._skip_superseded_chunk(
+                            embedding_msg,
+                            publication_store,
+                            generation,
+                            inserted_data.get("uri", ""),
+                            vector_written=True,
+                        )
+                    if state["state"] == "failed":
                         raise RuntimeError(state.get("error") or "Generation cannot publish")
                 self._merge_request_stats(embedding_msg.telemetry_id, processed=1)
                 self._record_request_success(
@@ -1025,6 +1089,14 @@ class TextEmbeddingHandler(DequeueHandlerBase):
 
                 registry = configured_store()
                 if registry is None:
+                    # Nothing to fail in the registry, but the waiting request still
+                    # holds this root; settle it or its `wait=true` never returns.
+                    error_msg = self._embedding_error_msg(
+                        embedding_msg,
+                        "Cancelled generation has no publication registry",
+                    )
+                    self._merge_request_stats(embedding_msg.telemetry_id, error_count=1)
+                    self._record_request_failure(embedding_msg, error_msg)
                     return ProcessResult.failed("Cancelled generation has no publication registry")
                 registry.fail(generation, "Embedding cancelled")
             self._record_request_success(embedding_msg)

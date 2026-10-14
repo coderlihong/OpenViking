@@ -136,7 +136,7 @@ class TestBackfillImageCaptions:
             ],
         }
         updated = await backfill_image_captions(fs, image_uri, summary)
-        assert updated == 1
+        assert updated == [md_uri]
         assert "图示描述" in files[md_uri]
 
     @pytest.mark.asyncio
@@ -151,4 +151,4 @@ class TestBackfillImageCaptions:
                 {"context_uri": "viking://resources/res/note.txt", "summary": "d"},
             ],
         }
-        assert await backfill_image_captions(fs, image_uri, summary) == 0
+        assert await backfill_image_captions(fs, image_uri, summary) == []

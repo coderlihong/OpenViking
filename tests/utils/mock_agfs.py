@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from openviking.pyagfs.exceptions import AGFSNotFoundError
+
 
 def _iso(epoch_seconds: float) -> str:
     return datetime.fromtimestamp(epoch_seconds, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -214,7 +216,7 @@ class MockLocalAGFS:
         del ctx
         root = self._resolve(path)
         if not root.exists():
-            raise FileNotFoundError(path)
+            raise AGFSNotFoundError(path)
         base = str(path).rstrip("/")
         entries = []
         for item in sorted(root.rglob("*")):
@@ -279,7 +281,7 @@ class MockLocalAGFS:
             return self._queue_read(queue_dir, op)
         p = self._resolve(path)
         if not p.exists():
-            raise FileNotFoundError(path)
+            raise AGFSNotFoundError(path)
         return p.read_bytes()
 
     def read(self, path, ctx=None, **kwargs):
@@ -311,7 +313,7 @@ class MockLocalAGFS:
     def stat(self, path, ctx=None):
         p = self._resolve(path)
         if not p.exists():
-            raise FileNotFoundError(path)
+            raise AGFSNotFoundError(path)
         s = p.stat()
         return {
             "size": s.st_size,

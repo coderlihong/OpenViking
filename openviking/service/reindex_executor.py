@@ -80,8 +80,6 @@ _MAX_FILE_VECTORIZATION_CONCURRENCY = 64
 # regenerates image summaries and directory L0/L1 before the vector phase.
 ENTERPRISE_REINDEX_MODES = frozenset({"vectors_only", "semantic_and_vectors"})
 DRY_RUN_MODES = ENTERPRISE_REINDEX_MODES | {"prune_orphans"}
-# Business code returned when a joint image record has no current valid summary.
-SEMANTICS_REQUIRED_CODE = "SEMANTICS_REQUIRED"
 
 
 # Trailing markers VikingFS appends when a directory has no generated .abstract.md/.overview.md
@@ -126,10 +124,6 @@ class _ReindexCounters:
     would_delete_records: int = 0
     unsupported_records: int = 0
     failed_records: int = 0
-    # A joint image record with no current valid summary is not a generic
-    # failure: the caller must choose semantic mode. Counted separately so the
-    # result can surface the SEMANTICS_REQUIRED business code.
-    semantics_required_records: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def merge_from(self, other: "_ReindexCounters") -> None:
@@ -139,7 +133,6 @@ class _ReindexCounters:
         self.would_delete_records += other.would_delete_records
         self.unsupported_records += other.unsupported_records
         self.failed_records += other.failed_records
-        self.semantics_required_records += other.semantics_required_records
         self.warnings.extend(other.warnings)
 
 
@@ -158,7 +151,7 @@ class _EffectiveModeConfig:
     write_directory_levels: bool
     regenerate_image_summaries: bool
     # Both enterprise modes require a current valid image summary for a joint
-    # image record; a missing one is SEMANTICS_REQUIRED, never a text fallback.
+    # image record; an image without one is skipped, never degraded to text.
     requires_image_semantics: bool = True
 
 
@@ -793,14 +786,11 @@ class ReindexExecutor:
             "would_delete_records": counters.would_delete_records,
             "unsupported_records": counters.unsupported_records,
             "failed_records": counters.failed_records,
-            "semantics_required_records": counters.semantics_required_records,
             "duration_ms": int((time.perf_counter() - started_at) * 1000),
             "warnings": counters.warnings,
         }
         if index_profile is not None:
             result["index_profile"] = index_profile
-        if counters.semantics_required_records:
-            result["code"] = SEMANTICS_REQUIRED_CODE
         return result
 
     async def _preview_enterprise_reindex(
@@ -850,6 +840,8 @@ class ReindexExecutor:
         elif not self._is_hidden_meta_file(uri):
             files.append(uri)
 
+        files = await self._drop_navigation_indexes(files, ctx=ctx)
+
         if config.write_directory_levels:
             preview.planned_semantic_levels = 2 * len(
                 [d for d in dict.fromkeys(directories) if d != "viking://"]
@@ -866,12 +858,8 @@ class ReindexExecutor:
                 content = content.decode("utf-8", errors="replace")
             content_type = get_resource_content_type(file_uri.rsplit("/", 1)[-1])
             if content_type == ResourceContentType.IMAGE:
-                # A joint image record without a current valid summary requires
-                # semantic mode; the preview reports it without writing.
-                preview.warnings.append(
-                    f"{SEMANTICS_REQUIRED_CODE}: image {file_uri} needs semantic mode for a "
-                    "current summary"
-                )
+                # A captionless image is skipped by the real build, not planned.
+                preview.unsupported_records += 1
                 continue
             preview.planned_chunks += self._preview_chunk_count(file_uri, content)
 
@@ -1267,9 +1255,11 @@ class ReindexExecutor:
         if not recursive:
             vector_kwargs["recursive"] = False
         if config.write_directory_levels:
-            # semantic_and_vectors regenerates directory L0/L1 (and image
-            # summaries) before the shared vector phase; vectors_only keeps the
-            # published L0/L1 untouched.
+            # semantic_and_vectors regenerates directory L0/L1 before the shared
+            # vector phase; vectors_only keeps the published L0/L1 untouched.
+            # Figure citations (vikingsrc) and captions are NOT rebuilt here:
+            # they belong to the citation-normalization stage, which must run
+            # before reindex so the archived markdown and its captions agree.
             await self._update_stage(f"semantic:{uri}")
             semantic_kwargs = {
                 "uri": uri,
@@ -1384,6 +1374,7 @@ class ReindexExecutor:
             role=str(ctx.role),
             skip_vectorization=True,
             generation_trigger="reindex",
+            allow_vlm=False,
             use_hierarchical_aggregation=context_type == "memory",
             propagate_to_parent=(
                 recursive if propagate_to_parent is None else propagate_to_parent
@@ -1515,6 +1506,8 @@ class ReindexExecutor:
             directories = []
             files = [] if self._is_hidden_meta_file(uri) else [uri]
 
+        files = await self._drop_navigation_indexes(files, ctx=ctx)
+
         await self._reindex_resource_vectors_from_entries(
             **self._with_ingest_options(
                 {
@@ -1637,9 +1630,6 @@ class ReindexExecutor:
                     counters.failed_records += 1
                     counters.warnings.append(f"Failed to reindex {directory_uri} L1 vector: {exc}")
 
-        vlm = getattr(get_openviking_config(), "vlm", None)
-        image_llm_sem = asyncio.Semaphore(max(1, getattr(vlm, "max_concurrent", None) or 1))
-
         async def process_file(file_uri: str) -> _ReindexCounters:
             file_counters = _ReindexCounters(scanned_records=1)
             parent_uri = VikingURI(file_uri).parent.uri
@@ -1663,15 +1653,9 @@ class ReindexExecutor:
                     return {"name": file_uri.rsplit("/", 1)[-1], "summary": summary}
 
                 summary_dict: dict | None = (image_summaries or {}).get(file_uri)
-                stale_joint_input = False
                 if is_image and summary_dict is None:
-                    # A joint image record must keep its joint input. The fresh
-                    # semantic result (if any) is authoritative; a published
-                    # occurrence cache may be reused. A previously published
-                    # joint image whose cache is missing/invalid is regenerated
-                    # here instead of being degraded to a text-only summary
-                    # vector. An image never published as joint returns None
-                    # and rebuilds from its summary.
+                    # Captions are generated by the citation-normalization stage
+                    # BEFORE reindex; a published occurrence cache may be reused.
                     try:
                         from openviking.indexing.image_cache import load_image_semantics
 
@@ -1679,37 +1663,23 @@ class ReindexExecutor:
                             get_viking_fs(), file_uri, ctx
                         )
                     except Exception as exc:
-                        if SEMANTICS_REQUIRED_CODE not in str(exc):
-                            raise
+                        # An image whose semantics cache is unavailable (deleted
+                        # asset, stale cache key, no published occurrence) has
+                        # nothing to index: skip it without an error path.
                         logger.info(
-                            "Regenerating image semantics for reindex: %s (%s)",
+                            "Skipping undescribed image (semantics unavailable): %s (%s)",
                             file_uri,
                             exc,
                         )
-                        summary_dict = await self._regenerate_image_summary(
-                            file_uri, ctx=ctx, llm_sem=image_llm_sem,
-                        )
-                        if summary_dict is None:
-                            # Regeneration failed: the stored abstract is stale
-                            # joint input and must not be re-published.
-                            stale_joint_input = True
-                if is_image and summary_dict is None and not stale_joint_input:
-                    # Joint embedding is required for every resource image; an
-                    # asset whose summary was never published (e.g. none-mode
-                    # import) still needs VLM semantics before it can index.
-                    summary_dict = await self._regenerate_image_summary(
-                        file_uri, ctx=ctx, llm_sem=image_llm_sem,
-                    )
-                if summary_dict is None and not stale_joint_input:
+                        file_counters.unsupported_records += 1
+                        return file_counters
+                if summary_dict is None and not is_image:
                     summary_dict = _static_image_summary()
                 if summary_dict is None:
-                    # Regeneration failed and a stale joint input must not be
-                    # re-published; settle the record as semantics-required so
-                    # one bad image cannot abort the whole reindex run.
-                    file_counters.semantics_required_records += 1
+                    # No fresh semantic result and no published occurrence cache.
+                    file_counters.unsupported_records += 1
                     file_counters.warnings.append(
-                        "Failed chunk reindex for "
-                        f"{file_uri}: SEMANTICS_REQUIRED: image summary regeneration failed"
+                        f"Skipped undescribed image {file_uri}: no figcaption content"
                     )
                     return file_counters
                 try:
@@ -1731,10 +1701,7 @@ class ReindexExecutor:
                     else:
                         file_counters.unsupported_records += 1
                 except Exception as exc:
-                    if SEMANTICS_REQUIRED_CODE in str(exc):
-                        file_counters.semantics_required_records += 1
-                    else:
-                        file_counters.failed_records += 1
+                    file_counters.failed_records += 1
                     file_counters.warnings.append(f"Failed chunk reindex for {file_uri}: {exc}")
                 return file_counters
             vector_text = await self._best_resource_file_vector_text(file_uri, summary, ctx=ctx)
@@ -1960,6 +1927,8 @@ class ReindexExecutor:
             elif not self._is_hidden_meta_file(entry_uri):
                 resource_files.append(entry_uri)
 
+        resource_files = await self._drop_navigation_indexes(resource_files, ctx=ctx)
+
         for memory_root in sorted(set(memory_roots)):
             memory_mode = (
                 "semantic_and_vectors" if mode == "semantic_and_vectors" else "vectors_only"
@@ -2046,6 +2015,8 @@ class ReindexExecutor:
                 resource_directories.append(entry_uri)
             elif not self._is_hidden_meta_file(entry_uri):
                 resource_files.append(entry_uri)
+
+        resource_files = await self._drop_navigation_indexes(resource_files, ctx=ctx)
 
         for user_root in sorted(set(user_roots)):
             await self._reindex_user_namespace(
@@ -2401,50 +2372,6 @@ class ReindexExecutor:
             return ""
         return "" if _is_not_ready_sentinel(value, _OVERVIEW_NOT_READY_SUFFIX) else value
 
-    async def _regenerate_image_summary(
-        self,
-        file_uri: str,
-        *,
-        ctx: RequestContext,
-        llm_sem: asyncio.Semaphore | None = None,
-    ) -> dict | None:
-        """Resolve image semantics for every occurrence.
-
-        An occurrence carrying a non-empty figcaption (generated offline before
-        upload) uses that caption as its summary and skips the VLM; occurrences
-        without one are described by the VLM from the image plus its bounded,
-        tokenized chapter context (``collect_image_contexts``).
-        """
-        from openviking.indexing.image_context import collect_image_contexts
-        from openviking.parse.parsers.media.utils import generate_image_summary
-
-        viking_fs = get_viking_fs()
-        chunking = getattr(get_openviking_config().embedding, "chunking", None)
-        strict = bool(chunking and chunking.enabled)
-        try:
-            contexts = await collect_image_contexts(viking_fs, file_uri, ctx)
-        except Exception as exc:
-            logger.warning("Image context collection failed for %s: %s", file_uri, exc)
-            contexts = []
-
-        try:
-            summary_dict = await generate_image_summary(
-                file_uri,
-                file_uri.rsplit("/", 1)[-1],
-                llm_sem=llm_sem,
-                ctx=ctx,
-                contexts=contexts,
-                strict=strict,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Image semantics regeneration failed for %s: %s", file_uri, exc
-            )
-            return None
-        if not (summary_dict.get("summary") or "").strip():
-            return None
-        return summary_dict
-
     async def _best_file_summary(self, uri: str, *, ctx: RequestContext) -> str:
         parent_uri = VikingURI(uri).parent.uri
         file_name = uri.rsplit("/", 1)[-1]
@@ -2581,6 +2508,26 @@ class ReindexExecutor:
             or uri.endswith("/.abstract.md")
             or uri.endswith("/.overview.md")
         )
+
+    async def _is_navigation_index(self, uri: str, *, ctx: RequestContext) -> bool:
+        """Return whether ``uri`` is a generated per-directory navigation index.
+
+        ``index.md`` is reserved for that catalogue, but corpora published before
+        the feature use it for a branch chapter's own prose.  The frontmatter
+        marker decides, so legacy chapter bodies keep their vectors.
+        """
+
+        from openviking.core.directory_index import is_generated_index_at
+
+        return await is_generated_index_at(get_viking_fs(), uri, ctx=ctx)
+
+    async def _drop_navigation_indexes(
+        self,
+        uris: list[str],
+        *,
+        ctx: RequestContext,
+    ) -> list[str]:
+        return [uri for uri in uris if not await self._is_navigation_index(uri, ctx=ctx)]
 
     async def _safe_read_text(self, uri: str, *, ctx: RequestContext) -> str:
         viking_fs = get_viking_fs()

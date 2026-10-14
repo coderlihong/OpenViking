@@ -1229,6 +1229,98 @@ async def test_single_account_backend_truncates_content_only_at_vector_write():
 
 
 @pytest.mark.asyncio
+async def test_record_row_bound_applies_only_to_a_backend_that_declares_it():
+    """The embedded engine rejects a whole row above its uint16 field prefix, so the
+    write path shrinks such a record -- but only for a backend that says so.
+
+    A server-side backend has a different budget: applying the local row bound to it
+    would silently shorten retrievable text (``content`` there is what full-text grep
+    reads), so the cap is a declared capability instead of a shared constant.
+    """
+    oversized = "你" * 40_000  # 120,000 UTF-8 bytes: one field already over the row limit
+
+    class _Collection:
+        def get_meta_data(self):
+            return {
+                "Fields": [
+                    {"FieldName": "id"},
+                    {"FieldName": "uri", "FieldType": "text"},
+                    {"FieldName": "abstract", "FieldType": "text"},
+                    {"FieldName": "chunk_text", "FieldType": "text"},
+                    {"FieldName": "account_id"},
+                ]
+            }
+
+    for row_limit, must_fit in ((65535, True), (None, False)):
+        captured = {}
+
+        class _Adapter:
+            mode = "local"
+            USE_CONTENT_FIELD = False
+
+            def get_collection(self):
+                return _Collection()
+
+            def upsert(self, data):
+                captured["data"] = dict(data)
+                return [data["id"]]
+
+        if row_limit is not None:
+            _Adapter._RECORD_BYTE_LIMIT = row_limit
+
+        backend = _SingleAccountBackend(
+            config=VectorDBBackendConfig(backend="local", name="context", dimension=2),
+            bound_account_id="acc1",
+            shared_adapter=_Adapter(),
+        )
+
+        await backend.upsert(
+            {
+                "id": f"rec-{row_limit}",
+                "uri": "viking://resources/big.md",
+                "abstract": oversized,
+                "chunk_text": oversized,
+                "account_id": "acc1",
+            }
+        )
+
+        size = len(json.dumps(captured["data"], ensure_ascii=False).encode("utf-8"))
+        assert (size <= 65535) is must_fit
+        if must_fit:
+            # Both fields yield together on a shared factor, and the text stays valid.
+            for field in ("abstract", "chunk_text"):
+                value = captured["data"][field]
+                assert value and value.encode("utf-8").decode("utf-8") == value
+        else:
+            assert captured["data"]["abstract"] == oversized
+
+
+def test_only_the_embedded_engine_declares_a_record_row_limit():
+    from openviking.storage.vectordb_adapters.http_adapter import HttpCollectionAdapter
+    from openviking.storage.vectordb_adapters.local_adapter import (
+        CuVSCollectionAdapter,
+        LocalCollectionAdapter,
+    )
+    from openviking.storage.vectordb_adapters.qdrant_adapter import QdrantCollectionAdapter
+    from openviking.storage.vectordb_adapters.vikingdb_private_adapter import (
+        VikingDBPrivateCollectionAdapter,
+    )
+    from openviking.storage.vectordb_adapters.volcengine_adapter import (
+        VolcengineCollectionAdapter,
+    )
+
+    assert LocalCollectionAdapter._RECORD_BYTE_LIMIT == 65535
+    assert CuVSCollectionAdapter._RECORD_BYTE_LIMIT == 65535
+    for server_backend in (
+        HttpCollectionAdapter,
+        QdrantCollectionAdapter,
+        VikingDBPrivateCollectionAdapter,
+        VolcengineCollectionAdapter,
+    ):
+        assert server_backend._RECORD_BYTE_LIMIT is None
+
+
+@pytest.mark.asyncio
 async def test_single_account_backend_drops_content_for_non_vikingdb_backend():
     """Non-VikingDB backends (USE_CONTENT_FIELD=False) must not receive ``content``.
 

@@ -40,6 +40,20 @@ class IndexFileMarkers(str, Enum):
     WRITE_DONE = ".write_done"  # Index write complete marker file suffix
 
 
+# Names of the files the native index manager writes into one version snapshot
+# directory.  They must stay in sync with the C++ layout
+# (``src/index/detail/index_manager_impl.cpp`` kMetaFile / kVectorIndexDir /
+# kScalarIndexDir, ``src/index/detail/vector/common/bruteforce.h``
+# kFlatIndexFileName and ``src/index/detail/scalar/scalar_index.cpp``
+# kIndexDataFile).  The Python layer only uses them to tell a *complete*
+# snapshot apart from one that a crash left half-written.
+INDEX_MANAGER_META_FILE = "manager_meta.json"
+INDEX_VECTOR_DIR = "vector_index"
+INDEX_VECTOR_FLAT_FILE = "index_flat.data"
+INDEX_SCALAR_DIR = "scalar_index"
+INDEX_SCALAR_DATA_FILE = "scalar_index.data"
+
+
 # ==================== Scheduler related constants ====================
 DEFAULT_TTL_CLEANUP_SECONDS = 0  # TTL expired data cleanup interval (seconds)
 DEFAULT_INDEX_MAINTENANCE_SECONDS = 30  # Index maintenance task interval (seconds)

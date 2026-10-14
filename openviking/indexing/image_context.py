@@ -24,6 +24,7 @@ from urllib.parse import unquote
 from markdown_it import MarkdownIt
 
 from openviking.indexing.content import draft_sources
+from openviking.indexing.record_meta import extract_inline_metadata
 from openviking.parse.image_rewrite import VIKINGSRC_ATTR
 from openviking_cli.exceptions import NotFoundError
 from openviking.utils.token_estimation import estimate_text_tokens
@@ -272,6 +273,13 @@ def extract_occurrences(
         parsed = _ParsedSource(markdown)
     tokens = parsed.tokens
     lines = parsed.lines
+    # The chapter's own ``- document_id: / - page: / - 机型:`` block is read from
+    # the full source once, here, and travels with every occurrence. A figure's
+    # context window is token-budgeted and header-decorated, so the block can be
+    # outside the window (a late figure) or unreachable by its leading-line scan
+    # (the ``Source URI:`` header); without this the image row could never be
+    # filtered by the machine model of the chapter it illustrates.
+    source_meta = extract_inline_metadata(markdown)
     heading = []
     occurrences = []
     target = resolve_reference(image_uri, image_uri)
@@ -326,6 +334,7 @@ def extract_occurrences(
                     "context_token_count": (count_tokens or estimate_text_tokens)(context),
                     "context_budget_kind": "measured" if count_tokens else "estimated",
                     "caption": caption,
+                    "source_meta": dict(source_meta),
                 }
             )
     return occurrences

@@ -11,6 +11,7 @@ from openviking.server.routers.console import router as console_router
 from openviking.server.routers.content import router as content_router
 from openviking.server.routers.debug import router as debug_router
 from openviking.server.routers.filesystem import router as filesystem_router
+from openviking.server.routers.index_search import router as index_search_router
 from openviking.server.routers.metrics import router as metrics_router
 from openviking.server.routers.namespaces import router as namespaces_router
 from openviking.server.routers.kb_jobs import router as kb_jobs_router
@@ -27,6 +28,7 @@ from openviking.server.routers.stats import router as stats_router
 from openviking.server.routers.system import router as system_router
 from openviking.server.routers.tasks import router as tasks_router
 from openviking.server.routers.user_settings import router as user_settings_router
+from openviking.server.routers.vector_search import router as vector_search_router
 from openviking.server.routers.watches import router as watches_router
 from openviking.server.routers.webdav import router as webdav_router
 from openviking.server.routers.wiki import router as wiki_router
@@ -41,6 +43,7 @@ __all__ = [
     "system_router",
     "resources_router",
     "filesystem_router",
+    "index_search_router",
     "content_router",
     "console_router",
     "search_router",
@@ -58,6 +61,7 @@ __all__ = [
     "openviking_assets_router",
     "tasks_router",
     "user_settings_router",
+    "vector_search_router",
     "watches_router",
     "webdav_router",
     "wiki_router",

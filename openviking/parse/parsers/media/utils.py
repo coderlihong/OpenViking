@@ -253,7 +253,7 @@ async def generate_image_summary(
     llm_sem: Optional[asyncio.Semaphore] = None,
     ctx: Optional["RequestContext"] = None,
     contexts: Optional[list[dict]] = None,
-    strict: bool = False,
+    allow_vlm: bool = True,
 ) -> Dict[str, Any]:
     """
     Generate summary for an image file using VLM.
@@ -263,6 +263,10 @@ async def generate_image_summary(
         original_filename: Original filename of the image
         llm_sem: Semaphore to limit concurrent LLM calls
         ctx: Optional request context for tenant-aware file access
+        allow_vlm: When False, an occurrence with an empty figcaption is
+            skipped instead of calling the VLM — caption generation belongs to
+            the citation-normalization stage. An image with no describable
+            occurrence returns an empty summary and the caller skips it.
 
     Returns:
         Dictionary with "name" and "summary" keys
@@ -281,8 +285,6 @@ async def generate_image_summary(
         # Check for unsupported formats (SVG, etc.) by detecting magic bytes
         # SVG format is not supported by VolcEngine VLM API, skip VLM analysis
         if _is_svg(image_bytes):
-            if strict:
-                raise ValueError("SVG format is not supported by the image summary path")
             logger.info(
                 f"[MediaUtils.generate_image_summary] SVG format detected, skipping VLM analysis: {image_uri}"
             )
@@ -307,6 +309,17 @@ async def generate_image_summary(
         # usually only one of them is cited; reuse the published twin's summary
         # rather than re-billing the VLM for identical bytes. A genuinely novel
         # asset still falls through below.
+        #
+        # The shortcut is only for copies that resolve *no* occurrence of their
+        # own. A cited copy has this branch's chapter context, and the semantics
+        # cache binds every summary to its reference context (see
+        # ``image_cache.cache_key``): describing this chapter with another
+        # branch's text would fabricate a dependency the manifest cannot audit.
+        # It also silently left the citing file's ``<figcaption>`` empty, because
+        # the reused record carries no ``context_uri`` for caption backfill to
+        # target -- the caption then never appeared in the branch that asked for
+        # it. Cited copies therefore fall through to the caption-first / VLM
+        # loop below, where the occurrence keeps its own ``context_uri``.
         from openviking.indexing.image_cache import load_twin_image_semantics
 
         try:
@@ -318,7 +331,7 @@ async def generate_image_summary(
                 f"[MediaUtils.generate_image_summary] Twin lookup failed for {image_uri}: {exc}"
             )
             twin = None
-        if twin is not None:
+        if twin is not None and not contexts:
             return twin
         for occurrence in occurrences:
             # A non-empty figcaption is the authoritative description: it was
@@ -335,6 +348,13 @@ async def generate_image_summary(
                         "asset_sha256": asset_sha256,
                         "semantics_signature": signature,
                     }
+                )
+                continue
+            if not allow_vlm:
+                logger.info(
+                    "[MediaUtils.generate_image_summary] VLM disabled for this run; "
+                    "image without a figcaption stays undescribed: %s",
+                    image_uri,
                 )
                 continue
             prompt = render_prompt("parsing.image_summary", {"context": occurrence["context"]})
@@ -384,6 +404,15 @@ async def generate_image_summary(
                     "semantics_signature": signature,
                 }
             )
+        if not summaries:
+            # A captionless image has nothing to index: it is a skip, not an
+            # error — the caller records it as unsupported and moves on.
+            logger.info(
+                "[MediaUtils.generate_image_summary] Skipping undescribed image "
+                "(no figcaption content): %s",
+                image_uri,
+            )
+            return {"name": file_name, "summary": ""}
         if contexts is None:
             return {"name": file_name, "summary": summaries[0]["summary"]}
         return {
@@ -393,8 +422,6 @@ async def generate_image_summary(
         }
 
     except ValueError as e:
-        if strict:
-            raise
         if "SVG format" in str(e) or "not supported" in str(e):
             logger.warning(
                 f"[MediaUtils.generate_image_summary] Unsupported image format for {image_uri}: {e}"
@@ -406,8 +433,6 @@ async def generate_image_summary(
             f"[MediaUtils.generate_image_summary] Failed to generate image summary: {e}",
             exc_info=True,
         )
-        if strict:
-            raise
         return {"name": file_name, "summary": "Image summary generation failed"}
 
 

@@ -10,7 +10,7 @@
 | 入口 | 地址 | 说明 |
 | --- | --- | --- |
 | 前端（Studio） | `http://localhost:1933/studio/` | 浏览器打开；访问 `/` 会 302 跳到这里 |
-| MCP | `http://localhost:1933/mcp` | Streamable HTTP，15 个工具（find/search/read/write/edit/list/tree/remember/…） |
+| MCP | `http://localhost:1933/mcp` | Streamable HTTP，17 个工具（find/search/index_search/vector_search/read/…） |
 | REST API | `http://localhost:1933/api/v1/*` | 数据读写、管理、系统接口；Swagger 在 `/docs` |
 | 健康检查 | `/health`、`/ready` | 容器 healthcheck 用的也是它 |
 | WebDAV | `/webdav/resources` | 可选，映射 `viking://resources` |

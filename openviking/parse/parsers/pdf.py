@@ -32,10 +32,18 @@ from openviking.parse.base import (
 )
 from openviking.parse.parsers.base_parser import BaseParser
 from openviking.utils.time_utils import parse_iso_datetime
+from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.utils import get_logger
 from openviking_cli.utils.config.parser_config import PDFConfig
 
 logger = get_logger(__name__)
+
+#: Backends a request may name through ``parse_backend``.  ``local`` runs in
+#: process; the rest are served by the versioned artifact protocol and need a
+#: registered endpoint before any request can name one.
+LOCAL_BACKEND = "local"
+ARTIFACT_BACKENDS = ("mineru", "teleocr", "logics")
+REQUESTABLE_BACKENDS = (LOCAL_BACKEND, *ARTIFACT_BACKENDS, "auto")
 
 
 class PDFParser(BaseParser):
@@ -87,6 +95,40 @@ class PDFParser(BaseParser):
             self._markdown_parser = MarkdownParser(config=self.config)
         return self._markdown_parser
 
+    def _require_serviceable_backend(self, backend: Optional[str]) -> None:
+        """Reject a ``parse_backend`` this deployment cannot serve, before parsing.
+
+        Doing this here instead of letting ``PDFConfig.validate()`` fire while the
+        request-derived parser is built matters: that raise lands inside
+        :meth:`parse`'s conversion handler, which turns any failure into an empty
+        parse result.  A backend name with no registered endpoint therefore
+        committed a zero-chapter tree with no ``toc.md`` and no error -- the one
+        outcome a knowledge base must not report as success.  Artifact backends
+        are all-or-nothing for a deployment, so the honest answer is a rejected
+        request that names the configuration key to set.
+        """
+
+        if backend in (None, "auto"):
+            return
+        if backend not in REQUESTABLE_BACKENDS:
+            raise InvalidArgumentError(
+                f"Unsupported PDF parse_backend: {backend}",
+                details={"parse_backend": backend, "supported": list(REQUESTABLE_BACKENDS)},
+            )
+        endpoints = self.config.model_endpoints or {}
+        if backend in endpoints or backend == LOCAL_BACKEND:
+            return
+        if backend == "mineru" and self.config.mineru_endpoint:
+            # Legacy single-endpoint MinerU API: served in-process by the
+            # conversion path rather than by the artifact protocol.
+            return
+        raise InvalidArgumentError(
+            f"PDF parse_backend '{backend}' has no configured model endpoint; "
+            f"set pdf.model_endpoints.{backend} "
+            f"(configured: {', '.join(sorted(endpoints)) or 'none'})",
+            details={"parse_backend": backend, "configured_endpoints": sorted(endpoints)},
+        )
+
     @property
     def supported_extensions(self) -> List[str]:
         """List of supported file extensions."""
@@ -127,28 +169,18 @@ class PDFParser(BaseParser):
         try:
             policy = kwargs.get("structure_policy")
             backend = kwargs.get("parse_backend")
-            selected_model = (
-                backend if backend not in (None, "auto") else self.config.default_model_backend
-            )
-            if policy is None and selected_model in (self.config.model_endpoints or {}):
+            if policy is None and kwargs.get("split_content") is not False:
+                # The chapter tree is the uniform shape every ingested PDF comes
+                # back in, whichever backend produced its Markdown: the document's
+                # own outline forms it, and the tree is what makes the corpus
+                # navigable.  A caller that explicitly asks for one unsplit
+                # document is the only opt-out.
                 policy = "bookmarks_preferred"
             if policy not in (None, "bookmarks_preferred"):
-                raise ValueError(f"Unsupported structure_policy: {policy}")
-            if backend not in (None, "local", "mineru", "auto", "teleocr", "logics"):
-                raise ValueError(f"Unsupported PDF parse_backend: {backend}")
-            if policy and kwargs.get("split_content") is False:
-                raise ValueError("bookmarks_preferred cannot be combined with no_split")
-            # Each request owns its conversion config. Never mutate the registry's
-            # shared parser or let page-derived injected headings prove alignment.
-            converter = self
-            if policy or backend:
-                converter = PDFParser(
-                    replace(
-                        self.config,
-                        strategy=backend or self.config.strategy,
-                        heading_detection="none" if policy else self.config.heading_detection,
-                    )
-                )
+                raise InvalidArgumentError(f"Unsupported structure_policy: {policy}")
+            self._require_serviceable_backend(backend)
+            if kwargs.get("structure_policy") and kwargs.get("split_content") is False:
+                raise InvalidArgumentError("bookmarks_preferred cannot be combined with no_split")
             # Step 1: registered Docker backends use the validated artifact protocol.
             endpoints = self.config.model_endpoints or {}
             effective_backend = backend or (
@@ -156,12 +188,50 @@ class PDFParser(BaseParser):
             )
             if effective_backend == "auto" and endpoints:
                 effective_backend = self.config.default_model_backend
-            if effective_backend in endpoints:
+            uses_model_artifacts = effective_backend in endpoints
+            # The outline lives in the file, so it is read before the conversion is
+            # configured: a PDF that has bookmarks is split by them, and one that has
+            # none keeps the converter's own heading detection, so ``split_chapters``
+            # splits on real headings instead of falling back to token-budget blocks.
+            outline: list[dict] = []
+            outline_error: Optional[str] = None
+            if policy:
+                try:
+                    outline = await asyncio.to_thread(self._read_pdf_bookmarks, pdf_path)
+                except ValueError:
+                    raise  # an unsupported input (e.g. password-protected) stays unsupported
+                except Exception as error:
+                    # The outline is a convenience the splitter can do without; a
+                    # reader that cannot open the file does not make the document
+                    # unparsable, and the conversion has not spent model time yet.
+                    outline_error = str(error)
+                    logger.warning(
+                        f"PDF bookmarks unavailable for {pdf_path.name}: {error}"
+                    )
+            # Each request owns its conversion config. Never mutate the registry's
+            # shared parser or let page-derived injected headings prove alignment.
+            # Injected headings stay disabled whenever the tree has something better
+            # to split on: the model's own Markdown or a real document outline.
+            split_on_declared_structure = bool(policy) and (
+                uses_model_artifacts or bool(outline)
+            )
+            converter = self
+            if policy or backend:
+                converter = PDFParser(
+                    replace(
+                        self.config,
+                        strategy=backend or self.config.strategy,
+                        heading_detection=(
+                            "none" if split_on_declared_structure else self.config.heading_detection
+                        ),
+                    )
+                )
+            if uses_model_artifacts:
                 from openviking.parse.model_backend import ParseModelBackend
 
-                pymupdf = lazy_import("pymupdf")
-                with pymupdf.open(pdf_path) as source_pdf:
-                    expected_pages = len(source_pdf)
+                expected_pages, page_count_source = await asyncio.to_thread(
+                    self._count_pdf_pages, pdf_path
+                )
                 model_document = await ParseModelBackend(
                     endpoints[effective_backend],
                     api_key=self.config.model_api_key,
@@ -180,10 +250,11 @@ class PDFParser(BaseParser):
                     "strategy": effective_backend,
                     "effective_backend": effective_backend,
                     "library": "parser-artifact-v1",
+                    "page_count_source": page_count_source,
                 }
             else:
                 if kwargs.get("model_mode", "auto") != "auto" or kwargs.get("backend_options"):
-                    raise ValueError(
+                    raise InvalidArgumentError(
                         "model_mode/backend_options require a registered Docker parser backend"
                     )
                 markdown_content, conversion_meta = await converter._convert_to_markdown(
@@ -192,6 +263,7 @@ class PDFParser(BaseParser):
                 )
 
             chapter_kwargs = {}
+            structure_note: Optional[str] = None
             if policy:
                 from openviking.parse.chapter_splitter import split_chapters
 
@@ -203,7 +275,13 @@ class PDFParser(BaseParser):
                         "",
                         markdown_content,
                     ).strip()
-                bookmarks = await asyncio.to_thread(self._read_pdf_bookmarks, pdf_path)
+                bookmarks = outline
+                if outline_error:
+                    # ``split_chapters`` treats an empty outline as "use the
+                    # document's own headings" -- a designed input -- so the corpus
+                    # keeps a chapter tree instead of losing the file to a reader
+                    # that only ever supplied a convenience.
+                    structure_note = f"bookmarks_unavailable: {outline_error}"
                 plan = await asyncio.to_thread(
                     split_chapters,
                     markdown_content,
@@ -244,6 +322,12 @@ class PDFParser(BaseParser):
             )
             result.meta["intermediate_markdown_length"] = len(markdown_content)
             result.meta["intermediate_markdown_preview"] = markdown_content[:500]
+            if structure_note:
+                # A tree built from document headings rather than the outline is a
+                # degraded structure, not a failed one: it has to reach the ingestion
+                # ledger so the operator can tell which chapters to re-check.
+                result.meta["structure_note"] = structure_note
+                result.warnings.append(structure_note)
 
             logger.info(
                 f"PDF parsed successfully: {pdf_path.name} "
@@ -253,8 +337,16 @@ class PDFParser(BaseParser):
 
             return result
 
+        except InvalidArgumentError:
+            # A rejected request is not a conversion failure: it applies to every
+            # file of the batch, so it must reach the caller instead of becoming
+            # an empty tree that commits as a successful, structureless import.
+            raise
         except Exception as e:
-            logger.error(f"Failed to parse PDF {pdf_path}: {e}")
+            # The string alone cannot say which step failed (conversion, bookmarks,
+            # or the markdown handoff), and a degraded ingestion is only debuggable
+            # from the frame that raised.
+            logger.error(f"Failed to parse PDF {pdf_path}: {e}", exc_info=True)
             return create_parse_result(
                 root=ResourceNode(type=NodeType.ROOT),
                 source_path=str(pdf_path),
@@ -267,6 +359,34 @@ class PDFParser(BaseParser):
         finally:
             if model_document is not None:
                 model_document.close()
+
+    @staticmethod
+    def _count_pdf_pages(pdf_path: Path) -> tuple[int, str]:
+        """Count pages for the artifact protocol's coverage expectation, and say
+        which library measured them.
+
+        ``expected_pages`` is what the returned document's page ids are checked
+        against, so a backend that quietly drops a page fails the job instead of
+        committing a chapter tree with a hole in it.  pymupdf measures first
+        because it is also the library the outline comes from; a file it refuses
+        to open -- a repaired xref, a generator that wrote a truncated header --
+        is still countable by the pdfminer stack the local strategy already
+        depends on, and losing that manual from the corpus is not the fallback.
+        """
+
+        pymupdf = lazy_import("pymupdf")
+        try:
+            with pymupdf.open(str(pdf_path)) as document:
+                return len(document), "pymupdf"
+        except Exception as pymupdf_error:
+            pdfplumber = lazy_import("pdfplumber")
+            try:
+                with pdfplumber.open(str(pdf_path)) as document:
+                    return len(document.pages), "pdfplumber"
+            except Exception:
+                # The first error is the one an operator can act on; pymupdf
+                # names the file and the type it tried to open.
+                raise pymupdf_error
 
     @staticmethod
     def _read_pdf_bookmarks(pdf_path: Path) -> List[Dict[str, Any]]:

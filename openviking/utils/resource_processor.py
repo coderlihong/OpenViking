@@ -805,6 +805,16 @@ class ResourceProcessor:
                 continue
             files.append((entry_uri, str(name), parent.uri))
 
+        from openviking.core.directory_index import is_generated_index_at
+
+        # A generated navigation catalogue would let the list of chapters outrank
+        # the chapters themselves, and it carries no knowledge of its own.
+        files = [
+            item
+            for item in files
+            if not await is_generated_index_at(viking_fs, item[0], ctx=ctx)
+        ]
+
         config = get_openviking_config().queue_workers.add_resource
         concurrency = max(
             1,

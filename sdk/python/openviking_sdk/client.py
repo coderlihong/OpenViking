@@ -1787,6 +1787,22 @@ class AsyncHTTPClient:
         )
         return self._handle_response(response)
 
+    async def normalize_citations(
+        self,
+        uri: str,
+        recursive: bool = True,
+    ) -> Dict[str, Any]:
+        payload = {
+            "uri": VikingURI.normalize(uri),
+            "recursive": recursive,
+        }
+        response = await self._request(
+            "POST",
+            "/api/v1/content/normalize_citations",
+            json=payload,
+        )
+        return self._handle_response(response)
+
     async def _get_queue_status(self) -> Dict[str, Any]:
         response = await self._request("GET", "/api/v1/observer/queue")
         return self._handle_response(response)
@@ -2834,6 +2850,13 @@ class SyncHTTPClient:
                 options=options,
             )
         )
+
+    def normalize_citations(
+        self,
+        uri: str,
+        recursive: bool = True,
+    ) -> Dict[str, Any]:
+        return run_async(self._async_client.normalize_citations(uri, recursive=recursive))
 
     def admin_create_account(
         self,

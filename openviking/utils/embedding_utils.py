@@ -622,13 +622,19 @@ async def vectorize_file(
                         "Degraded image indexing is not implemented; joint embedding is required"
                     )
                 if not summary.strip():
-                    raise ValueError(
-                        "SEMANTICS_REQUIRED: image indexing requires a current image summary"
+                    # A captionless image has nothing to index: skip without an
+                    # error path; the reindex counters record it as unsupported.
+                    logger.info(
+                        "Skipping undescribed image (no figcaption content): %s", file_path
                     )
+                    return False
                 if not getattr(embedding_cfg.get_embedder(), "supports_multimodal", False):
-                    raise ValueError(
-                        "Configured embedding model does not support joint image and text input"
+                    # A text-only embedder cannot index an image: skip without an
+                    # error path; the caller records the image as unsupported.
+                    logger.info(
+                        "Skipping image (text-only embedding model): %s", file_path
                     )
+                    return False
             # Multimodal embedders consume both parts; text-only embedders fall back to summary.
             image_raw = None
             if strict_image and chunking.publish_content:

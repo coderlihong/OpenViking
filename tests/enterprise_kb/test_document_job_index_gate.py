@@ -10,7 +10,7 @@ from test_wiki_namespaces import environment as environment, embedding as embedd
 
 @pytest.mark.parametrize('outcome', [
     {'status': 'completed', 'failed_records': 2, 'rebuilt_records': 5},
-    {'status': 'completed', 'semantics_required_records': 1},
+    {'status': 'completed', 'unsupported_records': 1},
     {'status': 'running'},
     {'status': 'completed', 'uri': 'viking://resources/wrong'},
 ])

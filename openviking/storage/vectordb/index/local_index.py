@@ -22,7 +22,14 @@ from openviking.storage.vectordb.index.cuvs_index import (
 )
 from openviking.storage.vectordb.index.index import IIndex
 from openviking.storage.vectordb.store.data import CandidateData, DeltaRecord
-from openviking.storage.vectordb.utils.constants import IndexFileMarkers
+from openviking.storage.vectordb.utils.constants import (
+    INDEX_MANAGER_META_FILE,
+    INDEX_SCALAR_DATA_FILE,
+    INDEX_SCALAR_DIR,
+    INDEX_VECTOR_DIR,
+    INDEX_VECTOR_FLAT_FILE,
+    IndexFileMarkers,
+)
 from openviking.storage.vectordb.utils.data_processor import DataProcessor
 from openviking.storage.vectordb.utils.json_safety import safe_json_dumps
 from openviking.storage.vectordb.utils.path_safety import (
@@ -34,6 +41,11 @@ from openviking_cli.utils.logger import default_logger as logger
 
 _DENSE_REBUILD_MEMORY_RETRY_BASE_SECONDS = 1.0
 _DENSE_REBUILD_MEMORY_RETRY_MAX_SECONDS = 30.0
+
+# Rows handed to the native index in one call while a degraded dense snapshot is
+# refilled from the Store.  Bounded so a full-corpus repair never keeps more
+# than a few deserialized vectors alive at once.
+_DENSE_REPAIR_BATCH_SIZE = 256
 
 
 def normalize_vector(vector: List[float]) -> List[float]:
@@ -1417,11 +1429,19 @@ class PersistentIndex(LocalIndex):
             4. If version exists:
                - Load the latest version
                - Apply any pending delta updates from collection
+
+        A version whose payload files are missing or truncated is not loadable by
+        the native engine.  Because the dense payload is derived data (the Store
+        keeps the authoritative vectors), such a version is opened as an empty
+        index and flagged for a Store-backed refill through
+        :meth:`refill_dense_index_from_store_candidates`.
         """
         if cands_list is None:
             cands_list = ()
 
         validate_name_str(name)
+        self.name = name
+        self._dense_repair_pending = False
         self.index_dir = str(safe_join_name(path, name))
         os.makedirs(self.index_dir, exist_ok=True)
         self.version_dir = str(safe_join(self.index_dir, "versions"))
@@ -1437,12 +1457,27 @@ class PersistentIndex(LocalIndex):
             if not isinstance(cands_list, list):
                 cands_list = list(cands_list)
             self._create_new_index(name, meta, cands_list, initial_timestamp)
+            engine_target = str(safe_join(self.version_dir, self.now_version))
         else:
             self.now_version = str(newest_version)
+            engine_target = str(safe_join(self.version_dir, self.now_version))
+            degradation = self._snapshot_degradation_reason(engine_target)
+            if degradation is not None:
+                logger.error(
+                    "Index '%s' version %s is unusable: %s. Opening an empty dense "
+                    "index so the collection can still start; it will be refilled "
+                    "from the Store (no re-embedding required).",
+                    name,
+                    self.now_version,
+                    degradation,
+                )
+                self._dense_repair_pending = True
+                engine_target = json.dumps(
+                    self._empty_repair_index_dict(meta),
+                )
 
-        index_path = str(safe_join(self.version_dir, self.now_version))
         super().__init__(
-            index_path,
+            engine_target,
             meta,
             dense_search_config=dense_search_config,
             initial_candidates=cands_list,
@@ -1450,6 +1485,186 @@ class PersistentIndex(LocalIndex):
         )
         if not defer_dense_rebuild_start:
             self._start_dense_rebuild_worker()
+
+    def _snapshot_degradation_reason(self, index_path: str) -> Optional[str]:
+        """Return why a persisted version snapshot cannot be loaded, or ``None``.
+
+        ``persist()`` writes the ``.write_done`` sibling last, so a version listed
+        by :meth:`get_newest_version` is normally complete.  It can still reach us
+        half-written: a dump interrupted by a full disk or a force-killed process
+        leaves the marker, the manager metadata and the scalar payload behind while
+        ``vector_index/index_flat.data`` is absent or truncated, and the native
+        loader then throws ``Failed to open index file`` before any query runs.
+        Detecting that here keeps a damaged *derived* index from taking the whole
+        collection down; the Store still holds every record and its vector.
+        """
+        version_dir = Path(index_path)
+        meta_path = version_dir / INDEX_MANAGER_META_FILE
+        if not meta_path.is_file():
+            return f"{INDEX_MANAGER_META_FILE} is missing"
+
+        vector_meta: Dict[str, Any] = {}
+        try:
+            meta_json = json.loads(meta_path.read_text(encoding="utf-8"))
+            vector_meta = meta_json.get("VectorIndex") or {}
+        except (OSError, ValueError, AttributeError) as exc:
+            return f"{INDEX_MANAGER_META_FILE} is unreadable: {exc}"
+
+        flat_path = version_dir / INDEX_VECTOR_DIR / INDEX_VECTOR_FLAT_FILE
+        if not flat_path.is_file():
+            return f"{INDEX_VECTOR_DIR}/{INDEX_VECTOR_FLAT_FILE} is missing"
+        minimum_bytes = self._minimum_flat_index_bytes(vector_meta)
+        try:
+            actual_bytes = flat_path.stat().st_size
+        except OSError as exc:
+            return f"{INDEX_VECTOR_DIR}/{INDEX_VECTOR_FLAT_FILE} is unreadable: {exc}"
+        if actual_bytes < minimum_bytes:
+            return (
+                f"{INDEX_VECTOR_DIR}/{INDEX_VECTOR_FLAT_FILE} holds {actual_bytes} bytes, "
+                f"expected at least {minimum_bytes} for {vector_meta.get('ElementCount')} "
+                "stored vectors"
+            )
+
+        scalar_path = version_dir / INDEX_SCALAR_DIR / INDEX_SCALAR_DATA_FILE
+        if not scalar_path.is_file():
+            return f"{INDEX_SCALAR_DIR}/{INDEX_SCALAR_DATA_FILE} is missing"
+        return None
+
+    @staticmethod
+    def _minimum_flat_index_bytes(vector_meta: Dict[str, Any]) -> int:
+        """Lower bound on a complete ``index_flat.data`` for the declared contents.
+
+        The native writer stores ``capacity`` rows of
+        ``encoded vector + uint64 label + uint32 offset`` behind three ``size_t``
+        header fields, and capacity is never below the element count it reports.
+        Only that floor is checked, so a healthy snapshot never looks degraded
+        even though the buffer may be larger than the rows actually used.
+        """
+        try:
+            element_count = int(vector_meta.get("ElementCount") or 0)
+            dimension = int(vector_meta.get("Dimension") or 0)
+        except (TypeError, ValueError):
+            return 1
+        if element_count <= 0 or dimension <= 0:
+            return 1
+        quant = str(vector_meta.get("Quant") or "").lower()
+        bytes_per_vector = dimension * 4 if quant in {"", "none", "float", "float32"} else dimension
+        return 24 + element_count * (bytes_per_vector + 12)
+
+    def _empty_repair_index_dict(self, meta: Any) -> Dict[str, Any]:
+        """Build config for an empty index with the damaged snapshot's vector layout.
+
+        The declared capacity of the damaged version is reused so the refill does
+        not spend the whole boot reallocating the dense buffer one doubling at a
+        time; an unknown capacity simply starts at the native minimum and grows.
+        """
+        config = meta.get_build_index_dict()
+        vector_index = config.setdefault("VectorIndex", {})
+        degraded_capacity = 0
+        try:
+            version_meta = json.loads(
+                (Path(self.version_dir) / self.now_version / INDEX_MANAGER_META_FILE).read_text(
+                    encoding="utf-8"
+                )
+            )
+            degraded_capacity = int(
+                (version_meta.get("VectorIndex") or {}).get("MaxElementCount") or 0
+            )
+        except (OSError, ValueError, TypeError):
+            degraded_capacity = 0
+        vector_index["ElementCount"] = 0
+        vector_index["MaxElementCount"] = max(0, degraded_capacity)
+        try:
+            config["UpdateTimeStamp"] = int(self.now_version)
+        except (TypeError, ValueError):
+            config["UpdateTimeStamp"] = int(time.time_ns())
+        return config
+
+    def needs_dense_repair_from_store(self) -> bool:
+        """True when the dense payload was rebuilt empty and awaits a Store refill."""
+
+        return self._dense_repair_pending
+
+    def refill_dense_index_from_store_candidates(
+        self,
+        candidates: Iterable[CandidateData],
+        batch_size: int = _DENSE_REPAIR_BATCH_SIZE,
+    ) -> int:
+        """Rebuild the dense payload in place from Store rows.
+
+        The Store's candidate table carries each record's vector, so the refill is
+        a replay of already-computed embeddings -- no re-embedding and no model
+        access are required.  Candidates are handed to the native engine in bounded
+        batches because a whole corpus of high-dimensional vectors does not fit in
+        a Python list, and the iterator is a bounded native page scan.
+
+        Returns:
+            int: Number of records inserted.
+
+        Raises:
+            Exception: If the Store scan or the native insert fails.  The caller
+                must then leave :meth:`persist` blocked: an incompletely refilled
+                index must never be committed as a new version, because the next
+                boot would load that truncated snapshot instead of repairing again.
+        """
+        if self.engine_proxy is None:
+            raise RuntimeError("Index engine not initialized")
+        if not self._dense_repair_pending:
+            return 0
+
+        inserted = 0
+        batch: List[CandidateData] = []
+        started = time.monotonic()
+        try:
+            for candidate in candidates:
+                batch.append(candidate)
+                if len(batch) < batch_size:
+                    continue
+                inserted += self._refill_batch(batch)
+                batch = []
+                if inserted and inserted % (batch_size * 20) == 0:
+                    logger.info(
+                        "Index '%s': dense refill progress %d records (%.1fs)",
+                        self.name,
+                        inserted,
+                        time.monotonic() - started,
+                    )
+            inserted += self._refill_batch(batch)
+        finally:
+            close_iterator = getattr(candidates, "close", None)
+            if callable(close_iterator):
+                try:
+                    close_iterator()
+                except Exception:
+                    logger.warning("Failed to close dense refill iterator", exc_info=True)
+
+        self._dense_repair_pending = False
+        logger.info(
+            "Index '%s': dense index refilled with %d record(s) from the Store in %.1fs",
+            self.name,
+            inserted,
+            time.monotonic() - started,
+        )
+        return inserted
+
+    def _refill_batch(self, batch: List[CandidateData]) -> int:
+        if not batch:
+            return 0
+        self.engine_proxy.add_data(self._convert_candidate_list_for_index(batch))
+        return len(batch)
+
+    def commit_dense_repair(self) -> int:
+        """Snapshot a completed refill so the next boot loads it directly.
+
+        Returns:
+            int: The new version timestamp, or ``0`` when nothing was committed.
+        """
+        if self._dense_repair_pending:
+            return 0
+        version = self.persist()
+        if version > 0:
+            self.now_version = str(version)
+        return version
 
     def _create_new_index(
         self,
@@ -1543,6 +1758,15 @@ class PersistentIndex(LocalIndex):
             This operation is expensive and should not be called too frequently.
             The collection layer schedules periodic persistence.
         """
+        if self._dense_repair_pending:
+            # Committing a half-refilled dense index would replace the damaged
+            # snapshot with a smaller-but-loadable one, and the next boot would
+            # trust it instead of repairing from the Store again.
+            logger.warning(
+                "Index '%s': skipping persist until the dense refill completes",
+                self.name,
+            )
+            return 0
         if self.engine_proxy:
             newest_version = int(self.get_newest_version())
             update_ts = self.engine_proxy.get_update_ts()

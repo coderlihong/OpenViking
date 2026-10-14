@@ -3,22 +3,14 @@
 
 """Tests for content write endpoint."""
 
+import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from openviking.server.routers import filesystem
-
-
-async def _first_file_uri(client, root_uri: str) -> str:
-    resp = await client.get(
-        "/api/v1/fs/ls",
-        params={"uri": root_uri, "simple": True, "recursive": True, "output": "original"},
-    )
-    assert resp.status_code == 200
-    children = resp.json().get("result", [])
-    assert children
-    return children[0]
+from tests.server.authored_content_helpers import first_authored_file_uri
 
 
 async def test_write_endpoint_registered(client):
@@ -96,7 +88,7 @@ async def test_write_allows_existing_semantic_sidecar_but_rejects_relations(clie
 
 async def test_write_replaces_existing_resource_file(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
 
     write_resp = await client.post(
         "/api/v1/content/write",
@@ -120,7 +112,7 @@ async def test_write_replaces_existing_resource_file(client_with_resource):
 
 async def test_write_appends_existing_resource_file(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     original = (await client.get("/api/v1/content/read", params={"uri": file_uri})).json()["result"]
 
     write_resp = await client.post(
@@ -139,9 +131,9 @@ async def test_write_appends_existing_resource_file(client_with_resource):
     assert read_resp.json()["result"] == original + "\n\nAppended section."
 
 
-async def test_write_without_wait_is_immediately_readable(client_with_resource):
+async def test_write_without_wait_publishes_its_revision(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     original = (await client.get("/api/v1/content/read", params={"uri": file_uri})).json()["result"]
 
     write_resp = await client.post(
@@ -159,9 +151,19 @@ async def test_write_without_wait_is_immediately_readable(client_with_resource):
     assert body["result"]["semantic_status"] == "queued"
     assert body["result"]["vector_status"] == "queued"
 
-    read_resp = await client.get("/api/v1/content/read", params={"uri": file_uri})
-    assert read_resp.status_code == 200
-    assert read_resp.json()["result"] == original + "\nImmediate append."
+    # A queued write is served from the generation that published it, so the read
+    # view moves to the new body only when that generation commits -- unlike
+    # ``wait=true``, which blocks here until it has.
+    expected = original + "\nImmediate append."
+    deadline = time.monotonic() + 30
+    while True:
+        read_resp = await client.get("/api/v1/content/read", params={"uri": file_uri})
+        assert read_resp.status_code == 200
+        if read_resp.json()["result"] == expected:
+            break
+        if time.monotonic() >= deadline:
+            pytest.fail("Queued write never published its revision")
+        await asyncio.sleep(0.1)
 
 
 @pytest.mark.asyncio
@@ -173,7 +175,7 @@ async def test_write_missing_uri_validation(client):
 @pytest.mark.asyncio
 async def test_write_rejects_removed_semantic_flags(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
 
     resp = await client.post(
         "/api/v1/content/write",
@@ -228,7 +230,7 @@ async def test_api_create_mode_write_then_read(client):
 async def test_api_create_mode_existing_file_409(client_with_resource):
     """Test create mode on an existing file should return 409."""
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
 
     resp = await client.post(
         "/api/v1/content/write",
@@ -282,7 +284,7 @@ async def test_api_create_mode_empty_content_success(client):
 async def test_api_create_mode_regression_replace_unchanged(client_with_resource):
     """Test replace mode still works (regression test)."""
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     resp = await client.post(
         "/api/v1/content/write",
         json={
@@ -304,7 +306,7 @@ async def test_api_create_mode_regression_replace_unchanged(client_with_resource
 
 async def test_set_tags_requires_tags_field(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     resp = await client.post("/api/v1/fs/attrs/set_tags", json={"uri": file_uri})
     assert resp.status_code == 400
 
@@ -351,7 +353,7 @@ async def test_set_tags_passes_tags_to_service(client, service, monkeypatch):
 
 async def test_set_tags_rejects_wait_and_timeout_fields(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     resp = await client.post(
         "/api/v1/fs/attrs/set_tags",
         json={
@@ -368,7 +370,7 @@ async def test_set_tags_rejects_wait_and_timeout_fields(client_with_resource):
 
 async def test_set_tags_discards_invalid_kv_tag(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_file_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
     resp = await client.post(
         "/api/v1/fs/attrs/set_tags",
         json={"uri": file_uri, "tags": ["project-a", "team=search"]},
@@ -377,3 +379,64 @@ async def test_set_tags_discards_invalid_kv_tag(client_with_resource):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["result"]["tags"] == ["team=search"]
+
+
+async def test_write_reserves_directory_index_for_the_generated_catalogue(client_with_resource):
+    """An authored body may not take ``{dir}/index.md``; the name lists the directory.
+
+    The upload that produced the legacy chapter corpora wrote each section's prose to
+    ``index.md``, which left those directories with no navigation catalogue at all.
+    """
+    client, root = client_with_resource
+    reserved = f"{root.rstrip('/')}/6_Electrical_System/index.md"
+
+    resp = await client.post(
+        "/api/v1/content/write",
+        json={"uri": reserved, "content": "# 6 Electrical System\n\nChapter prose.", "mode": "replace"},
+    )
+
+    assert resp.status_code == 400
+    error = resp.json()["error"]
+    assert error["code"] == "INVALID_ARGUMENT"
+    assert f"{root.rstrip('/')}/6_Electrical_System/6_Electrical_System.md" in error["message"]
+    assert error["details"]["write_to"] == f"{root.rstrip('/')}/6_Electrical_System/6_Electrical_System.md"
+
+    stat = await client.get("/api/v1/fs/stat", params={"uri": reserved})
+    assert stat.status_code == 404
+
+
+async def test_write_accepts_the_catalogue_itself(client_with_resource):
+    """The catalogue carries the ``directory_index`` marker, so it owns the name."""
+    from openviking.core.directory_index import render_directory_index
+
+    client, root = client_with_resource
+    directory = f"{root.rstrip('/')}/6_Electrical_System"
+    body = render_directory_index(directory, [], [])
+
+    resp = await client.post(
+        "/api/v1/content/write",
+        json={"uri": f"{directory}/index.md", "content": body, "mode": "replace", "wait": True},
+    )
+
+    assert resp.status_code == 200, resp.json()
+
+
+async def test_batch_write_reserves_directory_index(client_with_resource):
+    client, root = client_with_resource
+    directory = f"{root.rstrip('/')}/6_Electrical_System"
+
+    resp = await client.post(
+        "/api/v1/content/batch-write",
+        json={
+            "root_uri": root,
+            "operations": [
+                {"uri": f"{directory}/6.1_Overview.md", "content": "# Overview\n"},
+                {"uri": f"{directory}/index.md", "content": "# 6 Electrical System\n"},
+            ],
+        },
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["details"]["write_to"] == f"{directory}/{directory.rsplit('/', 1)[-1]}.md"
+    written = await client.get("/api/v1/fs/stat", params={"uri": f"{directory}/6.1_Overview.md"})
+    assert written.status_code == 404

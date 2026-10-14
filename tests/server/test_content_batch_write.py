@@ -16,6 +16,7 @@ from openviking_cli.exceptions import (
     ResourceExhaustedError,
 )
 from openviking_cli.session.user_id import UserIdentifier
+from tests.server.authored_content_helpers import first_authored_file_uri
 
 
 class _PathLockClient:
@@ -454,11 +455,7 @@ async def test_batch_refresh_groups_resource_and_memory_work(monkeypatch):
 @pytest.mark.asyncio
 async def test_batch_write_api_upserts_files(client_with_resource):
     client, root = client_with_resource
-    listing = await client.get(
-        "/api/v1/fs/ls",
-        params={"uri": root, "simple": True, "recursive": True},
-    )
-    existing = listing.json()["result"][0]
+    existing = await first_authored_file_uri(client, root)
     created = f"{root}/compile-batch-created.md"
     operations = [
         {
@@ -523,11 +520,7 @@ async def test_batch_write_api_creates_binary_file(client_with_resource, filenam
 @pytest.mark.asyncio
 async def test_batch_write_api_mode_error_does_not_apply_other_operations(client_with_resource):
     client, root = client_with_resource
-    listing = await client.get(
-        "/api/v1/fs/ls",
-        params={"uri": root, "simple": True, "recursive": True},
-    )
-    existing = listing.json()["result"][0]
+    existing = await first_authored_file_uri(client, root)
     should_not_exist = f"{root}/compile-conflict-no-partial.md"
     response = await client.post(
         "/api/v1/content/batch-write",

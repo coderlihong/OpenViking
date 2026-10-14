@@ -75,6 +75,15 @@ class ParserRegistry:
         for ext in parser.supported_extensions:
             self._extension_map[ext.lower()] = name
 
+    def get_parser_config(self, name: str):
+        """Return the live configuration object for *name*'s parser, or None.
+
+        Post-parse passes such as image rewriting run outside any parser
+        instance, yet must honor the same switches the parser does — so the
+        configuration is read from the registered parser rather than duplicated.
+        """
+        return getattr(self._parsers.get(name), "config", None)
+
     def get_parser_for_file(self, path: Union[str, Path]) -> Optional[BaseParser]:
         """
         Get appropriate parser for a file.

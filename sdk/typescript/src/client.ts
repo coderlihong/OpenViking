@@ -29,6 +29,7 @@ import type {
   GlobOptions,
   ImportPackOptions,
   Message,
+  NormalizeCitationsOptions,
   PreflightAssetOptions,
   ReindexOptions,
   RequestOptions,
@@ -667,6 +668,16 @@ export class OpenVikingClient {
     });
     return this.request("POST", "/api/v1/content/reindex", {
       body: mergeExtra(body, options.extra, ["tags", "tag_mode"]),
+    });
+  }
+  /** Normalize figure citations (vikingsrc pointers and figcaption bodies) before reindex. */
+  normalizeCitations(uri: string, options: NormalizeCitationsOptions = {}): Promise<JsonObject> {
+    const body = compact({
+      uri: normalizeURI(uri),
+      recursive: options.recursive ?? true,
+    });
+    return this.request("POST", "/api/v1/content/normalize_citations", {
+      body: mergeExtra(body, options.extra, ["recursive"]),
     });
   }
 

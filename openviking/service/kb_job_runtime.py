@@ -305,7 +305,7 @@ class DocumentJobRuntime:
         # next state; completion of a request is not proof of joint publication.
         keys = ('status', 'uri', 'mode', 'object_type', 'scanned_records',
                 'rebuilt_records', 'failed_records', 'unsupported_records',
-                'semantics_required_records', 'duration_ms', 'code')
+                'duration_ms')
         summary = {key: result[key] for key in keys if key in result}
         warnings = result.get('warnings') or []
         summary['warnings'] = [str(warning)[:1024] for warning in warnings[:20]]
@@ -313,7 +313,7 @@ class DocumentJobRuntime:
         await lease.checkpoint('index', checkpoint)
         if (result.get('status') not in {'success', 'completed'}
                 or result.get('failed_records', 0)
-                or result.get('semantics_required_records', 0)
+                or result.get('unsupported_records', 0)
                 or result.get('uri', uri) != uri):
             await asyncio.to_thread(self.repository.fail_batch, batch_id, 'Document indexing reported failures')
             raise ProcessingError('Resource indexing did not complete without failures; see index_result')

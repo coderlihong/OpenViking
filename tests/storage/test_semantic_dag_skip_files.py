@@ -54,7 +54,7 @@ class _FakeProcessor:
         self.summarized_files = []
         self.vectorized_files = []
 
-    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None):
+    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None, allow_vlm=True):
         self.summarized_files.append(file_path)
         return {"name": file_path.split("/")[-1], "summary": "summary"}
 

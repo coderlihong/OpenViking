@@ -85,17 +85,61 @@ def test_invalid_member_drops_out_while_others_publish(tmp_path, failure):
     assert store.state(a)["state"] == "published"
 
 
-def test_batch_rejects_duplicate_sources_and_scope_mismatch(tmp_path):
+def test_batch_replaces_a_re_indexed_source_and_rejects_scope_mismatch(tmp_path):
     store = PublicationStore(str(tmp_path / "db"))
     batch = store.begin_batch("acct", "ns")
-    member(store, batch, A)
-    with pytest.raises(ValueError, match="Duplicate"):
-        member(store, batch, A)
+    first = member(store, batch, A)
+    # The same chapter indexed twice in one batch is a rebuild, not a duplicate:
+    # the caption backfill rewrites a markdown after its first build was enqueued,
+    # so the rebuild necessarily arrives here.
+    second = member(store, batch, A)
+    assert store.state(first)["state"] == "superseded"
+    assert store.state(second)["state"] == "queued"
+    # The writer needs the verdict before the gate ever runs: a chunk queued
+    # against the replaced generation is obsolete, not wrong.
+    assert store.is_superseded(first)
+    assert not store.is_superseded(second)
     with pytest.raises(ValueError, match="account/namespace"):
         store.begin("other", "ns", B, "new", ["x"], batch=batch)
     store.seal_batch(batch)
     with pytest.raises(RuntimeError, match="no longer"):
         member(store, batch, B)
+
+
+def test_rebuilt_chapter_publishes_after_its_caption_edited_the_first_attempt(tmp_path):
+    """A first attempt condemned by an edit must not stay the published revision.
+
+    Observed live: uploading authored markdown with an empty ``<figcaption>`` made
+    the pipeline generate the caption, write it into the chapter, and rebuild that
+    chapter in the same batch. The rebuild was refused as a duplicate, so ``desired``
+    kept pointing at the generation the gate had already failed with "Source changed
+    during index build" -- the chapter's chunk vectors and the figure it cites stayed
+    invisible to retrieval forever, while the ingest task reported success.
+    """
+    store = PublicationStore(str(tmp_path / "db"))
+    chapter = "viking://resources/manual/note/note.md"
+    batch = store.begin_batch("acct", "ns")
+    epoch = store.observe_draft("acct", chapter)
+    stale = store.begin(
+        "acct",
+        "ns",
+        chapter,
+        "plan",
+        ["x"],
+        source_ref={"sha256": "a" * 64, "size": 5, "draft_epoch": epoch},
+        batch=batch,
+    )
+    store.seal(stale)
+    store.invalidate_draft("acct", chapter)  # the caption write lands
+    rebuilt = store.begin("acct", "ns", chapter, "plan", ["x"], batch=batch)
+    store.seal(rebuilt)
+
+    assert store.state(stale)["state"] == "superseded"
+    assert not store.acknowledge(rebuilt, "x")
+    assert store.seal_batch(batch)
+    assert store.batch_state(batch)["state"] == "published"
+    assert view(store)[chapter]["generation"] == rebuilt
+    assert store.state(rebuilt)["state"] == "published"
 
 
 async def test_real_consumers_complete_during_producer_but_cannot_publish(runtime, embedding):

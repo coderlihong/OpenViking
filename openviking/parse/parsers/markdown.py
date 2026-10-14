@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import unquote, urlsplit
 
+from openviking.core.directory_index import DIRECTORY_INDEX_FILENAME
 from openviking.parse.accessors.mime_types import IANA_MEDIA_TYPE_TO_EXTENSION
 from openviking.parse.base import NodeType, ParseResult, ResourceNode, create_parse_result
 from openviking.parse.image_validation import is_valid_image
@@ -470,7 +471,7 @@ class MarkdownParser(BaseParser):
         children = {c.parent_id for c in plan.chapters if c.parent_id}
         directories: Dict[str, str] = {}
         paths: Dict[str, str] = {}
-        used: set[str] = {"toc.md", "images", "_toc.json", "_manifest.json"}
+        used: set[str] = {"toc.md", "index.md", "images", "_toc.json", "_manifest.json"}
         records = []
         from markdown_it import MarkdownIt
         original = "".join(c.content for c in sorted(
@@ -499,14 +500,33 @@ class MarkdownParser(BaseParser):
                 name = f"00_{doc_name}"
             branch = chapter.chapter_id in children
             stem = f"{parent}/{name}".lstrip("/")
-            path = f"{stem}/index.md" if branch else f"{stem}.md"
+
+            # A branch chapter keeps its own prose inside its directory, but not
+            # at ``index.md``: that name is the generated navigation catalogue
+            # of the directory (``core.directory_index``) and must stay free.
+            # The self-file repeats only the directory's *own* segment, so a
+            # second-level chapter lands at ``章/节/节.md`` -- repeating the whole
+            # nested stem would re-open the parent layer inside the child
+            # directory and invent a directory that no bookmark asked for.
+            # ``{dir}/{leaf}.md`` still preserves the historical image location
+            # ``{dir}/images/`` exactly.
+            def _layout_path(current: str) -> str:
+                if not branch:
+                    return f"{current}.md"
+                return f"{current}/{current.rsplit('/', 1)[-1]}.md"
+
+            path = _layout_path(stem)
             collision_key = stem if branch else path
             initial_stem, collision_count = stem, 0
-            while collision_key.casefold() in used or path.casefold() in used:
+            while (
+                collision_key.casefold() in used
+                or path.casefold() in used
+                or path.rsplit("/", 1)[-1].casefold() == DIRECTORY_INDEX_FILENAME
+            ):
                 collision_count += 1
                 suffix = f"_{chapter.chapter_id}" + (f"_{collision_count}" if collision_count > 1 else "")
                 stem = initial_stem + suffix
-                path = f"{stem}/index.md" if branch else f"{stem}.md"
+                path = _layout_path(stem)
                 collision_key = stem if branch else path
             used.add(collision_key.casefold())
             used.add(path.casefold())
@@ -629,18 +649,29 @@ class MarkdownParser(BaseParser):
     async def _apply_chapter_layout(self, layout, base_dir, allowed_media_dirs) -> None:
         """Write validated chapter assets beside their references with relative links.
 
-        Unlike the legacy permissive importer, missing images and remote/viking
-        references fail before the temporary tree can be published. An image
-        that exists but fails the quality gate (too small, unreadable…) is
-        skipped with a structured warning — source PDFs legitimately contain
-        tiny decorative drawings that must not abort a 1000-page parse. Code
-        examples are never image inputs.
+        Unlike the legacy permissive importer, a chapter whose *local* image is
+        missing fails before the temporary tree can be published. A *remote*
+        reference is instead fetched and stored: authored markdown carries the
+        generating host's URL, and a published document must resolve its own
+        image bytes. A fetch that fails (dead host, non-public target, oversized
+        body, unreadable image) drops that one occurrence with a structured
+        warning — a handful of dead links must not abort a thousand-page parse,
+        and leaving the URL in place would publish a reference no consumer can
+        follow. An image that exists but fails the quality gate (too small,
+        unreadable…) is skipped the same way. Code examples are never images.
         """
         from openviking.parse.image_rewrite import _protected_ranges
+        from openviking.parse.remote_images import (
+            RemoteImage,
+            RemoteImageFailure,
+            normalize_reference,
+        )
 
         fs = self._get_viking_fs()
         image_dirs: set[str] = set()
         rejected_images: list[str] = []
+        remote_assets = await self._resolve_remote_chapter_images(layout)
+        unresolved_remote: list[dict] = []
         for op in layout.ops:
             if op.kind == "mkdir":
                 await fs.mkdir(op.uri, exist_ok=op.exist_ok)
@@ -666,12 +697,31 @@ class MarkdownParser(BaseParser):
                     # External-domain assets need namespace authorization support.
                     raise ValueError("Chapter images must be supplied as local parser assets")
                 if self._is_remote_uri(original):
-                    raise ValueError("Remote chapter image must be materialized before publishing")
-                local = self._resolve_image_path(original, base_dir, allowed_media_dirs)
-                if local is None:
-                    raise ValueError(f"Missing chapter image: {original}")
-                data = await asyncio.to_thread(local.read_bytes)
-                if not await asyncio.to_thread(self._is_valid_image, data, local):
+                    asset = remote_assets.get(normalize_reference(original))
+                    if not isinstance(asset, RemoteImage):
+                        unresolved_remote.append(
+                            asset.describe()
+                            if isinstance(asset, RemoteImageFailure)
+                            else {
+                                "url": normalize_reference(original),
+                                "reason": "not_found",
+                                "detail": "remote fetch disabled",
+                            }
+                        )
+                        span = self._image_syntax_span(content, match, group)
+                        replacements.append((span[0], span[1], ""))
+                        continue
+                    data = asset.data
+                    suffix = asset.suffix
+                    asset_name = asset.url.rsplit("/", 1)[-1] or "remote-image"
+                else:
+                    local = self._resolve_image_path(original, base_dir, allowed_media_dirs)
+                    if local is None:
+                        raise ValueError(f"Missing chapter image: {original}")
+                    data = await asyncio.to_thread(local.read_bytes)
+                    suffix = local.suffix.lower()
+                    asset_name = local.name
+                if not await asyncio.to_thread(self._is_valid_image, data, Path(asset_name)):
                     rejected_images.append(original)
                     span = self._image_syntax_span(content, match, group)
                     replacements.append((span[0], span[1], ""))
@@ -681,8 +731,7 @@ class MarkdownParser(BaseParser):
                 if image_dir not in image_dirs:
                     await fs.mkdir(image_dir, exist_ok=True)
                     image_dirs.add(image_dir)
-                suffix = local.suffix.lower() or ".png"
-                name = digest + suffix
+                name = digest + (suffix or ".png")
                 await fs.write_file_bytes(f"{image_dir}/{name}", data)
                 written_refs.add(f"images/{name}")
                 replacements.append((match.start(group), match.end(group), f"images/{name}"))
@@ -704,6 +753,47 @@ class MarkdownParser(BaseParser):
                 "count": len(rejected_images),
                 "images": sorted(set(rejected_images)),
             })
+        if unresolved_remote:
+            logger.warning(
+                f"[MarkdownParser] Dropped {len(unresolved_remote)} chapter image(s) whose "
+                f"remote source could not be materialized."
+            )
+            layout.meta.setdefault("info", []).append({
+                "code": "CHAPTER_REMOTE_IMAGE_UNRESOLVED",
+                "count": len(unresolved_remote),
+                "images": sorted({entry["url"] for entry in unresolved_remote}),
+                "failures": sorted(unresolved_remote, key=lambda entry: entry["url"]),
+            })
+
+    async def _resolve_remote_chapter_images(self, layout) -> dict:
+        """Fetch every remote reference the chapter plan publishes, once per document.
+
+        Returns the resolutions keyed by normalized URL; both successes and typed
+        failures are values so the write path reports per-occurrence outcomes
+        instead of raising for the whole document.
+        """
+        from openviking.parse.remote_images import collect_remote_spans, resolve_remote_images
+
+        if not bool(getattr(self.config, "fetch_remote_images", True)):
+            return {}
+        references = set()
+        for op in layout.ops:
+            if op.kind != "write" or not op.uri.endswith(".md"):
+                continue
+            expanded = self._expand_chapter_image_references(
+                op.content or "", layout.meta.get("image_reference_definitions", {})
+            )
+            references.update(
+                span[2] for span in collect_remote_spans(expanded)
+            )
+        if not references:
+            return {}
+        return dict(
+            await resolve_remote_images(
+                references,
+                timeout=float(getattr(self.config, "remote_image_timeout", 20.0)),
+            )
+        )
 
     @staticmethod
     def _expand_chapter_image_references(content: str, references: dict) -> str:

@@ -231,12 +231,35 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 if (group["account"], group["namespace"]) != (account, namespace):
                     raise ValueError("Publication batch cannot cross account/namespace")
                 duplicate = db.execute(
-                    "SELECT 1 FROM batch_members m JOIN builds b ON b.generation=m.generation "
-                    "WHERE m.batch=? AND b.uri=?",
+                    "SELECT m.generation,b.state FROM batch_members m "
+                    "JOIN builds b ON b.generation=m.generation WHERE m.batch=? AND b.uri=?",
                     (batch, uri),
-                ).fetchone()
-                if duplicate:
+                ).fetchall()
+                published = [row for row in duplicate if row["state"] == "published"]
+                if published and len(published) == len(duplicate):
+                    # Every attempt for this URI inside the batch already landed in a
+                    # snapshot; a second member would rewrite a published manifest entry
+                    # mid-batch, which the batch cannot reconcile. The caller owns this
+                    # case (the source is already published) and must open a new batch.
                     raise ValueError("Duplicate source URI in publication batch")
+                for stale in duplicate:
+                    if stale["state"] == "published":
+                        continue
+                    # A newer index attempt for the same source replaces the batch's
+                    # earlier member rather than being refused. The caption backfill
+                    # rewrites a chapter's markdown just after that chapter's first
+                    # build was enqueued, so its rebuild necessarily arrives in the same
+                    # batch; raising here left `desired` pointing at the generation that
+                    # the gate had already condemned ("Source changed during index
+                    # build"), so the chapter and the figure it cites stayed invisible
+                    # to retrieval forever while the ingest still reported success.
+                    db.execute(
+                        "UPDATE builds SET state='superseded',error=? WHERE generation=?",
+                        (
+                            "Superseded by a newer index attempt in the same batch",
+                            stale["generation"],
+                        ),
+                    )
             overlap = db.execute(
                 "SELECT 1 FROM desired WHERE account=? AND uri=? AND namespace!=?",
                 (account, uri, namespace),
@@ -612,14 +635,27 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             return self._publish_if_complete(db, row)
 
     def fail(self, generation, reason):
+        self._retire(generation, "failed", reason)
+
+    def supersede(self, generation):
+        """Drop a replaced build and let the batch it was queued in finish without it.
+
+        Only the ``desired`` row tells the writer that its chunk is obsolete, and
+        nothing else re-checks the batch that chunk belongs to: leaving the member
+        'queued' kept the batch waiting for a receipt that could never arrive, so
+        the healthy chapters indexed beside it stayed invisible to retrieval.
+        """
+        self._retire(generation, "superseded", "Newer index attempt superseded batch member")
+
+    def _retire(self, generation, state, reason):
         with self.db() as db:
             self._build(db, generation)
             member = db.execute(
                 "SELECT batch FROM batch_members WHERE generation=?", (generation,)
             ).fetchone()
             db.execute(
-                "UPDATE builds SET state='failed',error=? WHERE generation=? AND state IN ('building','queued')",
-                (reason, generation),
+                "UPDATE builds SET state=?,error=? WHERE generation=? AND state IN ('building','queued')",
+                (state, reason, generation),
             )
             if not member:
                 return
@@ -629,15 +665,34 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 (member[0],),
             ).fetchone()[0]
             if remaining:
-                # Fail only this member; the rest of the batch keeps publishing.
+                # Retire only this member; the rest of the batch keeps publishing.
                 self._publish_batch_if_complete(db, member[0])
             else:
-                # The last live member failed: the whole batch is now dead.
+                # The last live member is gone: the whole batch is now dead.
                 self._fail_batch(db, member[0], reason)
 
     def state(self, generation):
         with self.db() as db:
             return dict(self._build(db, generation))
+
+    def is_superseded(self, generation):
+        """True when a newer index attempt for this source owns publication now.
+
+        A queued chunk only learns it is obsolete from the ``desired`` row: the
+        publication gate marks the build it condemns, but a re-index can hand the
+        chunk to the writer before that ever runs. Reading the row state alone
+        therefore turned replaced work into a failed request -- an ingestion that
+        reported failure while the newer attempt published the same chapter.
+        """
+        with self.db() as db:
+            row = self._build(db, generation)
+            if row["state"] in {"superseded", "published", "failed"}:
+                return row["state"] == "superseded"
+            desired = db.execute(
+                "SELECT generation FROM desired WHERE account=? AND namespace=? AND uri=?",
+                (row["account"], row["namespace"], row["uri"]),
+            ).fetchone()
+            return bool(desired) and desired[0] != generation
 
     def declared_image_plan(self, account, uri):
         """True when the current desired generation for this URI was built by the
@@ -656,7 +711,14 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         return bool(row) and any(child.startswith("image:") for child in json.loads(row[0]))
 
     def capture(self, account, ttl=120):
+        now = time.time()
         with self.db() as db:
+            # A worker killed mid-query leaves its lease row behind. Every reader
+            # already ignores rows past ``expires`` and ``renew`` refuses them, so
+            # dropping them here is the same as never holding them -- and it keeps
+            # the table from growing for the life of the registry.
+            db.execute("DELETE FROM leases WHERE expires<?", (now,))
+            db.execute("DELETE FROM gc_leases WHERE expires<?", (now,))
             rows = db.execute(
                 "SELECT s.id,s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
                 (account,),
@@ -670,7 +732,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             lease = uuid4().hex
             db.execute(
                 "INSERT INTO leases VALUES (?,?,?)",
-                (lease, json.dumps([r["id"] for r in rows]), time.time() + ttl),
+                (lease, json.dumps([r["id"] for r in rows]), now + ttl),
             )
         return lease, manifest
 
@@ -702,6 +764,26 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         """Drop a tombstone only when the source is re-created as current content."""
         with self.db() as db:
             db.execute("DELETE FROM tombstones WHERE account=? AND uri=?", (account, uri))
+
+    def clear_tombstone_subtree(self, account, uri):
+        """Drop the tombstones of *uri* and everything beneath it.
+
+        A re-created directory can arrive through one whole-tree copy instead of
+        per-file writes, so no individual write exists that would clear the
+        descendants' tombstones. Matching uses the same ancestor rule as
+        ``is_tombstoned`` so a cleared subtree cannot still be refused by a row
+        this call did not consider.
+        """
+        prefix = uri.rstrip("/") + "/"
+        with self.db() as db:
+            rows = [
+                row[0]
+                for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))
+            ]
+            dead = [row for row in rows if row == uri or row.startswith(prefix)]
+            for row in dead:
+                db.execute("DELETE FROM tombstones WHERE account=? AND uri=?", (account, row))
+        return len(dead)
 
     def tombstones(self, account):
         with self.db() as db:
@@ -758,12 +840,12 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         owned = view is None
         if owned:
             lease, manifest = self.capture(account)
-        else:
-            if view[0] != account or view[1].path != self.path:
-                raise RuntimeError("Source query view belongs to another account/store")
-            lease, manifest = view[2], view[3]
-        try:
             self.renew(lease)
+        else:
+            lease = None
+            # read() already renewed the shared lease for this query.
+            _, manifest = view.read(account, self)
+        try:
             item = manifest.get(uri)
             reference = item.get("content") if item else None
             if item and reference is None:
@@ -785,7 +867,8 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                             raise NotFoundError(uri, "published semantic source")
                     break
             yield reference
-            self.renew(lease)
+            if owned:
+                self.renew(lease)
         finally:
             if owned:
                 self.release(lease)
@@ -1137,16 +1220,78 @@ def visible_filter(ctx):
         return None
     view = _view.get()
     if view is not None:
-        if view[0] != ctx.account_id or view[1].path != registry.path:
-            raise RuntimeError("Index query view belongs to a different account/store")
-        registry.renew(view[2])
-        return registry.visibility(view[3], ctx.account_id)
+        _, manifest = view.read(ctx.account_id, registry)
+        return registry.visibility(manifest, ctx.account_id)
     # Non-public low-level readers capture only this operation's view.
     lease, manifest = registry.capture(ctx.account_id)
     try:
         return registry.visibility(manifest, ctx.account_id)
     finally:
         registry.release(lease)
+
+
+class QueryView:
+    """One query's publication view, opened by ``pin_query_snapshot`` or by the
+    first read that needs it.
+
+    ``capture`` writes a lease row under an exclusive transaction, so the gate
+    no longer takes one on entry: a request rejected by argument validation
+    must not cost the writer path anything.  A query that passes validation
+    pins its view immediately, so a generation published while the query runs
+    stays invisible to it and its blobs stay GC-protected for its whole read.
+    The account is taken from the caller that pins or reads, which keeps the
+    gate from reaching into a storage class's private state to guess it.
+    """
+
+    def __init__(self, registry, account=None):
+        self._registry = registry
+        self._account = account
+        self._lease = None
+        self._manifest = None
+
+    def _same_store(self, registry):
+        return registry is self._registry or registry.path == self._registry.path
+
+    @property
+    def registry(self):
+        return self._registry
+
+    def read(self, account, registry):
+        """Return ``(lease, manifest)`` pinned for this query, capturing once."""
+        if not self._same_store(registry):
+            raise RuntimeError("Index query view belongs to a different account/store")
+        if self._lease is None:
+            if self._account is not None and self._account != account:
+                raise RuntimeError("Index query view belongs to a different account/store")
+            self._account = account
+            self._lease, self._manifest = registry.capture(account)
+        elif self._account != account:
+            raise RuntimeError("Index query view belongs to a different account/store")
+        registry.renew(self._lease)
+        return self._lease, self._manifest
+
+    def renew(self):
+        if self._lease is not None:
+            self._registry.renew(self._lease)  # Never return a result after its view lease expired.
+
+    def release(self):
+        if self._lease is not None:
+            self._registry.release(self._lease)
+            self._lease = None
+
+
+def pin_query_snapshot(ctx):
+    """Fix the running query's publication view before it does any work.
+
+    Public query entry points call this right after argument validation: the
+    rejected request never reaches it, and the accepted one holds one snapshot
+    for its whole read instead of opening one lazily mid-query.
+    """
+    view = _view.get()
+    if view is None:
+        return None
+    view.read(ctx.account_id, view.registry)
+    return view
 
 
 def query_snapshot(function):
@@ -1156,16 +1301,14 @@ def query_snapshot(function):
         if registry is None or _view.get() is not None:
             return await function(*args, **kwargs)
         ctx = inspect.signature(function).bind_partial(*args, **kwargs).arguments.get("ctx")
-        if ctx is None:
-            ctx = args[0]._ctx_or_default(None)
-        lease, manifest = registry.capture(ctx.account_id)
-        token = _view.set((ctx.account_id, registry, lease, manifest))
+        view = QueryView(registry, getattr(ctx, "account_id", None))
+        token = _view.set(view)
         try:
             result = await function(*args, **kwargs)
-            registry.renew(lease)  # Never return a result after its view lease expired.
+            view.renew()
             return result
         finally:
             _view.reset(token)
-            registry.release(lease)
+            view.release()
 
     return wrapped

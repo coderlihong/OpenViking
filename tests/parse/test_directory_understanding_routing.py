@@ -20,6 +20,7 @@ from openviking.parse.understanding_api import UnderstandingAPI, UnderstandingAP
 from openviking.utils.media_processor import UnifiedResourceProcessor
 from openviking.utils.resource_processor import ResourceProcessor
 from openviking_cli.exceptions import InvalidArgumentError
+from openviking_cli.utils.config.parser_config import PDFConfig
 
 
 class _FakeVikingFS:
@@ -491,6 +492,16 @@ async def test_directory_preserves_native_pdf_soft_failure(monkeypatch, tmp_path
     fake_fs = _FakeVikingFS()
     with (
         patch.object(BaseParser, "_get_viking_fs", return_value=fake_fs),
+        # Pinned to the in-process converter. The registry's PDF parser inherits
+        # whatever ``pdf.model_endpoints`` the developer's config file registers,
+        # and with an endpoint present ``parse()`` takes the artifact branch and
+        # its page probe fails before this conversion stub is ever called -- so
+        # the same soft-failure contract would pass on CI and fail at a desk.
+        patch.object(
+            DirectoryParser,
+            "_assign_parser",
+            return_value=PDFParser(PDFConfig(strategy="local")),
+        ),
         patch.object(
             PDFParser, "_convert_to_markdown", new=AsyncMock(side_effect=ValueError("invalid PDF"))
         ),

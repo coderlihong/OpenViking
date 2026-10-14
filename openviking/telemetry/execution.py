@@ -16,6 +16,7 @@ from openviking_cli.utils import get_logger
 
 from .context import bind_telemetry
 from .operation import OperationTelemetry, TelemetrySnapshot
+from .registry import register_telemetry, unregister_telemetry
 from .request import TelemetryRequest, TelemetrySelection, normalize_telemetry_request
 from .span_models import OperationSpanAttributes
 
@@ -153,6 +154,8 @@ async def run_with_telemetry(
             span_context_manager = None
 
     try:
+        # Queue workers resolve this handle by id to rebind the request context.
+        register_telemetry(collector)
         try:
             with bind_telemetry(collector):
                 if span_context_manager is not None:
@@ -219,6 +222,7 @@ async def run_with_telemetry(
             selection=selection,
         )
     finally:
+        unregister_telemetry(collector.telemetry_id)
         reset_operation_observability_context(operation_token)
 
 

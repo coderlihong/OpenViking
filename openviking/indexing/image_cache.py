@@ -141,6 +141,12 @@ async def load_twin_image_semantics(fs, uri, ctx, asset_sha256=None):
     ``asset_sha256`` lets a caller that already read the bytes skip a second
     read. Returns ``None`` when no published twin exists, leaving the caller to
     regenerate through the normal (VLM) path.
+
+    The caller may only take this result for a copy that resolves no occurrence
+    of its own: the returned record deliberately has no ``context_uri``, so a
+    citing copy that took it would publish a description belonging to another
+    branch and leave its own ``<figcaption>`` unfilled. See
+    ``media.utils.generate_image_summary``.
     """
     registry = configured_store()
     if registry is None or not getattr(ctx, "account_id", None):

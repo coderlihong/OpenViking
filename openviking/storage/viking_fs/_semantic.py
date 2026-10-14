@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from openviking.core.context import ContextLevel
 from openviking.core.retrieval_targets import resolve_retrieval_targets
-from openviking.indexing.publication import query_snapshot
+from openviking.indexing.publication import pin_query_snapshot, query_snapshot
 from openviking.server.error_mapping import is_not_found_error, map_exception
 from openviking.server.identity import RequestContext
 from openviking.storage.abstract_overview import (
@@ -228,6 +228,7 @@ class _SemanticMixin:
         ctx: Optional[RequestContext] = None,
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
+        rerank_enabled: bool = True,
     ):
         """Semantic search.
 
@@ -255,6 +256,9 @@ class _SemanticMixin:
         else:
             _ensure_non_empty_search_query(query, image_url)
 
+        real_ctx = self._ctx_or_default(ctx)
+        await asyncio.to_thread(pin_query_snapshot, real_ctx)
+
         telemetry = get_current_telemetry()
         from openviking.retrieve.hierarchical_retriever import (
             HierarchicalRetriever,
@@ -266,7 +270,6 @@ class _SemanticMixin:
             TypedQuery,
         )
 
-        real_ctx = self._ctx_or_default(ctx)
         retrieval_targets = resolve_retrieval_targets(target_uri, real_ctx)
 
         if filter_only:
@@ -324,6 +327,7 @@ class _SemanticMixin:
             score_threshold=score_threshold,
             scope_dsl=filter,
             level=level,
+            rerank_enabled=rerank_enabled,
         )
 
         # Convert QueryResult to FindResult
@@ -416,6 +420,7 @@ class _SemanticMixin:
         ctx: Optional[RequestContext] = None,
         level: Optional[List[int]] = None,
         image_url: Optional[str] = None,
+        rerank_enabled: bool = True,
     ):
         """Complex search with session context.
 
@@ -430,6 +435,8 @@ class _SemanticMixin:
             FindResult
         """
         _ensure_non_empty_search_query(query, image_url)
+        real_ctx = self._ctx_or_default(ctx)
+        await asyncio.to_thread(pin_query_snapshot, real_ctx)
         telemetry = get_current_telemetry()
         from openviking.retrieve.hierarchical_retriever import HierarchicalRetriever
         from openviking.retrieve.intent_analyzer import IntentAnalyzer
@@ -440,7 +447,6 @@ class _SemanticMixin:
             TypedQuery,
         )
 
-        real_ctx = self._ctx_or_default(ctx)
         retrieval_targets = resolve_retrieval_targets(target_uri, real_ctx)
         primary_target_uri = retrieval_targets.first_explicit_directory
 
@@ -531,6 +537,7 @@ class _SemanticMixin:
                 score_threshold=score_threshold,
                 scope_dsl=filter,
                 level=level,
+                rerank_enabled=rerank_enabled,
             )
 
         query_results = await asyncio.gather(*[_execute(tq) for tq in typed_queries])

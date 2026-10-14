@@ -581,6 +581,109 @@ ov set-tags viking://resources/project/ \
 
 ---
 
+### normalize_citations()
+
+归一目标范围内的图片引用，使其达到发布形态：
+
+1. 把每张图的引用包成 `<figure>` 块，并补全 `vikingsrc` 指针（指向 OpenViking 存储的 `viking://` 图片 URI）；外部 URL 引用会先抓取进自有存储。
+2. 对 `<figcaption>` 仍为空的引用图，用 VLM 生成图注并写回引用它的 markdown；已有非空图注的跳过，不会重写。
+
+这是 reindex 的**前置步骤**：向量阶段 archive 的是已发布的 markdown 修订，图注必须已经在里面，否则图注进不了向量、也读不到。可以先跑本接口，再对同一 URI 跑 reindex。
+
+**认证**
+
+- 与 [reindex](#reindex) 相同：共享区 `viking://resources/...` 需要 admin key；普通 user key 只能处理自己的 `viking://user/<user_id>/...`
+- Python HTTP client / CLI：使用当前认证身份发起请求
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| uri | str | 是 | - | Viking URI：单个 markdown 文件，或一个目录 |
+| recursive | bool | 否 | `true` | 目录目标是否递归收集下级 markdown 和图片 |
+
+`uri` 支持其他 content API 支持的 OpenViking 路径变量。
+
+**Python SDK**
+
+```python
+result = client.normalize_citations(
+    uri="viking://resources/raw/manual",
+)
+print(result["images_described"], result["captions_backfilled"])
+```
+
+```python
+# 单个 markdown 文件
+result = client.normalize_citations(
+    uri="viking://resources/raw/manual/chapter.md",
+)
+print(result["files_normalized"])
+```
+
+**TypeScript SDK**
+
+```typescript
+const result = await client.normalizeCitations("viking://resources/raw/manual", {
+  recursive: true,
+});
+console.log(result.images_described);
+```
+
+**HTTP API**
+
+```
+POST /api/v1/content/normalize_citations
+```
+
+```bash
+curl -X POST http://localhost:1933/api/v1/content/normalize_citations \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -H "X-OpenViking-Account: default" \
+  -d '{
+    "uri": "viking://resources/raw/manual",
+    "recursive": true
+  }'
+```
+
+**CLI**
+
+```bash
+openviking normalize-cites viking://resources/raw/manual
+```
+
+```bash
+# 单个 markdown 文件
+openviking normalize-cites viking://resources/raw/manual/chapter.md
+```
+
+```bash
+# 只处理顶层，不递归下级目录
+openviking normalize-cites viking://resources/raw/manual --recursive=false
+```
+
+CLI 会等待同步完成后输出结果表格；`-o json` 输出机器可读 JSON。
+
+**结果字段**
+
+| 字段 | 说明 |
+|------|------|
+| uri | 归一化的请求 URI |
+| files_normalized | 完成图片引用改写的 markdown 文件数量 |
+| images_described | 本次为其生成图注的图片数量（已有非空图注的不计） |
+| captions_backfilled | 写回引用 markdown 的图注条数 |
+| warnings | 可恢复的单条 warning |
+
+**行为说明**
+
+- 非空 `<figcaption>` 一律视为可信描述直接沿用（first-write-wins），不会再次调 VLM。
+- 本接口会改写源 markdown 并发布新修订；reindex 不改写源文件。
+- 没有被 markdown 引用的图片资产不归本接口管，它们在 reindex 时按已有语义缓存重建。
+- 目录目标自动获取树级 pathlock；外部传入锁的场景（管道内调用）会复用调用方的租约。
+
+---
+
 ### reindex()
 
 对已经存储在 OpenViking 中的现有内容，重新构建语义产物和/或向量索引。这是一个运维维护接口，适用于 embedding 模型更换、VLM 更换、向量库重刷、版本升级后修复历史索引等场景。
@@ -626,6 +729,8 @@ session 子树会被跳过。
 - `vectors_only`：基于当前仍可恢复的源数据重建向量库记录，不会重写 `.abstract.md` 和 `.overview.md`
 - `semantic_and_vectors`：先重新生成语义产物，再基于新的语义结果重建向量
 - `prune_orphans`：删除请求 URI 范围内源文件已不存在的向量库记录。设置 `dry_run=true` 时，只报告会删除多少记录，不实际删除。
+
+**与 normalize_citations 的边界**：reindex 是纯计算步骤，只读已发布的源数据，不改写 markdown、不调用 VLM 补图注。带图片引用且图注可能缺失的语料，必须先跑 [normalize_citations()](#normalize_citations) 再 reindex；否则缺图注的图片会计入 `semantics_required_records`（见 warnings 中的 `SEMANTICS_REQUIRED`），对应向量不会写入。
 
 对于 `resource` 和 `skill`，`semantic_and_vectors` 会刷新目录/文件语义产物，包括 `.abstract.md` 和 `.overview.md`。对于 `memory`，它会重建当前已持久化 memory 子树的语义和向量，但不会回放历史记忆抽取顺序。
 
@@ -808,7 +913,7 @@ GET /api/v1/tasks?task_type=admin_reindex&resource_id=viking://resources
 - 如果语义产物本身也需要重建，再做重向量化，应使用 `semantic_and_vectors`。
 - 如果文件系统曾绕过正常 API 发生删除，向量库可能还残留已删除路径的记录，应使用 `prune_orphans`。
 - 同一个 URI 和 owner 同时只能运行一个 reindex 任务。对同一目标的并发请求会返回 conflict。
-- 对 resource 文件，文本文件在没有 summary 时可以使用文件正文；非文本文件需要已生成的 summary 或已有向量记录 fallback，否则会计为 unsupported。
+- 对 resource 文件，文本文件在没有 summary 时可以使用文件正文；非文本文件需要已生成的 summary 或已有向量记录 fallback，否则会计为 unsupported；带图注缺失图片的 markdown，需要先完成图片引用归一（见 [normalize_citations()](#normalize_citations)），否则对应图片会计入 `semantics_required_records`。
 
 **当前限制**
 

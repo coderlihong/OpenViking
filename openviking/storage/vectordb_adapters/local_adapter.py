@@ -20,6 +20,10 @@ class LocalCollectionAdapter(CollectionAdapter):
 
     DEFAULT_LOCAL_PROJECT_NAME = "vectordb"
 
+    # ``store/bytes_row.py`` serializes a row's fields behind a uint16 length prefix,
+    # so an oversized record is rejected outright and its write fails.
+    _RECORD_BYTE_LIMIT = 65535
+
     def __init__(
         self,
         collection_name: str,

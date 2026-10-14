@@ -694,6 +694,25 @@ class TestImageLinkSplit:
         assert not any(u.endswith(".image_mappings.json") for u in fake.files), fake.files
 
 
+def rewrite_stats(
+    files_processed, references_rewritten, images_materialized=0, references_unresolved=0
+):
+    """The full stats contract of one rewrite pass.
+
+    ``images_materialized`` counts remote/inline references whose bytes were
+    stored during this pass; ``references_unresolved`` counts the ones that could
+    not be, and stay visible in the prose rather than being deleted. Both are zero
+    for a fixture that only carries already-local sibling images.
+    """
+
+    return {
+        "files_processed": files_processed,
+        "references_rewritten": references_rewritten,
+        "images_materialized": images_materialized,
+        "references_unresolved": references_unresolved,
+    }
+
+
 class TestRewriteImageUris:
     """rewrite_image_uris must consume every .image_mappings.json in the tree,
     interpreting each one in the coordinate system of the directory holding it
@@ -720,7 +739,7 @@ class TestRewriteImageUris:
         with self._patched(fake):
             stats = await rewrite_image_uris(root, lease_ref=None)
 
-        assert stats == {"files_processed": 1, "references_rewritten": 1}
+        assert stats == rewrite_stats(1, 1)
         assert _decode(fake.files[f"{root}/index/index.md"]) == (
             f'<figure>\n'
             f'    <img src="./assets/logo.png" alt="p" vikingsrc="{root}/index/logo.png"/>\n'
@@ -748,7 +767,7 @@ class TestRewriteImageUris:
         with self._patched(fake):
             stats = await rewrite_image_uris(root, lease_ref=None)
 
-        assert stats == {"files_processed": 1, "references_rewritten": 1}
+        assert stats == rewrite_stats(1, 1)
         assert _decode(fake.files[f"{root}/big/标题/章一/部分_1.md"]) == (
             f"<figure>\n"
             f'    <img src="./assets/d.jpg" alt="p" vikingsrc="{root}/big/标题/章一/d.jpg"/>\n'
@@ -776,7 +795,7 @@ class TestRewriteImageUris:
         with self._patched(fake):
             stats = await rewrite_image_uris(root, lease_ref=None)
 
-        assert stats == {"files_processed": 1, "references_rewritten": 1}
+        assert stats == rewrite_stats(1, 1)
         assert _decode(fake.files[f"{root}/doc.md"]) == (
             "<figure>\n"
             '    <img src="./assets/logo.png" alt="p" '
@@ -816,12 +835,12 @@ class TestRewriteImageUris:
             stats = await rewrite_image_uris(root, lease_ref=None)
 
         # Already-normalized block: nothing to rewrite, caption kept verbatim.
-        assert stats == {"files_processed": 0, "references_rewritten": 0}
+        assert stats == rewrite_stats(0, 0)
         assert _decode(fake.files[f"{root}/doc.md"]) == normalized
 
         with self._patched(fake):
             again = await rewrite_image_uris(root, lease_ref=None)
-        assert again == {"files_processed": 0, "references_rewritten": 0}
+        assert again == rewrite_stats(0, 0)
         assert _decode(fake.files[f"{root}/doc.md"]) == normalized
 
     async def test_chapter_sibling_images_directory_resolved(self):
@@ -839,7 +858,7 @@ class TestRewriteImageUris:
         with self._patched(fake):
             stats = await rewrite_image_uris(root, lease_ref=None)
 
-        assert stats == {"files_processed": 1, "references_rewritten": 1}
+        assert stats == rewrite_stats(1, 1)
         assert _decode(fake.files[f"{root}/index.md"]) == (
             "<figure>\n"
             '    <img src="images/abc123.jpg" alt="fig" '

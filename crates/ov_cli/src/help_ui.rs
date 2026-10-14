@@ -94,6 +94,7 @@ const INTERACTIVE_ADMIN: &[HelpCommand] = help_commands![
     "admin",
     "system",
     "reindex",
+    "normalize-cites",
 ];
 
 const HELP_SECTIONS: &[HelpSection] = &[
@@ -1400,6 +1401,30 @@ const COMMAND_HELP_SPECS: &[CommandHelpSpec] = &[
             },
         ],
     },
+    CommandHelpSpec {
+        path: &["normalize-cites"],
+        purpose: "Normalize figure citations (vikingsrc pointers and figcaption bodies) before reindex.",
+        examples: &[
+            HelpItem {
+                label: "ov normalize-cites viking://resources/raw/manual",
+                description: "Walk the directory, complete vikingsrc pointers and generate missing captions.",
+            },
+            HelpItem {
+                label: "ov normalize-cites viking://resources/raw/manual/chapter.md",
+                description: "Normalize a single markdown file's figure citations.",
+            },
+            HelpItem {
+                label: "ov normalize-cites viking://resources/raw/manual --recursive=false",
+                description: "Only touch the top level, without sub-directories.",
+            },
+        ],
+        next_steps: &[
+            HelpItem {
+                label: "ov reindex viking://resources/raw/manual --mode semantic_and_vectors",
+                description: "Rebuild the index after captions are in place.",
+            },
+        ],
+    },
 ];
 
 pub(crate) fn is_top_level_help_request(args: &[OsString]) -> bool {
@@ -2399,6 +2424,7 @@ fn localized_command_description<'a>(
         "system" => "系统维护命令",
         "privacy" => "管理隐私策略",
         "reindex" => "重建语义和向量索引",
+        "normalize-cites" => "归一图片引用（补 vikingsrc 与图注）",
         "version" => "显示版本信息",
         "language" => "选择 CLI 显示语言（别名：lang）",
         _ => description,

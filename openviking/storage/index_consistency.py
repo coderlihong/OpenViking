@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from openviking.core.context import ResourceContentType
+from openviking.core.directory_index import is_generated_index_at
 from openviking.core.namespace import is_session_uri
 from openviking.server.identity import RequestContext
 from openviking.storage.expr import Eq
+from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
 from openviking.utils.embedding_utils import get_resource_content_type
 from openviking_cli.utils.logger import get_logger
 from openviking_cli.utils.uri import VikingURI
@@ -143,7 +145,7 @@ def _file_candidates(
             continue
         rel_path = str(entry.get("rel_path") or "")
         name = str(entry.get("name") or _leaf_name(rel_path))
-        if name.startswith("."):
+        if name.startswith(".") or name in CHAPTER_METADATA_FILENAMES:
             continue
         candidates.append((uri, rel_path, name))
     return candidates
@@ -167,8 +169,15 @@ async def build_index_expectations(
             expectations.append(IndexExpectation(uri=uri, rel_path=rel_path, level=1))
 
     for uri, rel_path, name in _file_candidates(root_uri, entries):
-        if get_resource_content_type(name) == ResourceContentType.TEXT:
-            expectations.append(IndexExpectation(uri=uri, rel_path=rel_path, level=2))
+        if get_resource_content_type(name) != ResourceContentType.TEXT:
+            continue
+        # The pipeline never vectorizes a generated navigation catalogue (its
+        # entry list would outrank the entries), so the index owes it no L2 row.
+        # The frontmatter marker is the authority, not the name: a legacy
+        # chapter body stored at index.md stays expected.
+        if await is_generated_index_at(viking_fs, uri, ctx=ctx):
+            continue
+        expectations.append(IndexExpectation(uri=uri, rel_path=rel_path, level=2))
 
     return tuple(sorted(expectations, key=lambda item: (item.rel_path, item.level)))
 

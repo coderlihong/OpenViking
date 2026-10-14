@@ -215,6 +215,20 @@ async def test_hybrid_aggregates_same_uri_chunks_into_one_result_with_matches():
 
 
 @pytest.mark.asyncio
+async def test_hybrid_limit_above_default_mmr_top_is_honored():
+    """limit=15 must not be silently truncated to the default MMR top (10)."""
+    storage = HybridStorage(
+        [
+            _row(f"viking://doc{i}", 1.0 - i * 0.01, chunk_id=f"c{i}", chunk_text=f"body {i}")
+            for i in range(15)
+        ]
+    )
+    retriever = _make_retriever(storage)
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=15, mode=RetrieverMode.HYBRID)
+    assert len(result.matched_contexts) == 15
+
+
+@pytest.mark.asyncio
 async def test_hybrid_trace_records_effective_profile(monkeypatch):
     """Budgets, rrf_k, lambda and degradation are recorded in telemetry."""
     captured = {}
@@ -250,7 +264,9 @@ async def test_hybrid_trace_records_effective_profile(monkeypatch):
 
     assert captured["hybrid.rrf_k"] == 42
     assert captured["hybrid.mmr_lambda"] == 0.25
-    assert captured["hybrid.fusion"]["mmr_top"] == 3
+    # limit=5 exceeds the profile's MMR top of 3, so the trace records the
+    # effective (raised) budget rather than the base one.
+    assert captured["hybrid.fusion"]["mmr_top"] == 5
     assert captured["hybrid.degraded"] is False
 
 
@@ -264,6 +280,70 @@ async def test_quick_mode_does_not_use_fusion_path():
     # Quick mode searches leaves directly; it never issues the hybrid [2] probe
     # through the fusion path, which would have recorded hybrid trace keys.
     assert all(call["level"] != [0, 1] for call in storage.search_calls)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_rerank_false_skips_provider_and_keeps_rrf_scores(monkeypatch):
+    """rerank_enabled=False must skip the provider call and keep RRF-domain scores."""
+    fake_client = FakeRerankClient([0.95, 0.05])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+    storage = HybridStorage(
+        [
+            _row("viking://b", 999.0, chunk_id="cb", chunk_text="beta content"),
+            _row("viking://a", 0.001, chunk_id="ca", chunk_text="alpha content"),
+        ]
+    )
+
+    async def lexical_search(**kwargs):
+        return [_row("viking://a", 1.0, chunk_id="ca", chunk_text="alpha content")]
+
+    retriever = _make_retriever(storage, rerank_config=_rerank_config(), lexical_search=lexical_search)
+    retriever._rerank_client = fake_client
+
+    result = await retriever.retrieve(
+        _query(), ctx=_ctx(), limit=5, mode=RetrieverMode.HYBRID, rerank_enabled=False
+    )
+
+    assert fake_client.calls == []
+    # Fused order: dense ranks b first, so b leads on RRF tie-break (first-seen).
+    uris = [c.uri for c in result.matched_contexts]
+    assert set(uris) == {"viking://a", "viking://b"}
+    # Scores stay in the RRF domain (~1/(60+rank)), not the reranker's 0-1 domain.
+    for candidate in result.matched_contexts:
+        assert 0.0 < candidate.score < 0.1
+
+
+@pytest.mark.asyncio
+async def test_hybrid_rerank_true_still_calls_provider(monkeypatch):
+    """Counter-test: default rerank_enabled=True keeps the provider in the loop."""
+    fake_client = FakeRerankClient([0.05, 0.95])
+    monkeypatch.setattr(
+        "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
+        lambda config: fake_client,
+    )
+    storage = HybridStorage(
+        [
+            _row("viking://b", 999.0, chunk_id="cb", chunk_text="beta content"),
+            _row("viking://a", 0.001, chunk_id="ca", chunk_text="alpha content"),
+        ]
+    )
+
+    async def lexical_search(**kwargs):
+        return [_row("viking://a", 1.0, chunk_id="ca", chunk_text="alpha content")]
+
+    retriever = _make_retriever(storage, rerank_config=_rerank_config(), lexical_search=lexical_search)
+    retriever._rerank_client = fake_client
+
+    result = await retriever.retrieve(_query(), ctx=_ctx(), limit=5, mode=RetrieverMode.HYBRID)
+
+    assert len(fake_client.calls) == 1
+    # Fused window is [a, b] (a leads RRF); scores [0.05, 0.95] land on
+    # a=0.05/b=0.95, so rerank keeps b first but in the reranker's 0-1 domain.
+    assert [c.uri for c in result.matched_contexts] == ["viking://b", "viking://a"]
+    assert result.matched_contexts[0].score == pytest.approx(0.95)
 
 
 def test_profile_for_hybrid_uses_spec_defaults():

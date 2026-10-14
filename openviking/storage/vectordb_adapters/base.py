@@ -117,6 +117,14 @@ class CollectionAdapter(ABC):
     # See ``viking_fs._resolve_grep_engine`` which must stay consistent with this flag.
     USE_CONTENT_FIELD: bool = False
 
+    # Byte limit for the *whole* serialized record, ``None`` when the backend has none.
+    # Distinct from ``_TEXT_FIELD_BYTE_LIMIT``: the embedded local engine length-prefixes
+    # every row's combined fields with a uint16, so a record whose fields add up to more
+    # than that limit is rejected even when no single field is oversized. A per-field cap
+    # cannot bound such a row because one summary is carried in several fields.
+    # Backends with a server-side record budget (VikingDB, Qdrant) leave this ``None``.
+    _RECORD_BYTE_LIMIT: int | None = None
+
     def __init__(self, collection_name: str, index_name: str = DEFAULT_INDEX_NAME):
         self._collection_name = collection_name
         self._index_name = index_name

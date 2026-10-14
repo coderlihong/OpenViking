@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from openviking.core.directory_index import is_generated_directory_index
 from openviking.server.identity import RequestContext, Role
 from openviking.service.task_queue_middleware import TaskWorkQueueMiddleware
 from openviking.service.task_work_index import (
@@ -71,7 +72,7 @@ class _FakeProcessor:
         self.overview_inputs = []
         self.verify_streaming = verify_streaming
 
-    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None):
+    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None, allow_vlm=True):
         self.summarized_files.append(file_path)
         result = {"name": file_path.split("/")[-1], "summary": "summary"}
         if self.verify_streaming:
@@ -132,7 +133,7 @@ class _TrackingProcessor(_FakeProcessor):
         self.active_summaries = 0
         self.max_active_summaries = 0
 
-    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None):
+    async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None, allow_vlm=True):
         self.active_summaries += 1
         self.max_active_summaries = max(self.max_active_summaries, self.active_summaries)
         try:
@@ -489,13 +490,23 @@ async def test_semantic_dag_skip_vectorization_does_not_schedule_tasks(monkeypat
     await executor.run(root_uri)
     await asyncio.sleep(0)
 
-    assert [uri for uri, _ in fake_fs.writes] == [
+    sidecar_writes = [(uri, raw) for uri, raw in fake_fs.writes if not uri.endswith("/index.md")]
+    catalogues = [(uri, raw) for uri, raw in fake_fs.writes if uri.endswith("/index.md")]
+
+    assert [uri for uri, _ in sidecar_writes] == [
         f"{root_uri}/child/.overview.md",
         f"{root_uri}/child/.abstract.md",
         f"{root_uri}/.overview.md",
         f"{root_uri}/.abstract.md",
     ]
-    assert [parse_abstract_overview(raw).body.strip() for _, raw in fake_fs.writes] == [
+    # Every resource directory also gets a navigation catalogue; it is a sidecar of
+    # the directory listing, not of the semantic summary chain.
+    assert [uri for uri, _ in catalogues] == [
+        f"{root_uri}/child/index.md",
+        f"{root_uri}/index.md",
+    ]
+    assert all(is_generated_directory_index(raw) for _, raw in catalogues)
+    assert [parse_abstract_overview(raw).body.strip() for _, raw in sidecar_writes] == [
         "overview",
         "abstract",
         "overview",
@@ -503,7 +514,7 @@ async def test_semantic_dag_skip_vectorization_does_not_schedule_tasks(monkeypat
     ]
     assert all(
         parse_abstract_overview(raw).metadata["generated_by"]["component"] == "SemanticProcessor"
-        for _, raw in fake_fs.writes
+        for _, raw in sidecar_writes
     )
     assert processor.vectorized_dirs == []
     assert processor.vectorized_files == []
@@ -527,7 +538,7 @@ async def test_vanished_file_is_skipped_without_poisoning_tree(monkeypatch):
     _patch_semantic_config(monkeypatch)
 
     class _VanishingProcessor(_FakeProcessor):
-        async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None):
+        async def _generate_single_file_summary(self, file_path, llm_sem=None, ctx=None, allow_vlm=True):
             if file_path.endswith("gone.txt"):
                 raise NotFoundError(file_path, "file")
             return await super()._generate_single_file_summary(

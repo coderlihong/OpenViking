@@ -6,6 +6,7 @@ from dataclasses import replace
 import hashlib
 import json
 
+from openviking.core.namespace import uri_parts
 from openviking.indexing.batch import producer_batch_context
 from openviking.indexing.business_meta import AuthoritativeMeta, build_meta, merge_meta, normalize_key
 from openviking_cli.exceptions import InvalidArgumentError, NotFoundError
@@ -23,6 +24,19 @@ def field_token(field):
 
 def value_token(field, value):
     return "v:" + hashlib.sha256(json.dumps([normalize_key(field), value], ensure_ascii=False).encode()).hexdigest()
+
+
+def _namespace_root(uri: str) -> str:
+    """Return the content namespace a sidecar chain must not walk above.
+
+    ``viking://user`` is the shared user container, not a directory: appending a
+    sidecar name to it addresses a *user* named ``.business_meta.json``, whose
+    read is denied. A user URI's namespace is therefore the user space.
+    """
+    parts = uri_parts(uri)
+    if parts[:1] == ["user"] and len(parts) >= 2:
+        return f"viking://user/{parts[1]}"
+    return "viking://" + (parts[0] if parts else "")
 
 
 def project_meta(payload):
@@ -67,7 +81,7 @@ async def load_business_meta(fs, uri, ctx, *, is_directory=False):
     registry = configured_store()
     if registry is None:
         return None
-    root = "viking://" + uri.removeprefix("viking://").split("/", 1)[0]
+    root = _namespace_root(uri)
     registered = await asyncio.to_thread(registry.namespace_list, ctx.account_id)
     matches = [entry["root_uri"].rstrip("/") for entry in registered
                if uri == entry["root_uri"].rstrip("/") or uri.startswith(entry["root_uri"].rstrip("/") + "/")]

@@ -35,6 +35,11 @@ class ParserConfig:
         section_size_flexibility: Allow overflow to maintain coherence (0.0-1.0)
         max_section_chars: Target character limit per section. A single oversized
             Markdown table row may remain intact to preserve table semantics.
+        fetch_remote_images: Whether ingestion may fetch an image reference that
+            points at an external host, so the published document stores its own
+            bytes instead of a URL that can die with the host. Non-public
+            destinations are still refused by the network guard.
+        remote_image_timeout: Per-request timeout, in seconds, for that fetch.
     """
 
     enabled: bool = True
@@ -45,6 +50,10 @@ class ParserConfig:
     max_section_size: int = 2048  # Maximum tokens per section before splitting
     section_size_flexibility: float = 0.3  # Allow 30% overflow to maintain coherence
     max_section_chars: int = 6000  # Target character limit per section
+
+    # Remote chapter assets
+    fetch_remote_images: bool = True
+    remote_image_timeout: float = 20.0
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ParserConfig":

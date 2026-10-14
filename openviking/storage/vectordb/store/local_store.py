@@ -49,6 +49,17 @@ class StoreEngineProxy(IMutiTableStore):
         super().__init__()
         self.storage_engine = storage_engine
 
+    def close(self) -> None:
+        """Release the native engine and everything it owns.
+
+        ``PersistStore`` keeps an exclusive OS-level lock on the store directory
+        for as long as the native database object lives.  Python normally only
+        frees that object when the last reference disappears, which a retained
+        exception traceback can postpone indefinitely; dropping it here makes
+        the lock release deterministic so a retried open reports its real error.
+        """
+        self.storage_engine = None
+
     def read(self, keys: List[str], table_name: str) -> List[bytes]:
         """Read values for multiple keys from a table.
 

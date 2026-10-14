@@ -86,6 +86,83 @@ PROJECT_ROOT = Path(__file__).parent.parent
 TEST_TMP_DIR = PROJECT_ROOT / "test_data" / "tmp"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _private_publication_registry(tmp_path_factory):
+    """Point the account registry at a file only this test session uses.
+
+    A developer's ``~/.openviking/ov.conf`` sets ``embedding.chunking.publication_path``
+    to the registry the *running* instances publish into, and every content write takes
+    an exclusive ``BEGIN IMMEDIATE`` on it.  A test session concurrent with a live server
+    (or with a second test session) then blocks until sqlite's 30s timeout and the request
+    dies with ``database is locked`` -- so pass/fail would depend on what else the machine
+    was doing.
+
+    The redirect is a config file, not a mutation of the loaded object: many suites call
+    ``OpenVikingConfigSingleton.reset_instance()``, and the next load would silently bring
+    the ambient path back.  A machine with no ambient config has no shared registry to
+    leak into, so it is left untouched.  Yields the rewritten config path, or ``None``
+    when there is nothing to redirect.
+    """
+    import json
+    import os
+
+    from openviking_cli.utils.config.config_loader import resolve_config_path
+    from openviking_cli.utils.config.consts import DEFAULT_OV_CONF, OPENVIKING_CONFIG_ENV
+
+    ambient = resolve_config_path(None, OPENVIKING_CONFIG_ENV, DEFAULT_OV_CONF)
+    if ambient is None:
+        yield None
+        return
+
+    document = json.loads(Path(ambient).read_text(encoding="utf-8-sig"))
+    chunking = document.setdefault("embedding", {}).setdefault("chunking", {})
+    if not (chunking.get("publication_path") or chunking.get("publication_authority_socket")):
+        yield None
+        return
+
+    registry_dir = tmp_path_factory.mktemp("publication_registry")
+    private_conf = registry_dir / "ov.conf"
+    chunking["publication_path"] = str(registry_dir / "publication.db")
+    # An authority socket would hand the same contention to the live owner process.
+    chunking.pop("publication_authority_socket", None)
+    chunking.pop("publication_authority_token_file", None)
+    private_conf.write_text(json.dumps(document), encoding="utf-8")
+
+    previous = os.environ.get(OPENVIKING_CONFIG_ENV)
+    os.environ[OPENVIKING_CONFIG_ENV] = str(private_conf)
+    OpenVikingConfigSingleton.reset_instance()
+    try:
+        yield str(private_conf)
+    finally:
+        if previous is None:
+            os.environ.pop(OPENVIKING_CONFIG_ENV, None)
+        else:
+            os.environ[OPENVIKING_CONFIG_ENV] = previous
+        OpenVikingConfigSingleton.reset_instance()
+
+
+@pytest.fixture(autouse=True)
+def _per_test_publication_registry(_private_publication_registry, tmp_path):
+    """Give each test its own account registry.
+
+    The registry keys published revisions by ``(account, uri)`` only, so a session-wide
+    file carries one test's revision into the next: a fresh workspace re-ingesting the
+    same ``viking://resources/sample/sample.md`` resolves the previous test's digest, and
+    a read returns content this test never wrote.  Per-test files also keep the archive
+    blobs and their references from outliving each other.
+    """
+    import json
+
+    private_conf = _private_publication_registry
+    if private_conf is None:
+        return
+
+    document = json.loads(Path(private_conf).read_text(encoding="utf-8"))
+    document["embedding"]["chunking"]["publication_path"] = str(tmp_path / "publication.db")
+    Path(private_conf).write_text(json.dumps(document), encoding="utf-8")
+    OpenVikingConfigSingleton.reset_instance()
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Create session-level event loop"""

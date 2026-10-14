@@ -95,12 +95,13 @@ async def backfill_image_captions(
     summary_dict: Dict[str, Any],
     ctx=None,
     lock: Optional[Dict[str, Any]] = None,
-) -> int:
+) -> list[str]:
     """Write each occurrence's caption into the citing markdown's figure block.
 
     ``summary_dict["image_occurrences"]`` entries carry ``context_uri`` (the
     referencing markdown URI) and ``summary`` (the VLM description). Returns
-    the number of markdown files updated. Failures are logged, never raised:
+    the markdown URIs actually rewritten: a caller that indexes content must
+    know which files owe a fresh revision. Failures are logged, never raised:
     a caption backfill must not break the semantic pipeline.
     """
     occurrences = summary_dict.get("image_occurrences") or []
@@ -112,7 +113,7 @@ async def backfill_image_captions(
             continue
         by_file.setdefault(context_uri, []).append(caption)
 
-    updated = 0
+    updated: list[str] = []
     for md_uri, captions in by_file.items():
         try:
             content = await viking_fs.read_file(md_uri, ctx=ctx)
@@ -125,7 +126,7 @@ async def backfill_image_captions(
             continue
         try:
             await viking_fs.write_file(md_uri, new_content, ctx=ctx, lease_ref=lock)
-            updated += 1
+            updated.append(md_uri)
             logger.debug(f"[figure_caption] Filled {filled} caption(s) in {md_uri}")
         except Exception as e:
             logger.warning(f"[figure_caption] Failed to write {md_uri}: {e}")

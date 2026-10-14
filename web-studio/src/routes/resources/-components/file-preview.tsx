@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import hljs from 'highlight.js/lib/core'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
-import rehypeSanitize from 'rehype-sanitize'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { X, Pencil, Save, XCircle, Loader2 } from 'lucide-react'
@@ -122,6 +122,23 @@ interface FilePreviewProps {
 const vikingPrefix = 'viking://'
 const contentDownloadUrl: GetContentDownloadData['url'] =
   '/api/v1/content/download'
+
+// Figure citations carry the storage pointer in a vikingsrc attribute. The
+// GitHub-style default schema drops that attribute, blocks non-http src
+// schemes, and strips the <figure>/<figcaption> wrapper the corpus uses, so
+// each of those must be allowed explicitly or the sanitizer erases the image.
+export const markdownSanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    img: [...(defaultSchema.attributes?.img ?? []), 'vikingsrc'],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    src: [...(defaultSchema.protocols?.src ?? []), 'viking'],
+  },
+  tagNames: [...(defaultSchema.tagNames ?? []), 'figure', 'figcaption'],
+}
 
 type DirectoryLevelId = 'abstract' | 'overview'
 
@@ -429,18 +446,34 @@ function DirectoryMarkdownLink({
   )
 }
 
+/** The reference an image should render from: the viking:// storage pointer
+ *  when the figure carries one, else the authoring src. */
+export function resolveImageReference(
+  vikingsrc?: string,
+  src?: string,
+): string | undefined {
+  const pointer = vikingsrc?.trim()
+  if (pointer?.startsWith(vikingPrefix)) {
+    return pointer
+  }
+  return src
+}
+
 function MarkdownImage({
   src,
+  vikingsrc,
   alt,
   fileUri,
 }: {
   src?: string
+  vikingsrc?: string
   alt?: string
   fileUri: string
 }) {
+  const reference = resolveImageReference(vikingsrc, src)
   const target = useMemo(
-    () => (src ? resolveMarkdownAssetTarget(String(src), fileUri) : null),
-    [src, fileUri],
+    () => (reference ? resolveMarkdownAssetTarget(reference, fileUri) : null),
+    [reference, fileUri],
   )
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -1912,13 +1945,21 @@ export function FilePreview({
                 <article className="prose prose-sm max-w-none break-words dark:prose-invert dark:prose-pre:bg-muted-foreground/20">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                    rehypePlugins={[
+                      rehypeRaw,
+                      [rehypeSanitize, markdownSanitizeSchema],
+                    ]}
                     urlTransform={(url) => url}
                     components={{
                       ...markdownComponents,
-                      img: ({ src, alt }) => (
+                      img: ({ src, alt, node }) => (
                         <MarkdownImage
                           src={src ? String(src) : undefined}
+                          vikingsrc={
+                            typeof node?.properties?.vikingsrc === 'string'
+                              ? node.properties.vikingsrc
+                              : undefined
+                          }
                           alt={alt}
                           fileUri={file.uri}
                         />

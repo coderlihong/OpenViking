@@ -51,6 +51,21 @@ class StoreManager:
         """
         self.storage = storage_engine
 
+    def close(self) -> None:
+        """Release the underlying storage engine and the locks it holds.
+
+        A persistent engine owns an exclusive lock on its directory, so every
+        path that drops the last reference to a store -- collection close, or a
+        failed collection open -- has to release it explicitly instead of
+        waiting for garbage collection.
+        """
+        storage, self.storage = self.storage, None
+        if storage is None:
+            return
+        close = getattr(storage, "close", None)
+        if callable(close):
+            close()
+
     def add_cands_data(
         self, cands_list: List[CandidateData], ttl: int = 0, need_delta: bool = True
     ) -> List[DeltaRecord]:

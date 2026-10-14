@@ -335,7 +335,11 @@ def test_child_named_index_cannot_overwrite_parent_own_body():
     layout = parser._compute_chapter_layout(plan, 'viking://temp/test', 'viking://temp/test/manual', 'manual')
     writes = [op for op in layout.ops if op.kind == 'write']
     assert len({op.uri.casefold() for op in writes}) == len(writes)
-    assert next(op.content for op in writes if op.uri.endswith('/Parent/index.md')) == plan.chapters[0].content
+    # ``{dir}/index.md`` is the generated navigation catalogue, so the parent's own
+    # prose lives at ``{dir}/{stem}.md`` and a child literally named ``index`` can
+    # never be written to the reserved name.
+    assert next(op.content for op in writes if op.uri.endswith('/Parent/Parent.md')) == plan.chapters[0].content
+    assert not any(op.uri.rsplit('/', 1)[-1] == 'index.md' for op in writes)
     assert len([op for op in writes if 'unique child body' in (op.content or '')]) == 1
     second = parser._compute_chapter_layout(plan, 'viking://temp/test', 'viking://temp/test/manual', 'manual')
     assert [op.uri for op in writes] == [op.uri for op in second.ops if op.kind == 'write']

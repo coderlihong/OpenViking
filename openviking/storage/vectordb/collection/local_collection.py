@@ -210,10 +210,31 @@ def get_or_create_local_collection(
         meta = create_collection_meta(meta_path, meta_data)
         storage_path = str(safe_join(collection_dir, STORAGE_DIR_NAME))
         store_mgr = create_store_manager("local", storage_path)
-        collection = PersistCollection(
-            path=collection_dir, meta=meta, store=store_mgr, config=config
-        )
+        try:
+            collection = PersistCollection(
+                path=collection_dir, meta=meta, store=store_mgr, config=config
+            )
+        except BaseException:
+            # The native store holds an exclusive OS lock on the store directory.
+            # Recovery failures (for example an index snapshot that cannot be
+            # loaded) propagate with their traceback, which keeps this frame --
+            # and therefore the lock -- alive.  An upper layer that retries the
+            # open would then fail on a misleading "lock ... already held by
+            # process" instead of on the real cause.
+            _release_store(store_mgr)
+            raise
         return Collection(collection)
+
+
+def _release_store(store_mgr: Optional[StoreManager]) -> None:
+    """Close a store manager, ignoring failures, so its directory lock is freed."""
+
+    if store_mgr is None:
+        return
+    try:
+        store_mgr.close()
+    except Exception:
+        logger.warning("Failed to close store manager after a failed open", exc_info=True)
 
 
 class LocalCollection(ICollection):
@@ -278,6 +299,7 @@ class LocalCollection(ICollection):
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
 
+        _release_store(self.store_mgr)
         self.store_mgr = None
 
         # Close all indexes
@@ -1346,6 +1368,7 @@ class PersistCollection(LocalCollection):
                 dense_search_config=self.dense_search_config,
                 defer_dense_rebuild_start=True,
             )
+            self._repair_dense_index_from_store(index_name, index)
             newest_version = index.get_newest_version()
             if not self.store_mgr:
                 raise RuntimeError("Store manager is not initialized")
@@ -1406,6 +1429,58 @@ class PersistCollection(LocalCollection):
             logger.info("Index '%s': replay complete (%d records)", index_name, _processed)
             index._start_dense_rebuild_worker()
             self.indexes.set(index_name, index)
+
+    def _repair_dense_index_from_store(self, index_name: str, index: PersistentIndex) -> None:
+        """Refill a dense index that was opened empty after a half-written snapshot.
+
+        A persisted version whose payload is missing or truncated cannot be
+        loaded by the native engine, but it is only *derived* data: the Store's
+        candidate table still carries every record together with the vector that
+        was computed for it, so the replay restores real search results without
+        calling the embedder.
+
+        The Store and the damaged version directory are never modified.  If the
+        refill cannot finish, nothing is committed: the index stays open (empty,
+        degraded) and flagged, so a later start repairs it again instead of
+        trusting a snapshot that only holds part of the corpus.
+        """
+        if not index.needs_dense_repair_from_store():
+            return
+        if not self.store_mgr:
+            raise RuntimeError("Store manager is not initialized")
+
+        logger.warning(
+            "Index '%s': rebuilding the dense index from the Store for collection '%s'",
+            index_name,
+            self.collection_name,
+        )
+        try:
+            inserted = index.refill_dense_index_from_store_candidates(
+                self.store_mgr.iter_all_cands_data()
+            )
+        except Exception:
+            logger.exception(
+                "Index '%s': dense refill from the Store failed. The collection stays open "
+                "with an empty dense index and will retry the repair on the next start.",
+                index_name,
+            )
+            return
+
+        try:
+            version = index.commit_dense_repair()
+            logger.info(
+                "Index '%s': dense index restored with %d record(s), snapshot version %s",
+                index_name,
+                inserted,
+                version,
+            )
+        except Exception:
+            # The refill itself is complete, so search already works; only the
+            # durable snapshot was lost and the next maintenance pass can retry.
+            logger.exception(
+                "Index '%s': failed to snapshot the rebuilt dense index",
+                index_name,
+            )
 
     def _replay_recovery_records(
         self,

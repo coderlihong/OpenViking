@@ -13,6 +13,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from openviking.core.path_variables import resolve_path_variables
 from openviking.core.uri_validation import validate_request_viking_uri
 from openviking.pyagfs.exceptions import AGFSClientError, AGFSNotFoundError
+from openviking.server.search_request import (
+    TimeField,
+    resolve_image_url as _resolve_image_url,
+    resolve_search_filter as _resolve_search_filter,
+    resolve_search_limit as _resolve_search_limit,
+    resolve_uri_list as _resolve_uri_list,
+    resolve_uri_or_uris as _resolve_uri_or_uris,
+)
 from openviking.retrieve.context_assembler import (
     CATEGORY_KEYS,
     DEFAULT_LIMIT,
@@ -36,13 +44,7 @@ from openviking.server.identity import RequestContext
 from openviking.server.models import Response
 from openviking.server.telemetry import run_operation
 from openviking.telemetry import TelemetryRequest
-from openviking.utils.image_search import is_viking_uri
-from openviking.utils.search_filters import (
-    SearchContextTypeInput,
-    _resolve_levels,
-    merge_search_filter,
-)
-from openviking.utils.tags import build_search_tags_filter
+from openviking.utils.search_filters import _resolve_levels
 from openviking_cli.exceptions import InvalidArgumentError, NotFoundError
 
 
@@ -60,61 +62,6 @@ def _sanitize_floats(obj: Any) -> Any:
 
 
 router = APIRouter(prefix="/api/v1/search", tags=["search"])
-TimeField = Literal["updated_at", "created_at"]
-
-
-def _resolve_search_limit(limit: int, node_limit: Optional[int]) -> int:
-    return node_limit if node_limit is not None else limit
-
-
-def _resolve_search_filter(
-    request_filter: Optional[Dict[str, Any]],
-    context_type: Optional[SearchContextTypeInput],
-    since: Optional[str],
-    until: Optional[str],
-    time_field: Optional[TimeField],
-    tags: Optional[List[str]],
-) -> Optional[Dict[str, Any]]:
-    try:
-        merged = merge_search_filter(
-            request_filter,
-            context_type=context_type,
-            since=since,
-            until=until,
-            time_field=time_field,
-        )
-        tag_filter = build_search_tags_filter(tags)
-        if not tag_filter:
-            return merged
-        if merged:
-            if tag_filter.get("op") == "and" and isinstance(tag_filter.get("conds"), list):
-                return {"op": "and", "conds": [merged, *tag_filter["conds"]]}
-            return {"op": "and", "conds": [merged, tag_filter]}
-        return tag_filter
-    except ValueError as exc:
-        raise InvalidArgumentError(str(exc)) from exc
-
-
-def _resolve_uri_or_uris(uri: Union[str, List[str]], ctx: RequestContext) -> Union[str, List[str]]:
-    """Resolve path variables in a single URI or list of URIs."""
-    if isinstance(uri, list):
-        return [validate_request_viking_uri(resolve_path_variables(u), ctx) for u in uri]
-    if not uri:
-        return ""
-    return validate_request_viking_uri(resolve_path_variables(uri), ctx)
-
-
-def _resolve_uri_list(uris: Sequence[str], ctx: RequestContext) -> list[str]:
-    return [validate_request_viking_uri(resolve_path_variables(uri), ctx) for uri in uris]
-
-
-def _resolve_image_url(image_url: Optional[str], ctx: RequestContext) -> Optional[str]:
-    if not image_url:
-        return image_url
-    resolved = resolve_path_variables(image_url)
-    if is_viking_uri(resolved):
-        return validate_request_viking_uri(resolved, ctx, field_name="image_url")
-    return resolved
 
 
 class FindRequest(BaseModel):
@@ -139,6 +86,7 @@ class FindRequest(BaseModel):
     time_field: Optional[TimeField] = None
     level: Optional[Union[int, str, List[int]]] = None
     read_content: bool = False
+    rerank: bool = True
     telemetry: TelemetryRequest = False
 
 
@@ -203,6 +151,7 @@ class SearchRequest(BaseModel):
     time_field: Optional[TimeField] = None
     level: Optional[Union[int, str, List[int]]] = None
     read_content: bool = False
+    rerank: bool = True
     telemetry: TelemetryRequest = False
 
     mode: Literal["list", "context"] = "list"
@@ -358,6 +307,7 @@ async def find(
             **({"meta_filters": request.meta_filters, "meta_hints": request.meta_hints} if request.meta_filters or request.meta_hints else {}),
             level=_resolve_levels(request.level) or None,
             image_url=resolved_image_url,
+            rerank_enabled=request.rerank,
         ),
     )
     result = execution.result
@@ -475,6 +425,7 @@ async def search(
             **({"meta_filters": request.meta_filters, "meta_hints": request.meta_hints} if request.meta_filters or request.meta_hints else {}),
             level=_resolve_levels(request.level) or None,
             image_url=resolved_image_url,
+            rerank_enabled=request.rerank,
         )
 
     execution = await run_operation(

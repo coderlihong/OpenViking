@@ -73,6 +73,7 @@ class SemanticMsg:
     use_hierarchical_aggregation: bool = False
     propagate_to_parent: bool = True
     copy_source_uri: str = ""
+    allow_vlm: bool = True
 
     def __init__(
         self,
@@ -100,6 +101,7 @@ class SemanticMsg:
         use_hierarchical_aggregation: bool = False,
         propagate_to_parent: bool = True,
         copy_source_uri: str = "",
+        allow_vlm: bool = True,
     ):
         self.id = str(uuid4())
         self.timestamp = int(datetime.now().timestamp())
@@ -127,6 +129,7 @@ class SemanticMsg:
         self.use_hierarchical_aggregation = bool(use_hierarchical_aggregation)
         self.propagate_to_parent = bool(propagate_to_parent)
         self.copy_source_uri = copy_source_uri
+        self.allow_vlm = bool(allow_vlm)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert object to dictionary."""
@@ -186,6 +189,7 @@ class SemanticMsg:
             use_hierarchical_aggregation=data.get("use_hierarchical_aggregation", False),
             propagate_to_parent=data.get("propagate_to_parent", True),
             copy_source_uri=data.get("copy_source_uri", ""),
+            allow_vlm=data.get("allow_vlm", True),
         )
         if "id" in data and data["id"]:
             obj.id = data["id"]

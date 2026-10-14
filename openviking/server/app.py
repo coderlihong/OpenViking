@@ -45,6 +45,7 @@ from openviking.server.routers import (
     content_router,
     debug_router,
     filesystem_router,
+    index_search_router,
     metrics_router,
     observer_router,
     openviking_assets_router,
@@ -59,6 +60,7 @@ from openviking.server.routers import (
     system_router,
     tasks_router,
     user_settings_router,
+    vector_search_router,
     watches_router,
     webdav_router,
 )
@@ -668,6 +670,8 @@ def create_app(
     app.include_router(content_router)
     app.include_router(console_router)
     app.include_router(search_router)
+    app.include_router(index_search_router)
+    app.include_router(vector_search_router)
     app.include_router(privacy_configs_router)
     app.include_router(skills_router)
     app.include_router(sessions_router)
@@ -850,9 +854,10 @@ def create_app(
     else:
         logger.info("Web Studio bundle not found at %s; skipping /studio mount", _studio_dir)
 
-    # MCP endpoint — serves 15 tools (find, search, read, write, edit,
+    # MCP endpoint — serves 17 tools (find, search, read, write, edit,
     # list, tree, remember, add_resource, list_watches, cancel_watch, grep,
-    # glob, forget, health) via streamable HTTP for MCP clients.
+    # glob, index_search, vector_search, forget, health) via streamable HTTP
+    # for MCP clients.
     from starlette.routing import Match, Route
 
     from openviking.server.mcp_endpoint import create_mcp_app

@@ -99,6 +99,18 @@ pub async fn reindex(
     Ok(())
 }
 
+pub async fn normalize_citations(
+    client: &HttpClient,
+    uri: &str,
+    recursive: bool,
+    output_format: OutputFormat,
+    compact: bool,
+) -> Result<()> {
+    let result = client.normalize_citations(uri, recursive).await?;
+    crate::output::output_success(result, output_format, compact);
+    Ok(())
+}
+
 pub async fn get(client: &HttpClient, uri: &str, local_path: &str) -> Result<()> {
     // Check if target path already exists
     let path = Path::new(local_path);

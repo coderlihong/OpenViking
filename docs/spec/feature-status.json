@@ -3,8 +3,8 @@
   "date": "2026-10-06",
   "change_id": "CR-019",
   "baseline": "I088",
-  "latest_scoped_tests": "I087/I088 抽取持久化修复真机回归：test_wiki_extraction.py 39 绿——I087 回执出 checkpoint 改 content-addressed manifest blob（旧作业 651,358B 内联 → 新作业 874B 计数+ref，真实手册工作负载实拍），I088 key-set 续跑（空窗重派+伪造案覆盖）。前值：I079 私有发布全链真机回归 4+136+58 绿（I080/I081/I082）。",
-  "full_repository_tests": "I053e（2026-10-06）两项落点：①章节布局图片质量门——书册解析落盘阶段对每张本地图片先过 is_valid_image 质量门，不达标图跳过引用并写结构化 info 条目 CHAPTER_IMAGE_QUALITY_SKIPPED，解析照常成功；缺文件/viking:// 与远程引用仍硬失败；修复部署侧保全模块 undersized 源 PDF 裁片致 1072 页手册整本中止的阻塞（章节管线+契约硬化 63 回归通过）。②KB-027 补强已在前序 I053/I053b/I053c/I053d 完成：私有候选树发布→整批预检→共享 D1 索引管线→写入途中崩溃重放治愈全批（65 回归）。I052 七类共同发布覆盖门禁读取已提交权威证据并在 ready 路径强制执行。当前 FLOW-D1 真册验收进行中：362MB/1072 页 SY215C 维修手册已上传（temp_upload 通过），D1 持久 job semantic_and_vectors 已入队 parse_write。模型图片语义与章节归属质量未验收。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
+  "latest_scoped_tests": "I100（2026-10-11）静态知识库小批量验收与收口：定向 8 组 270 passed/0 failed（record_meta 15；reingest_visibility+metadata_integration+publication 33；api_search+recall_endpoint+find_without_rerank 73；request_wait_tracking 4；telemetry 39；ovpack_import_policy+index_consistency_expectations 26；api_content_write 23；image_publication+image_cache+directory_index+chapter_directory_layout+chapter_option_routing 57）＋figure 修复定向 44 passed（其中 2 条新测在 HEAD worktree 红、修复后绿）；小批量单手册全链路 harness（sany-manual：PDF+MD+图片）run5 25 项 ALL PASS，menus 6.6 切片 18/18 绿（输入剥净 13/13、vikingsrc 40/40 字节同盘、index.md 0 向量、溯源 85/85），OVPack 往返 12/12（dense 逐字节全等），menus 导出→新 key(menumig) 迁移 24/24（row_set/scalars/texts/dense 全等、文件树 sha 全同、检索文档集一致带 meta+prov、隔离 404），披露四通道审计 4/4（L0/L1 向量、目录 ls、index.md grep），publication live gate leases 全程 0。前值（I099）：定向 4 文件 84 passed/4 failed、全仓 3261 passed/30 failed/39 skipped（34 红对 HEAD worktree 基线逐条复现属存量：ov.conf publication_path 漂移/telemetry 断言）；e2e 1940 载新码后 meta/provenance 只读探针 13/13。",
+  "full_repository_tests": "I100（2026-10-11）：全量 pytest 两分片（shard A tests/server 约 1394 条，shard B 142 failed/7979 passed/148 skipped in 46:48）合并去重 192 条唯一失败 ID，全部在 HEAD worktree（68e2c725 干净树）单进程基线重跑裁定＝190 条存量（157 FAILED + 33 ERROR 基线同败，出本轮范围）+ 1 条真回归（tests/server/test_api_snapshot.py::test_restore_acl_and_reindex_identity：生成型 index.md 与 .abstract.md/.overview.md 一样被快照跟踪，restore 计划 to_write 因此多出 index.md；该断言写在本功能之前，已按新契约更新并新增 restore 后目录清单回到 v1 的断言，当前树测绿）+ 1 条顺序性伪失败（nest_asyncio 泄漏，隔离与整文件均过、涉事文件未改）；无未归属失败。判定 report_only 不提升任何 Feature/FLOW 状态。前值：I099 全仓 3261 passed/30 failed/39 skipped，30 项失败逐条对基线复现同签名（acl_manager 用例、_FakeVikingFS._ensure_access、_MemoryAGFS.ls() limit）。15 Feature/四FLOW仍PARTIAL、33任务32 PARTIAL+1 OPEN、0 DONE，完整验收NOT_RUN。",
   "features": [
     {
       "id": "F1",
@@ -46,24 +46,26 @@
       "id": "F4",
       "implementation_state": "PARTIAL",
       "product_acceptance": "NOT_RUN",
-      "summary": "I068收口：type=text/image must 组合过滤对新代向量真实生效（基线三组全 0 → 各 8 命中且类型正确）；I060 三段位探针 head/mid/tail 全命中且回指 viking URI。",
+      "summary": "I068收口：type=text/image must 组合过滤对新代向量真实生效（基线三组全 0 → 各 8 命中且类型正确）；I060 三段位探针 head/mid/tail 全命中且回指 viking URI。 I099：父子链命中在 search/find 双面回传 meta+provenance，真机探针 13/13（e2e 1940 载新码，无重新入库）。 I100：单手册小批量（sany-manual，PDF+MD+图片）与 menus 6.6 切片双绿——父子 chunk 17/17、levels 0/1/2=85 行（40 图片 + 80 chunks 含 40 带父）、search/find 命中 5/5 全带 meta+溯源、scoped reindex 往返 caption_preserved。",
       "tasks": [
         "KB-006",
         "KB-013"
       ],
-      "latest_round": "I068",
-      "round_updated": "2026-10-06"
+      "latest_round": "I100",
+      "round_updated": "2026-10-11"
     },
     {
       "id": "F5",
       "implementation_state": "PARTIAL",
       "product_acceptance": "NOT_RUN",
-      "summary": "I011–I015：引用上下文/缓存/joint实际向量及共同发布；真实VLM质量、多空间搜索与引用分页未完 I048：修复深目录漏引用和误用embedding tokenizer，72专项通过；完整预算和质量仍未验收。",
+      "summary": "I011–I015：引用上下文/缓存/joint实际向量及共同发布；真实VLM质量、多空间搜索与引用分页未完 I048：修复深目录漏引用和误用embedding tokenizer，72专项通过；完整预算和质量仍未验收。 I099：图片行 category=images 的 meta 与章节溯源随命中透出，复合 images∧机型过滤真机命中。",
       "tasks": [
         "KB-006",
         "KB-014",
         "KB-015"
-      ]
+      ],
+      "latest_round": "I099",
+      "round_updated": "2026-10-10"
     },
     {
       "id": "F6",
@@ -81,13 +83,13 @@
       "id": "F7",
       "implementation_state": "PARTIAL",
       "product_acceptance": "NOT_RUN",
-      "summary": "I068收口：meta/type 过滤矩阵在新代上验证——type must/must_not 三组从基线全 0 翻转为按类型精确隔离；模糊 meta 字典通道既有 I032 契约不变。",
+      "summary": "I068收口：meta/type 过滤矩阵在新代上验证——type must/must_not 三组从基线全 0 翻转为按类型精确隔离；模糊 meta 字典通道既有 I032 契约不变。 I099：meta 值原样回传（raw 优先）与 viking URI 溯源读回侧闭合；写侧/别名/性能口径不变。 I100：图片向量行业务 meta（机型/页码）随图行真机 4/4；menus 切片 85/85 行溯源全带 meta+prov、search 5 命中带元数据；读回侧 raw 优先口径不变。",
       "tasks": [
         "KB-018",
         "KB-019"
       ],
-      "latest_round": "I068",
-      "round_updated": "2026-10-06"
+      "latest_round": "I100",
+      "round_updated": "2026-10-11"
     },
     {
       "id": "F8",
@@ -162,7 +164,7 @@
       "id": "F13",
       "implementation_state": "PARTIAL",
       "product_acceptance": "NOT_RUN",
-      "summary": "I034受控未知写入恢复、离线联合备份及隔离恢复验证；I038 KB-029来源撤权后拒绝读取、仍有合法来源时同身份重建并丢弃撤回贡献（44项通过）；零证据stale/权威边投影重建/迁移回滚、普通AGFS/生产向量身份/完整GC回执和灾备activate未完。 I050提交成员持久批次与authority原子fence封口，最终85回归；7类完整共同门禁未齐、I050时线上新协议未部署。 I051实际服务已加载新协议，单MD/目录多成员共同发布及published/backoff边界SIGKILL恢复通过，inflight崩溃与7完整覆盖门禁仍未通过。",
+      "summary": "I034受控未知写入恢复、离线联合备份及隔离恢复验证；I038 KB-029来源撤权后拒绝读取、仍有合法来源时同身份重建并丢弃撤回贡献（44项通过）；零证据stale/权威边投影重建/迁移回滚、普通AGFS/生产向量身份/完整GC回执和灾备activate未完。 I050提交成员持久批次与authority原子fence封口，最终85回归；7类完整共同门禁未齐、I050时线上新协议未部署。 I051实际服务已加载新协议，单MD/目录多成员共同发布及published/backoff边界SIGKILL恢复通过，inflight崩溃与7完整覆盖门禁仍未通过。 I100：OVPack 导出导入完整复刻 L0/L1 与分层向量（collapse 后 32 规范行全等、dense 逐字节全等、file_tree 21=21、dst 图片树可检索，12/12 PASS）；publication 快照门移到参数校验后 + derived_access/lexical_recall/metadata_query 懒开视图（live gate leases 全程 0）、caption 回填重建按 superseded 放行；reindex 新增 normalize:{uri} 阶段先于 semantic；menus 分支导出→新 key(menumig) 同路径导入 24/24 全等（检索文档集与源一致、隔离干净）。",
       "tasks": [
         "KB-002",
         "KB-004",
@@ -171,7 +173,9 @@
         "KB-007",
         "KB-008",
         "KB-029"
-      ]
+      ],
+      "latest_round": "I100",
+      "round_updated": "2026-10-11"
     },
     {
       "id": "F14",
@@ -415,11 +419,12 @@
         "I015",
         "I034",
         "I050",
-        "I052"
+        "I052",
+        "evidence/static-kb-round-closure-I100-2026-10-11.json"
       ],
       "work": "扩展既有PublicationStore，纳入根目录成员/layout/list/stat、正文/图片/L0/L1/parent与词法meta索引receipt；发布事务固定成员版本和授权依赖。",
       "done_when": "各必需索引未完成不ready；新文档written整树可读但不可搜索，替换期间公开旧树；故障和外部编辑不出现混合代。",
-      "latest_progress": "I052：七类共同发布门禁（body_tree/images/parent_child/semantic_levels/bm25/metadata/version_switch）改为读取已提交权威证据（receipts、publication_lexical、semantic_sources、snapshot heads），job_publication_ready 提供观察、job_complete ready 路径强制执行：未验证批次报 PUBLICATION_GATE_REQUIRED，证据齐备的 published 批次到达 ready。Inflight 写入崩溃恢复（TC-13.16 write_recovery）同轮通过。仍待：全通道 FLOW 真实后端验收与混合代外部编辑场景。",
+      "latest_progress": "I100：reindex(semantic_and_vectors) 新增 normalize:{uri} 阶段先于 semantic（figure occurrence 绑定与归档修订依赖 vikingsrc 先补；无租约记 warning 跳过）；publication 快照门移到参数校验之后（坏请求 400 不触 publication）、derived_access/lexical_recall/metadata_query 改 view.read 懒开（live gate leases 全程 0）；content_write.read_if_exists 在 draft_sources() 内读计划体恢复「写完即可读」；capture() 回收过期 leases；begin 把同批旧成员标 superseded（caption 回填重建不再被拒）、队列 chunk 被更新尝试取代按成功丢弃。 I052：七类共同发布门禁（body_tree/images/parent_child/semantic_levels/bm25/metadata/version_switch）改为读取已提交权威证据（receipts、publication_lexical、semantic_sources、snapshot heads），job_publication_ready 提供观察、job_complete ready 路径强制执行：未验证批次报 PUBLICATION_GATE_REQUIRED，证据齐备的 published 批次到达 ready。Inflight 写入崩溃恢复（TC-13.16 write_recovery）同轮通过。仍待：全通道 FLOW 真实后端验收与混合代外部编辑场景。",
       "implementation_reports": [
         "evidence/implementation-I034-2026-10-05.json"
       ],
@@ -485,11 +490,12 @@
       "product_acceptance": "NOT_RUN",
       "evidence": [
         "I030",
-        "I034"
+        "I034",
+        "evidence/static-kb-round-closure-I100-2026-10-11.json"
       ],
       "work": "在上传接收/shared下载、解析渲染、队列、模型tokens/重试和派生版本设置有界配额；原件不永久保留。实现一致registry+AGFS+ACL+模型配置备份与空环境恢复。",
       "done_when": "OOM/满盘/超额可观察且无半树；临时原件及Office PDF清理；原件清理后仅能reindex持久产物，换parser明确SOURCE_REQUIRED；恢复后授权和gold一致。",
-      "latest_progress": "离线联合bundle与隔离恢复14专项通过；registry/受控正文journal/身份/配置/向量ACL目录哈希校验，RESTORE_PENDING阻止启动；生产引擎验证及activate未达成。",
+      "latest_progress": "I100：OVPack 导出导入完整复刻 L0/L1 与分层向量——四层缺陷全修（导出每级只留一行→全量保留且旧前新胜、导出标量补 chunk 身份/父子链/业务 meta/image context、restore 主键改 chunk-aware、一致性期望镜像排除生成导航 index.md），真机 12/12：src 51 条 collapse 后 32 规范行 row_set 等（missing=0/extra=0）、scalar/text 0 differ、dense 0 differ（逐字节全等）、file_tree 21=21、dst images 树可检索。另：menus 分支导出（1.86MB/59 文件）→ 新账号 menumig 同路径导入 vector_mode=require 10.3s，24/24 全等（row_set/scalars/texts/dense、文件树 sha、consistency、检索文档集与隔离），实证跨 key 迁移不重建向量即可完整复刻（md 内 vikingsrc 为绝对 URI，须同路径落回）。离线联合bundle与隔离恢复14专项通过；registry/受控正文journal/身份/配置/向量ACL目录哈希校验，RESTORE_PENDING阻止启动；生产引擎验证及activate未达成。",
       "implementation_reports": [
         "evidence/implementation-I034-2026-10-05.json",
         "evidence/parallel3-backup-restore-2026-10-05.json"
@@ -678,15 +684,18 @@
         "I008",
         "I032",
         "I040",
-        "evidence/reindex-race-recovery-I068-2026-10-06.json"
+        "evidence/reindex-race-recovery-I068-2026-10-06.json",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json",
+        "evidence/static-kb-round-closure-I100-2026-10-11.json"
       ],
       "work": "复用已实现真实tokenizer/AST表格计划；验证实际向量后端多child主键、parent扩展预算、不同远距命中不按URI丢弃和旧代退出。",
       "done_when": "已知头/中/尾事实均可真实召回；含标题输入不超限；多个chunk共同引用原Viking URI，不新增位置/版本用户负担。",
       "scoped_reports": [
         "evidence/parallel3-KB-013-2026-10-04.json",
-        "evidence/implementation-I040-2026-10-05.json"
+        "evidence/implementation-I040-2026-10-05.json",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json"
       ],
-      "latest_progress": "I068：type=text/image must 组合过滤真机验证通过（新代向量 type 键齐全），补齐 I065 留下的回填缺口。"
+      "latest_progress": "I100：小批量双绿——单手册父子 chunk 17/17 且 scoped reindex 往返 caption_preserved；menus 6.6 切片 levels 0/1/2=85 行（40 图片 + 80 chunks 含 40 带父）、chunk 溯源 85/85、检索命中 5/5 带 meta+provenance。 I099：检索命中体回传 meta 与 provenance（父行缺失时同 URI 分组子行补齐），文本父子链 parent_chunk_id 与溯源 chapter_uri 在 search/find 两面同现，真机 13/13。 I068：type=text/image must 组合过滤真机验证通过（新代向量 type 键齐全），补齐 I065 留下的回填缺口。"
     },
     {
       "id": "KB-014",
@@ -720,16 +729,18 @@
         "I040",
         "I048",
         "I063 图片语义质量核验：4 样张目验摘要吻合 4/4，章节归属 3/3，红图反例不虚描 [证据](evidence/image-semantic-quality-I063-2026-10-06.json)",
-        "I064 图片检索召回正向证据：三类图意探针 3/3 top1-top3 命中（0.906~0.963），无过滤混合排序 VLM 摘要记录居首，多模态 image_url 自检索 rank2 摘要 round-trip 吻合 [证据](evidence/image-retrieval-recall-I064-2026-10-06.json)"
+        "I064 图片检索召回正向证据：三类图意探针 3/3 top1-top3 命中（0.906~0.963），无过滤混合排序 VLM 摘要记录居首，多模态 image_url 自检索 rank2 摘要 round-trip 吻合 [证据](evidence/image-retrieval-recall-I064-2026-10-06.json)",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json"
       ],
       "work": "移除每图最多16引用的截断边界，分页发现跨目录引用；用实际VLM tokenizer约束上下文/图预算，真实调用生成用途摘要并按引用缓存。",
       "done_when": "17+引用和跨目录均不丢失；context变化不复用错摘要；每个joint输入含对应摘要+原图；人工摘要质量达标且无无依据维修结论。",
       "scoped_reports": [
         "evidence/parallel3-KB-014-2026-10-04.json",
         "evidence/implementation-I040-2026-10-05.json",
-        "evidence/implementation-I048-2026-10-05.json"
+        "evidence/implementation-I048-2026-10-05.json",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json"
       ],
-      "latest_progress": "I064（2026-10-06）图片检索侧正向证据补齐：混合排序/范围限定/多模态三通道真机探针，I063 已目验的三角警示、开口扳手、漏斗滴液三类样张语义查询全部命中并回指图片 viking URI；中文短查询与英文 VLM 摘要存在排序竞争（0.55 vs 0.6+）属非阻塞项如实记录。 I048（2026-10-05）修复图片引用深度超过8层时静默漏收，以及误用 embedding tokenizer 作为 VLM tokenizer 的问题。新增 VLM 专属固定 tokenizer 配置、主/备模型覆盖检查和文件指纹校验，截断后重新核验实际字符串预算；引用记录区分 measured/estimated，context 升级 v3。72 项受影响测试通过（含现有真实 VLM 非空摘要协议探针；非质量 gold）。代码已在本地验证，当前服务仍为 I047，未声明新部署链路通过。三个并行子任务因模型服务403中断，未增加其完成证据；共同发布、完整schema和legacy Office仍待实现/实测。15个Feature、四条FLOW及任务整体状态不提升。"
+      "latest_progress": "I099：图片联合行 meta.category=images 随命中回传，provenance.chapter_uri 指回引用它的章节 md，matches[0].image_context_uri 非空；复合 category=images AND machine_model=TEST10液压挖掘机 真机命中 1。 I064（2026-10-06）图片检索侧正向证据补齐：混合排序/范围限定/多模态三通道真机探针，I063 已目验的三角警示、开口扳手、漏斗滴液三类样张语义查询全部命中并回指图片 viking URI；中文短查询与英文 VLM 摘要存在排序竞争（0.55 vs 0.6+）属非阻塞项如实记录。 I048（2026-10-05）修复图片引用深度超过8层时静默漏收，以及误用 embedding tokenizer 作为 VLM tokenizer 的问题。新增 VLM 专属固定 tokenizer 配置、主/备模型覆盖检查和文件指纹校验，截断后重新核验实际字符串预算；引用记录区分 measured/estimated，context 升级 v3。72 项受影响测试通过（含现有真实 VLM 非空摘要协议探针；非质量 gold）。代码已在本地验证，当前服务仍为 I047，未声明新部署链路通过。三个并行子任务因模型服务403中断，未增加其完成证据；共同发布、完整schema和legacy Office仍待实现/实测。15个Feature、四条FLOW及任务整体状态不提升。"
     },
     {
       "id": "KB-015",
@@ -848,14 +859,17 @@
       "product_acceptance": "NOT_RUN",
       "evidence": [
         "I032",
-        "evidence/reindex-race-recovery-I068-2026-10-06.json"
+        "evidence/reindex-race-recovery-I068-2026-10-06.json",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json",
+        "evidence/static-kb-round-closure-I100-2026-10-11.json"
       ],
       "work": "保存原值/规范值/来源/normalizer版本，与document revision绑定；chunk/图片/语义继承权威meta，重建未指定不清空，系统字段不可覆盖。",
       "done_when": "BM25/dense/图片同字段OR跨字段AND一致；修改meta与正文同代可见；缺meta策略明确。",
       "scoped_reports": [
-        "evidence/parallel3-KB-018-019-2026-10-04.json"
+        "evidence/parallel3-KB-018-019-2026-10-04.json",
+        "evidence/static-kb-chain-closure-I099-2026-10-10.json"
       ],
-      "latest_progress": "I068：I060 头/中/尾探针对新代复测通过，混合 BM25+向量检索与 viking URI 溯源在新代成立。"
+      "latest_progress": "I100：图片向量行业务 meta（机型/页码/关键词/source_document_id/chapter_uri）随图行真机 4/4；menus 切片 85/85 行溯源与 search 5 命中均带 meta+prov；写侧与 raw 读回口径不变。 I099：读回侧补齐——行内 business_meta_payload/business_meta_tokens 早已落库，缺的是 RETRIEVAL_OUTPUT_FIELDS 投影与 meta_view()/provenance_view()；命中 meta 取 raw 原值优先（不回显规范化大写），无值不编造。 I068：I060 头/中/尾探针对新代复测通过，混合 BM25+向量检索与 viking URI 溯源在新代成立。"
     },
     {
       "id": "KB-019",
@@ -1395,6 +1409,6 @@
     "FLOW-W2": "PARTIAL | I077 (2026-10-06): unbacked uncertain 围栏死锁三刀修复（_assert_not_writing 点名 WRITE_RECOVERY_REQUIRED 契约 / model_retry 归 PERMANENT 定盘 / write_fence_clear 操作员审计清除），停服清 16 条围栏后真机重跑八断言全过（job c6908b93 draft_ready passed=true）；I078 strict 判定器真机双向验证收口代码面（evidence/wiki-strict-adjudicator-live-I078-2026-10-06.json）；余：发布态三门由 FLOW publish 链供给+业务侧启用。[evidence/flow-w2-fence-recovery-I077-2026-10-06.json]"
   },
   "status_policy": "PARTIAL is scoped implementation; DONE requires its exact done_when evidence, Feature PASS requires full TC family/quality/flow, not aggregate unit test count.",
-  "latest_implementation": "I098",
-  "latest_scoped_report": "evidence/implementation-I051-2026-10-05.json"
+  "latest_implementation": "I100",
+  "latest_scoped_report": "evidence/static-kb-round-closure-I100-2026-10-11.json"
 }

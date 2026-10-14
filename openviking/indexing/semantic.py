@@ -32,6 +32,14 @@ async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs
     body = json.dumps([(m.context_data["level"], m.message) for m in messages], ensure_ascii=False)
     revision = hashlib.sha256(body.encode()).hexdigest()
     from openviking.indexing.metadata_integration import prepare_meta, bind_meta, write_meta
+    from openviking.indexing.record_meta import TEXT_CATEGORY, stamp_record_meta
+
+    # L0/L1 directory summaries are text-modality vectors: they carry the same
+    # ``category=text`` discriminator as the chunks below them, so a query can
+    # exclude every non-image row without guessing from ``level``.
+    stamp_record_meta(
+        first, category=TEXT_CATEGORY, contents=(m.message for m in messages), source_uri=first["uri"]
+    )
     document_id = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
     prepared = prepare_meta(first, registry, document_id, revision)
     for message in messages[1:]:

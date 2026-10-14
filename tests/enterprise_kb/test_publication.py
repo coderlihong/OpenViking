@@ -17,6 +17,7 @@ from openviking.server.identity import RequestContext, Role
 from openviking.storage.collection_schemas import TextEmbeddingHandler
 from openviking.storage.queuefs.embedding_msg import EmbeddingMsg
 from openviking.storage.vector_ids import vector_record_id_for_data
+from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -168,6 +169,72 @@ async def test_cancel_and_false_write_cannot_publish(runtime, embedding):
     assert not view(runtime)
 
 
+async def test_failed_generation_settles_every_dropped_chunk(runtime, embedding):
+    """One condemned chunk must not strand the request waiting on its siblings.
+
+    Request-scoped waiting counts every enqueued chunk, so a drop that leaves its
+    root pending holds `wait=true` open forever instead of returning the failure.
+    """
+    from openviking.telemetry.request_wait_tracker import get_request_wait_tracker
+
+    telemetry_id = "tm_failed_generation_siblings"
+    tracker = get_request_wait_tracker()
+    tracker.register_request(telemetry_id)
+    try:
+        queue = Queue()
+        base = EmbeddingMsg(
+            SOURCE,
+            {"uri": URI, "account_id": "acct", "context_type": "resource", "level": 2},
+            telemetry_id=telemetry_id,
+        )
+        n = await enqueue_text_plan(base, SOURCE, embedding, queue)
+        assert n > 1
+
+        class RejectDB(Database):
+            async def upsert(self, data, ctx=None, options=None):
+                return None
+
+        failed = await TextEmbeddingHandler(RejectDB()).on_dequeue(
+            {"data": queue.messages[0].to_json()}
+        )
+        assert failed.outcome.value == "failed"
+
+        handler = TextEmbeddingHandler(Database())
+        for msg in queue.messages[1:]:
+            assert (await handler.on_dequeue({"data": msg.to_json()})).outcome.value == "failed"
+
+        assert tracker.is_complete(telemetry_id)
+        assert tracker.build_queue_status(telemetry_id)["Embedding"]["error_count"] == n
+    finally:
+        tracker.cleanup(telemetry_id)
+
+
+async def test_cancelled_chunk_settles_when_the_registry_is_gone(runtime, embedding, monkeypatch):
+    """A cancelled chunk has no publication to fail, yet its request still waits on it."""
+    from openviking.telemetry.request_wait_tracker import get_request_wait_tracker
+
+    telemetry_id = "tm_cancelled_without_registry"
+    tracker = get_request_wait_tracker()
+    tracker.register_request(telemetry_id)
+    try:
+        queue = Queue()
+        base = EmbeddingMsg(
+            SOURCE,
+            {"uri": URI, "account_id": "acct", "context_type": "resource", "level": 2},
+            telemetry_id=telemetry_id,
+        )
+        # One chunk keeps the request's pending set to exactly what is being cancelled.
+        assert await enqueue_text_plan(base, "只有一句话。", embedding, queue) == 1
+        monkeypatch.setattr("openviking.indexing.publication.configured_store", lambda *a: None)
+        result = await TextEmbeddingHandler(Database()).on_cancelled(
+            {"data": queue.messages[0].to_json()}
+        )
+        assert result.outcome.value == "failed"
+        assert tracker.is_complete(telemetry_id)
+    finally:
+        tracker.cleanup(telemetry_id)
+
+
 async def test_public_query_pins_view_through_concurrent_publication(runtime):
     old = publish(runtime, URI, namespace="resources")
 
@@ -184,6 +251,108 @@ async def test_public_query_pins_view_through_concurrent_publication(runtime):
     assert before == after
     assert old in repr(before)
     assert old not in repr(visible_filter(ctx))
+
+
+def _open_leases(store):
+    with store.db() as db:
+        return db.execute("SELECT count(*) FROM leases").fetchone()[0]
+
+
+def _open_gc_leases(store):
+    with store.db() as db:
+        return db.execute("SELECT count(*) FROM gc_leases").fetchone()[0]
+
+
+async def test_public_query_rejected_before_reading_takes_no_lease(runtime):
+    """A request rejected on its arguments must not pay for a publication view.
+
+    ``capture`` writes a lease row under an exclusive transaction, so the old
+    eager snapshot made every malformed request cost the writer path.  Checking
+    from inside the body is what proves it: the gate has already run by then,
+    and a row here would be one the rejected request opened.
+    """
+
+    leases_at_rejection = []
+
+    class Reader:
+        @query_snapshot
+        async def read(self, query: str, *, ctx=None):
+            if not query.strip():
+                leases_at_rejection.append(_open_leases(runtime))
+                raise InvalidArgumentError("Search query or image_url must not be empty.")
+            return visible_filter(ctx)
+
+    ctx = SimpleNamespace(account_id="acct")
+    with pytest.raises(InvalidArgumentError, match="must not be empty"):
+        await Reader().read(" ", ctx=ctx)
+    assert leases_at_rejection == [0]
+    assert _open_leases(runtime) == 0
+
+    # The check would have caught one: an unreleased capture is visible from the body.
+    held, _ = runtime.capture("acct")
+    try:
+        assert _open_leases(runtime) == 1
+    finally:
+        runtime.release(held)
+
+    # A query that reaches the index opens the view, pins it, and releases it.
+    first = publish(runtime, URI, namespace="resources")
+    pinned = []
+
+    class Pinner:
+        @query_snapshot
+        async def read(self, query: str, *, ctx):
+            pinned.append(visible_filter(ctx))
+            second = publish(runtime, URI, children=("c", "d"), namespace="resources")
+            pinned.append((second, visible_filter(ctx)))
+            return None
+
+    await Pinner().read("pump", ctx=ctx)
+    second, after = pinned[1]
+    assert first in repr(pinned[0]) and first in repr(after)
+    assert second not in repr(after)
+    assert _open_leases(runtime) == 0
+
+
+async def test_public_query_view_rejects_another_account(runtime):
+    publish(runtime, URI, namespace="resources")
+
+    class Reader:
+        @query_snapshot
+        async def read(self, *, ctx):
+            visible_filter(SimpleNamespace(account_id="other"))
+
+    with pytest.raises(RuntimeError, match="different account"):
+        await Reader().read(ctx=SimpleNamespace(account_id="acct"))
+    assert _open_leases(runtime) == 0
+
+
+def test_expired_leases_are_pruned_by_the_next_capture(tmp_path):
+    """A worker killed mid-query must not leave its lease rows behind for good.
+
+    ``renew`` refuses an expired row and every protection query filters on
+    ``expires``, so a leaked row protects nothing; the only thing it still costs
+    is registry growth.  Capturing a new view sweeps both lease tables while the
+    lease a running query holds stays put.
+    """
+    store = PublicationStore(str(tmp_path / "publication.db"))
+    old = publish(store, URI)
+    held_lease, held = store.capture("acct")
+    store.capture("acct", ttl=-1)
+    store.gc_lease("acct", ttl=-1)
+    assert (_open_leases(store), _open_gc_leases(store)) == (2, 1)
+
+    publish(store, URI)
+    lease, manifest = store.capture("acct")
+    try:
+        assert held[URI]["generation"] == old
+        assert manifest[URI]["generation"] != old
+        assert (_open_leases(store), _open_gc_leases(store)) == (2, 0)
+        store.renew(held_lease)
+    finally:
+        store.release(lease)
+        store.release(held_lease)
+    assert (_open_leases(store), _open_gc_leases(store)) == (0, 0)
 
 
 def test_compiled_prefilter_excludes_staged_legacy_and_remapped_rows(tmp_path):

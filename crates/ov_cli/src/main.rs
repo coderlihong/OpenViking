@@ -1258,13 +1258,28 @@ enum Commands {
         )]
         recursive: bool,
     },
+    /// [Admin] Normalize figure citations (vikingsrc pointers and figcaption bodies) before reindex
+    NormalizeCites {
+        /// Viking URI of a markdown file or a directory
+        #[arg(value_name = "uri")]
+        uri: String,
+        /// Walk directory descendants collecting markdown and images
+        #[arg(
+            long,
+            default_value_t = true,
+            action = ArgAction::Set,
+            value_name = "bool",
+            help_heading = "Common options"
+        )]
+        recursive: bool,
+    },
 }
 
 impl Commands {
     /// Returns true if this command supports running with the root API key.
     fn supports_sudo(&self) -> bool {
         match self {
-            Self::Admin { .. } | Self::System { .. } | Self::Reindex { .. } => true,
+            Self::Admin { .. } | Self::System { .. } | Self::Reindex { .. } | Self::NormalizeCites { .. } => true,
             Self::Task { action } => matches!(
                 action,
                 TaskCommands::Status { .. } | TaskCommands::List { .. }
@@ -2644,6 +2659,7 @@ fn is_top_level_server_command(command: &str) -> bool {
             | "status"
             | "health"
             | "reindex"
+            | "normalize-cites"
     )
 }
 
@@ -3092,21 +3108,29 @@ async fn main() {
         let (title, message, actions) = match language {
             i18n::Language::En => (
                 "Command Error",
-                "--sudo is only supported for admin, system, reindex, task status, and task list commands.",
+                "--sudo is only supported for admin, system, reindex, normalize-cites, task status, and task list commands.",
                 vec![
                     error_ui::ErrorAction::new("ov admin --help", "Show admin commands"),
                     error_ui::ErrorAction::new("ov system --help", "Show system commands"),
                     error_ui::ErrorAction::new("ov reindex --help", "Show reindex options"),
+                    error_ui::ErrorAction::new(
+                        "ov normalize-cites --help",
+                        "Show normalize-cites options",
+                    ),
                     error_ui::ErrorAction::new("ov task --help", "Show task commands"),
                 ],
             ),
             i18n::Language::ZhCn => (
                 "命令错误",
-                "--sudo 只支持 admin、system、reindex、task status 和 task list 命令。",
+                "--sudo 只支持 admin、system、reindex、normalize-cites、task status 和 task list 命令。",
                 vec![
                     error_ui::ErrorAction::new("ov admin --help", "查看管理命令"),
                     error_ui::ErrorAction::new("ov system --help", "查看系统命令"),
                     error_ui::ErrorAction::new("ov reindex --help", "查看重建索引选项"),
+                    error_ui::ErrorAction::new(
+                        "ov normalize-cites --help",
+                        "查看图片引用归一选项",
+                    ),
                     error_ui::ErrorAction::new("ov task --help", "查看任务命令"),
                 ],
             ),
@@ -3716,6 +3740,9 @@ async fn main() {
             recursive,
         } => {
             handlers::handle_reindex(uri, mode, wait, dry_run, tags, tag_mode, recursive, ctx).await
+        }
+        Commands::NormalizeCites { uri, recursive } => {
+            handlers::handle_normalize_citations(uri, recursive, ctx).await
         }
         Commands::Get { uri, local_path } => handlers::handle_get(uri, local_path, ctx).await,
         Commands::Find {
@@ -5693,6 +5720,25 @@ mod tests {
         ]);
 
         assert!(result.is_err(), "unknown reindex mode should not parse");
+    }
+
+    #[test]
+    fn cli_parses_normalize_citations_command() {
+        let result = Cli::try_parse_from([
+            "ov",
+            "normalize-cites",
+            "viking://resources/raw/manual",
+            "--recursive=false",
+        ]);
+
+        let cli = result.expect("normalize-cites command should parse");
+        match cli.command {
+            Commands::NormalizeCites { uri, recursive } => {
+                assert_eq!(uri, "viking://resources/raw/manual");
+                assert!(!recursive);
+            }
+            _ => panic!("expected normalize-cites command"),
+        }
     }
 
     #[test]

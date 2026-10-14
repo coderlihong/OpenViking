@@ -581,6 +581,109 @@ ov set-tags viking://resources/project/ \
 
 ---
 
+### normalize_citations()
+
+Normalize image citations within a target range into their published form:
+
+1. Wrap every image reference in a `<figure>` block and complete its `vikingsrc` pointer (a `viking://` URI of the stored bytes); external URL references are fetched into OpenViking-owned storage first.
+2. For cited images whose `<figcaption>` is still empty, generate a caption with the VLM and write it back into the citing markdown. Figures with a non-empty caption are left untouched.
+
+This is a **prerequisite of reindex**: the vector phase archives the published markdown revision, so captions must already be inside it — otherwise the caption never reaches the vectors or readers. Run this API first, then reindex the same URI.
+
+**Authentication**
+
+- Same as [reindex](#reindex): shared `viking://resources/...` targets require an admin key; a regular user key may process only its own `viking://user/<user_id>/...` namespace
+- Python HTTP client / CLI: sends the current authenticated identity
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| uri | str | Yes | - | Viking URI: a single markdown file, or a directory |
+| recursive | bool | No | `true` | Whether a directory target collects descendant markdown and images |
+
+`uri` may use OpenViking path variables accepted by other content APIs.
+
+**Python SDK**
+
+```python
+result = client.normalize_citations(
+    uri="viking://resources/raw/manual",
+)
+print(result["images_described"], result["captions_backfilled"])
+```
+
+```python
+# A single markdown file
+result = client.normalize_citations(
+    uri="viking://resources/raw/manual/chapter.md",
+)
+print(result["files_normalized"])
+```
+
+**TypeScript SDK**
+
+```typescript
+const result = await client.normalizeCitations("viking://resources/raw/manual", {
+  recursive: true,
+});
+console.log(result.images_described);
+```
+
+**HTTP API**
+
+```
+POST /api/v1/content/normalize_citations
+```
+
+```bash
+curl -X POST http://localhost:1933/api/v1/content/normalize_citations \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -H "X-OpenViking-Account: default" \
+  -d '{
+    "uri": "viking://resources/raw/manual",
+    "recursive": true
+  }'
+```
+
+**CLI**
+
+```bash
+openviking normalize-cites viking://resources/raw/manual
+```
+
+```bash
+# A single markdown file
+openviking normalize-cites viking://resources/raw/manual/chapter.md
+```
+
+```bash
+# Top level only, no sub-directories
+openviking normalize-cites viking://resources/raw/manual --recursive=false
+```
+
+The CLI waits for synchronous completion and prints a result table; `-o json` emits machine-readable JSON.
+
+**Result fields**
+
+| Field | Description |
+|-------|-------------|
+| uri | The normalized request URI |
+| files_normalized | Number of markdown files whose image references were rewritten |
+| images_described | Number of images captioned in this run (figures that already carry a non-empty caption are not counted) |
+| captions_backfilled | Number of captions written back into citing markdown |
+| warnings | Recoverable per-item warnings |
+
+**Behavior notes**
+
+- A non-empty `<figcaption>` is always treated as a trusted description and kept as-is (first-write-wins); the VLM is not called for it.
+- This API rewrites the source markdown and publishes a new revision; reindex never rewrites source files.
+- Image assets not cited by any markdown are not this API's concern; reindex rebuilds them from their existing semantics cache.
+- A directory target acquires a tree pathlock on its own; pipeline callers holding a lease have it reused.
+
+---
+
 ### reindex()
 
 Reindex semantic and/or vector artifacts for existing content already stored in OpenViking. This is an operational maintenance API intended for scenarios such as embedding model changes, VLM changes, vector store rebuild, or post-upgrade repair of existing indexes.
@@ -626,6 +729,8 @@ when reindexing a broader user namespace, session subtrees are skipped.
 - `vectors_only`: rebuilds vector-store records from currently recoverable source data without rewriting `.abstract.md` or `.overview.md`
 - `semantic_and_vectors`: regenerates semantic artifacts first, then rebuilds vectors from the refreshed semantic outputs
 - `prune_orphans`: deletes vector-store records under the requested URI whose source files no longer exist in the filesystem. With `dry_run=true`, it only reports how many records would be deleted.
+
+**Boundary with normalize_citations**: reindex is a pure compute step. It reads already-published source data and never rewrites markdown or calls the VLM to generate captions. For corpora with image references whose captions may be missing, run [normalize_citations()](#normalize_citations) first; otherwise undescribed images are counted in `semantics_required_records` (see the `SEMANTICS_REQUIRED` entries in warnings) and their vectors are not written.
 
 For `resource` and `skill`, `semantic_and_vectors` refreshes directory/file semantic artifacts, including `.abstract.md` and `.overview.md`. For `memory`, it rebuilds the current persisted memory subtree semantics and vectors, but it does not replay historical extraction order.
 
@@ -808,7 +913,7 @@ Task records are persisted under `/local/{account_id}/_system/tasks/{user_id}/{t
 - `semantic_and_vectors` is the right mode when semantic artifacts themselves must be regenerated before re-vectorization.
 - `prune_orphans` is the right mode when the filesystem has been changed outside normal APIs and the vector store may still contain records for deleted paths.
 - Only one reindex task can run for the same URI and owner at a time. A concurrent request for the same target returns a conflict.
-- For resource files, text files can use file content when no summary is available. Non-text files require a generated summary or existing vector record fallback; otherwise they are counted as unsupported.
+- For resource files, text files can use file content when no summary is available. Non-text files require a generated summary or existing vector record fallback; otherwise they are counted as unsupported. Markdown citing images with missing captions requires citation normalization first (see [normalize_citations()](#normalize_citations)); otherwise those images are counted in `semantics_required_records`.
 
 **Current limitations**
 

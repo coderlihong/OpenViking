@@ -56,6 +56,9 @@ LOW = "low"
 
 # Fields that must never be fuzzy-interpreted. ACL, namespace and applicability
 # are authoritative three-state/identity inputs, not business descriptions.
+# ``category`` is the record modality enum (``images`` / ``text``) and the
+# ``*_uri`` pair is provenance: a near match on either one is a *wrong* record,
+# not a soft match, so both stay exact-only alongside the identity fields.
 NON_FUZZY_FIELDS = frozenset(
     {
         "account_id",
@@ -67,6 +70,9 @@ NON_FUZZY_FIELDS = frozenset(
         "applicability",
         "context_type",
         "level",
+        "category",
+        "source_uri",
+        "image_uri",
     }
 )
 
@@ -133,8 +139,20 @@ GENERIC_RULE = FuzzyRule(
 )
 
 # A one-character difference in these fields can mean a different configuration.
-STRICT_FIELDS = frozenset({"subject_code", "bom", "dtc", "config_spec", "profile_id"})
+STRICT_FIELDS = frozenset(
+    {"subject_code", "bom", "dtc", "config_spec", "profile_id", "source_document_id", "chapter_uri"}
+)
 MODEL_FIELDS = frozenset({"modelid", "model", "model_id", "machine_model"})
+
+#: Fields whose one stored value is a list the corpus wrote with separators
+#: (``关键词: 拆装, 液压管路, 盲堵``).  An agent filters on *one* keyword, so every
+#: member is registered as a derived alias of the whole stored value: the row keeps
+#: a single value (the publication binds one value per field) while
+#: ``keywords=盲堵`` still resolves to the row that lists it.  Many rows can list the
+#: same keyword, which is why derived aliases widen to a set rather than obeying the
+#: one-alias-one-canonical rule that explicitly registered aliases keep.
+LIST_VALUE_FIELDS = frozenset({"keywords"})
+_LIST_VALUE_SEPARATOR = re.compile(r"[,，、;；|]+")
 
 DEFAULT_RULES: dict[str, FuzzyRule] = {}
 
@@ -250,6 +268,7 @@ class BusinessDictionary:
         self._rules = dict(rules or {})
         self._canonical: dict[str, set[str]] = {}
         self._alias: dict[str, dict[str, str]] = {}
+        self._derived_alias: dict[str, dict[str, set[str]]] = {}
         self._strings: dict[str, dict[str, set[str]]] = {}
         self._prefix: dict[str, list[tuple[str, str]]] = {}
         self._trigram: dict[str, dict[str, set[str]]] = {}
@@ -287,8 +306,16 @@ class BusinessDictionary:
         if getattr(meta, "document_id", None):
             self._documents.add(meta.document_id)
         for value in meta.values.values():
-            if value.canonical:
-                self.add_value(value.field, value.canonical)
+            if not value.canonical:
+                continue
+            self.add_value(value.field, value.canonical)
+            key = normalize_key(value.field)
+            if key in LIST_VALUE_FIELDS:
+                members = self._derived_alias.setdefault(key, {})
+                for part in _LIST_VALUE_SEPARATOR.split(value.canonical):
+                    member = part.strip()
+                    if member:
+                        members.setdefault(member, set()).add(value.canonical)
 
     def rebuild_indexes(self) -> None:
         for key in list(self._dirty):
@@ -335,6 +362,7 @@ class BusinessDictionary:
         alias_hit = self._alias.get(key, {}).get(probe)
         if alias_hit is not None:
             hits.add(alias_hit)
+        hits.update(self._derived_alias.get(key, {}).get(probe, ()))
         via = EXACT if hits else "none"
         return ResolvedValue(tuple(sorted(hits)), via, scan_volume=1)
 

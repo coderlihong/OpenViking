@@ -5,13 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from openviking_cli.exceptions import FailedPreconditionError
 from test_content_publication import environment as environment
 from test_image_context import JointEmbedder
 from test_index_plan import embedding as embedding
 
 from openviking.indexing.batch import TextPublicationBatch, bind_text_batch
 from openviking.indexing.content import blob_path, draft_sources
-from openviking.indexing.publication import query_snapshot
+from openviking.indexing.publication import pin_query_snapshot, query_snapshot
 from openviking.utils.embedding_utils import vectorize_directory_meta, vectorize_file
 
 ROOT = "viking://resources/manual"
@@ -118,13 +119,50 @@ async def test_failed_image_keeps_old_asset_while_text_publishes(image_env, fail
     else:
         await stage(e, b"newer attempt", "newer summary")
         result = await e.handler.on_dequeue({"data": messages[0].to_json()})
-        assert result.outcome.value == "failed"
+        # A second attempt for the same image replaces the batch's first member, so
+        # the chunks queued against that member are obsolete rather than wrong: a
+        # caption backfill re-indexes the chapter it rewrote this way, and failing
+        # these chunks reported a failed ingestion for work whose replacement had
+        # published cleanly.
+        assert result.outcome.value == "success"
     # The failed image keeps its old asset and generation; the healthy text
     # member of the same batch still publishes.
     assert manifest(e)[IMAGE]["generation"] == old
     assert TEXT in manifest(e)
     assert e.store.batch_state(batch.id)["state"] == "published"
-    assert e.store.state(generation)["state"] == "failed"
+    expected = "superseded" if failure == "newer" else "failed"
+    assert e.store.state(generation)["state"] == expected
+
+
+async def test_a_row_the_write_window_refuses_is_obsolete_not_failed(image_env):
+    """The publication gate can pass and the adapter write still refuse the chunk.
+
+    Observed live: uploading authored markdown made the figure's first joint chunk
+    reach the vector write exactly as the caption backfill's rebuild took over the
+    same source. The write window refused the row, and the ingestion reported
+    failure for work whose replacement had published cleanly.
+    """
+    e = image_env
+    await consume(e, await stage(e))
+    published = manifest(e)[IMAGE]["generation"]
+    e.queue.messages.clear()
+    messages = await stage(e, b"draft", "draft summary")
+    generation = messages[0].context_data["index_generation"]
+
+    async def refused(data, ctx=None, options=None):
+        # The replacement is enqueued inside the write window, after can_write passed.
+        await stage(e, b"newer attempt", "newer summary")
+        raise FailedPreconditionError(
+            "Managed generation was superseded or retired before actual write"
+        )
+
+    e.handler._vikingdb.upsert = refused
+    result = await e.handler.on_dequeue({"data": messages[0].to_json()})
+    assert result.outcome.value == "success"
+    assert e.store.state(generation)["state"] == "superseded"
+    # Nothing from the refused attempt becomes visible: the last published revision
+    # still serves retrieval, and the replacement carries its own generation.
+    assert manifest(e)[IMAGE]["generation"] == published
 
 
 async def test_held_query_reads_old_asset_and_gc_protects_it(image_env):
@@ -133,6 +171,8 @@ async def test_held_query_reads_old_asset_and_gc_protects_it(image_env):
     old_ref = manifest(e)[IMAGE]["content"]
     @query_snapshot
     async def held(*, ctx):
+        # A query pins its view as soon as it passes validation, before any read.
+        pin_query_snapshot(ctx)
         newer = await stage(e, b"new", "new summary")
         await consume(e, newer)
         assert await e.fs.read_file_bytes(IMAGE, ctx=e.ctx) == b"original"
@@ -279,3 +319,79 @@ async def test_incremental_semantic_image_rebuild_keeps_occurrences(image_env, m
     assert executor.image_summaries == {IMAGE: summary}
     processor._generate_single_file_summary.assert_awaited_once()
     executor._read_existing_summary.assert_not_awaited()
+
+
+STALE = {
+    "name": "a.png",
+    "summary": "A schematic of the hose.",
+    "image_occurrences": [
+        {
+            "context_uri": TEXT,
+            "ordinal": 0,
+            "context": "Neighboring source text:\nempty caption",
+            "context_hash": "before",
+            "context_epoch": 7,
+            "caption": "",
+            "summary": "A schematic of the hose.",
+            "asset_sha256": "asset",
+            "semantics_signature": "sig",
+        }
+    ],
+}
+CURRENT = [
+    {
+        "context_uri": TEXT,
+        "ordinal": 0,
+        "context": "Neighboring source text:\nA schematic of the hose.",
+        "context_hash": "after",
+        "context_epoch": 9,
+        "caption": "A schematic of the hose.",
+    }
+]
+
+
+def _dag(image_env, monkeypatch, collect):
+    from openviking.indexing import image_context as context
+    from openviking.storage.queuefs import semantic_dag as dag
+
+    monkeypatch.setattr(dag, "get_viking_fs", lambda: image_env.fs)
+    monkeypatch.setattr(context, "collect_image_contexts", collect)
+    processor = SimpleNamespace(
+        _generate_single_file_summary=AsyncMock(),
+        _vectorize_single_file=AsyncMock(),
+    )
+    executor = dag.SemanticDagExecutor(processor, "resource", 1, image_env.ctx)
+    executor._file_vector_settled.add(IMAGE)
+    return executor, processor
+
+
+async def test_recaptioned_image_rebuild_refreshes_epoch_without_rebilling(image_env, monkeypatch):
+    """The rebuild re-reads the chapter, it never asks the VLM what it just wrote.
+
+    The occurrences handed to the rebuild still freeze the context hash and draft
+    epoch read *before* the caption write, so re-enqueuing them trips the
+    publication gate's "Image context changed before index enqueue" and the figure
+    stays out of every snapshot; running the summary step again would bill a second
+    VLM call to describe a picture whose caption is now authored markdown.
+    """
+    executor, processor = _dag(image_env, monkeypatch, AsyncMock(return_value=CURRENT))
+    await executor._revectorize_recaptioned_image(IMAGE, STALE)
+
+    rebuilt = processor._vectorize_single_file.await_args.kwargs["summary_dict"]
+    occurrence = rebuilt["image_occurrences"][0]
+    assert (occurrence["context_epoch"], occurrence["context_hash"]) == (9, "after")
+    assert occurrence["summary"] == "A schematic of the hose."
+    assert occurrence["asset_sha256"] == "asset"
+    processor._generate_single_file_summary.assert_not_awaited()
+
+
+async def test_recaptioned_image_rebuild_refuses_moved_references(image_env, monkeypatch):
+    """A chapter whose references no longer line up cannot be re-described from
+    the old pairing: handing back the original occurrences leaves the gate to
+    condemn the row rather than publish one chapter's text against another's
+    picture.
+    """
+    executor, processor = _dag(image_env, monkeypatch, AsyncMock(return_value=[]))
+    await executor._revectorize_recaptioned_image(IMAGE, STALE)
+
+    assert processor._vectorize_single_file.await_args.kwargs["summary_dict"] is STALE

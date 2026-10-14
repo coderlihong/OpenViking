@@ -178,6 +178,23 @@ class _OpsMixin:
             prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
             normalized = "viking://" + prefix
 
+    def _revive_tombstoned_subtree(self, uri: str, ctx: Optional[RequestContext]) -> None:
+        """Re-creating a whole subtree clears its tombstones, ancestors included.
+
+        A directory that arrives through one copy of the assembled tree never
+        passes through the per-file write that clears a tombstone, so both the
+        directory's own tombstone and its descendants' have to fall here.
+        Otherwise a re-ingest of a URI that was deleted earlier lands bytes that
+        every read -- and with it every summary, caption and embedding that is
+        derived from them -- keeps refusing as gone, and the ingest can never
+        finish.
+        """
+        registry = self._tombstone_registry()
+        if registry is None:
+            return
+        self._revive_tombstoned_uri(uri, ctx)
+        registry.clear_tombstone_subtree(self._ctx_or_default(ctx).account_id, uri)
+
     # ========== AGFS Basic Commands ==========
 
     async def read(
@@ -783,6 +800,11 @@ class _OpsMixin:
             await self._ensure_access(old_uri, ctx, action=AclAction.MANAGE)
         await self._ensure_transfer_parent_directory(new_path, new_uri, operation="mv")
         await self._ensure_transfer_target_type(new_path, new_uri, is_dir=is_dir)
+        # The transfer copies through the storage layer, so no per-file write clears
+        # a deletion tombstone left on the destination by an earlier rm. Without this,
+        # a move onto a URI that was deleted first lands bytes that every read then
+        # refuses as gone.
+        self._revive_tombstoned_subtree(new_uri, ctx)
 
         if not is_dir:
             if new_uri.rstrip("/") != new_uri:
@@ -2612,6 +2634,9 @@ class _OpsMixin:
         """Persist an already-encrypted temp tree without rewriting file bytes."""
         await self._ensure_access(temp_uri, ctx)
         await self._ensure_access(target_uri, ctx, action=AclAction.WRITE)
+        # The copy below writes through the storage layer directly, so no per-file
+        # write gets a chance to clear a deletion tombstone on the destination.
+        self._revive_tombstoned_subtree(target_uri, ctx)
         src_path = self._uri_to_path(temp_uri, ctx=ctx)
         dst_path = self._uri_to_path(target_uri, ctx=ctx)
         fs_ctx = self._pathlock_fs_ctx(ctx, lease_ref)

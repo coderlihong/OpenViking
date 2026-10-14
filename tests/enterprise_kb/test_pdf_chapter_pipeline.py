@@ -65,7 +65,7 @@ async def test_real_local_pdf_creates_short_chapters_not_page_injected_headings(
     root = result.temp_dir_path + "/manual"
     manifest = json.loads(fs.files[root + "/_manifest.json"])
     assert [c["page_start"] for c in manifest["chapters"]] == [1, 2]
-    assert fs.files[root + "/1_Intro/index.md"].count("1 Intro") == 1
+    assert fs.files[root + "/1_Intro/1_Intro.md"].count("1 Intro") == 1
     assert "Last body" in fs.files[root + "/1_Intro/1.1_Child.md"]
     assert "[1.1 Child](1_Intro/1.1_Child.md)" in fs.files[root + "/toc.md"]
 
@@ -82,7 +82,7 @@ async def test_structural_container_has_nonempty_heading_without_copying_child_b
     root = 'viking://temp/chapter-test/manual'
     layout = parser._compute_chapter_layout(plan, 'viking://temp/chapter-test', root, 'manual')
     await parser._apply_layout(layout)
-    assert fs.files[root + '/Container/index.md'] == '# Container\n'
+    assert fs.files[root + '/Container/Container.md'] == '# Container\n'
     assert fs.files[root + '/Container/Child.md'] == body
     manifest = json.loads(fs.files[root + '/_manifest.json'])
     assert manifest['chapters'][0]['match_status'] == 'structural_only'
@@ -109,9 +109,9 @@ async def test_external_markdown_without_page_anchors_auto_falls_back_and_copies
     root = result.temp_dir_path + "/维修手册"
     digest = hashlib.sha256(data.getvalue()).hexdigest()
     assert fs.files[root + f"/Actual/images/{digest}.png"] == data.getvalue()
-    assert f"images/{digest}.png" in fs.files[root + "/Actual/index.md"]
+    assert f"images/{digest}.png" in fs.files[root + "/Actual/Actual.md"]
     assert "尾部" in fs.files[root + "/Actual/End.md"]
-    assert "<!-- Page" not in fs.files[root + "/Actual/index.md"]
+    assert "<!-- Page" not in fs.files[root + "/Actual/Actual.md"]
     assert json.loads(fs.files[root + "/_toc.json"])["bookmarks"][0]["title"] == "1 Intro"
     assert not any(".image_mappings" in uri for uri in fs.files)
 
@@ -160,9 +160,9 @@ async def test_undersized_declared_image_is_skipped_not_fatal(tmp_path, fs, monk
     skipped = next(entry for entry in result.meta["info"] if entry["code"] == "CHAPTER_IMAGE_QUALITY_SKIPPED")
     assert skipped["count"] == 1 and skipped["images"] == ["tiny.png"]
     root = result.temp_dir_path + "/维修手册"
-    index = fs.files[root + "/Actual/index.md"]
-    assert "正文" in index and "尾部" in fs.files[root + "/Actual/End.md"]
-    assert "tiny.png" not in index and "![" not in index
+    chapter_body = fs.files[root + "/Actual/Actual.md"]
+    assert "正文" in chapter_body and "尾部" in fs.files[root + "/Actual/End.md"]
+    assert "tiny.png" not in chapter_body and "![" not in chapter_body
 
 
 async def test_valid_and_invalid_images_coexist_in_one_chapter(tmp_path, fs, monkeypatch):
@@ -256,7 +256,7 @@ async def test_service_publishes_chapters_under_requested_parent(
     from openviking.storage.viking_fs import get_viking_fs
 
     fs = get_viking_fs()
-    assert "First body" in await fs.read_file(root + "/1_Intro/index.md", ctx=request_context)
+    assert "First body" in await fs.read_file(root + "/1_Intro/1_Intro.md", ctx=request_context)
     assert "Last body" in await fs.read_file(root + "/1_Intro/1.1_Child.md", ctx=request_context)
     assert (
         json.loads(await fs.read_file(root + "/_manifest.json", ctx=request_context))[

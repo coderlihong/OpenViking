@@ -79,6 +79,27 @@ def test_figure_block_embedding_text_carries_caption_not_markup(embedding):
     assert all("figcap" not in c.embedding_text for c in plan.chunks), embedded
 
 
+def test_precaption_figure_block_plans_with_empty_render(embedding):
+    # A PDF-derived chapter ships figures with an empty <figcaption> and no
+    # vikingsrc before caption backfill runs. The plan must keep the span for
+    # coverage while embedding no markup; this state used to raise "Figure
+    # partition lost source content" and requeue the whole branch forever.
+    source = (
+        "# 拆卸液压管路\n\n"
+        "<figure>\n"
+        '    <img src="images/844775934052881.jpg">\n'
+        "        <figcaption></figcaption>\n"
+        "</figure>\n\n"
+        "拆卸前先释放系统压力。\n"
+    )
+    plan = plan_resource(source, URI, "acct", embedding)
+    assert "".join(c.source_text for c in plan.chunks) == source
+    embedded = "\n".join(c.embedding_text for c in plan.chunks)
+    assert "拆卸前先释放系统压力" in embedded
+    assert "<img" not in embedded and "<figure>" not in embedded, embedded
+    assert "figcaption" not in embedded, embedded
+
+
 def test_torn_caption_list_still_fragments_within_child_budget(embedding):
     # A PDF-derived caption can embed a whole VLM description in a bullet list
     # that ends with a stray </figcaption>. The list carries no <img>, so it is
@@ -104,6 +125,17 @@ def test_torn_caption_list_still_fragments_within_child_budget(embedding):
 def test_wrong_tokenizer_sha_fails_before_enqueuing(embedding):
     embedding.chunking.tokenizer_sha256 = "0" * 64
     with pytest.raises(ValueError, match="SHA256"):
+        plan_resource(SOURCE, URI, "acct", embedding)
+
+
+def test_plan_rejection_carries_dedicated_error_type(embedding):
+    # The semantic processor settles deterministic plan rejections instead of
+    # requeueing them, keyed on this type; a plain ValueError would regress
+    # into an infinite retry that also poisons the API circuit breaker.
+    from openviking.indexing.plan import PlanRejectionError
+
+    embedding.chunking.tokenizer_sha256 = "0" * 64
+    with pytest.raises(PlanRejectionError, match="SHA256"):
         plan_resource(SOURCE, URI, "acct", embedding)
 
 

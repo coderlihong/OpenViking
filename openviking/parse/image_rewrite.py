@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
+from openviking.indexing.content import draft_sources
 from openviking.server.identity import RequestContext
 from openviking.storage.viking_fs import get_viking_fs
 from openviking_cli.utils import get_logger
@@ -170,6 +171,28 @@ def build_artifact_image_mappings(root_dir: Path) -> Dict[str, Dict[str, str]]:
 
 def _is_remote_uri(path: str) -> bool:
     return any(path.startswith(p) for p in _REMOTE_PREFIXES)
+
+
+def _scheme_sibling(path: str, available_images: Set[str]) -> Optional[str]:
+    """The stored sibling an opaque scheme reference (``kb://images/<id>``) names.
+
+    The authored reference is an identifier, not a path: the bytes sit beside
+    the markdown under ``images/`` carrying their real extension. The identifier
+    must match whole (exact name, or same stem plus one extension), so a scheme
+    reference can never pin a figure to an unrelated file.
+    """
+    relative = path.split("://", 1)[1].lstrip("/")
+    if not relative:
+        return None
+    if relative in available_images:
+        return relative
+    prefix = relative + "."
+    matches = sorted(
+        name
+        for name in available_images
+        if name.startswith(prefix) and "/" not in name[len(prefix):]
+    )
+    return matches[0] if matches else None
 
 
 def _inline_code_ranges(line: str):
@@ -334,8 +357,21 @@ async def rewrite_image_uris(
 ) -> Dict[str, int]:
     """Normalize every image occurrence under *root_uri* into figure form.
 
-    After ``persist_temp_tree`` copies content to the final VikingFS location,
-    this function scans all ``.md`` files under *root_uri* and wraps each image
+    Runs inside a draft-source read context: once content has been published,
+    reads of a published URI are served the last published revision, so a
+    re-ingest of an existing branch would otherwise rewrite (and then publish)
+    the stale revision instead of the bytes just copied into the working tree.
+    """
+    with draft_sources():
+        return await _rewrite_image_uris_inner(root_uri, ctx=ctx, lease_ref=lease_ref)
+
+
+async def _rewrite_image_uris_inner(
+    root_uri: str,
+    ctx: Optional[RequestContext] = None,
+    lease_ref: Optional[Dict[str, Any]] = None,
+) -> Dict[str, int]:
+    """Scan all ``.md`` files under *root_uri* and wrap each image
     reference in a ``<figure>`` block whose ``vikingsrc`` attribute carries the
     full viking:// URI of the stored bytes. Two layouts are covered:
 
@@ -367,12 +403,20 @@ async def rewrite_image_uris(
     md_uris = glob_result.get("matches", [])
 
     if not md_uris:
-        return {"files_processed": 0, "references_rewritten": 0}
+        return {
+            "files_processed": 0,
+            "references_rewritten": 0,
+            "images_materialized": 0,
+            "references_unresolved": 0,
+        }
 
     mappings_by_dir = await _discover_mappings(viking_fs, root_prefix, md_uris, ctx)
+    fetch_remote, remote_timeout = _remote_fetch_policy()
 
     files_processed = 0
     references_rewritten = 0
+    images_materialized = 0
+    references_unresolved = 0
 
     for md_uri in md_uris:
         # Resolve this markdown file's mapping from the sidecar of the document
@@ -412,13 +456,32 @@ async def rewrite_image_uris(
         has_local_refs = any(
             not name.startswith("viking://") for name in available_images
         ) or bool(path_to_image_name)
-        if not has_local_refs:
+        if not has_local_refs and not fetch_remote:
             continue
 
         try:
             content = await viking_fs.read_file(md_uri, ctx=ctx)
         except Exception:
             logger.warning(f"[image_rewrite] Failed to read {md_uri}, skipping")
+            continue
+
+        # Authored markdown frequently points its figures at the host that
+        # generated the document. Fetch those bytes into a sibling ``images/``
+        # directory and rewrite the reference, so what is published resolves to
+        # storage OpenViking owns instead of an external URL that may already 404.
+        content, stored_names, unresolved = await _materialize_remote_images(
+            viking_fs,
+            md_dir,
+            content,
+            ctx=ctx,
+            lease_ref=lease_ref,
+            enabled=fetch_remote,
+            timeout=remote_timeout,
+        )
+        images_materialized += len(stored_names)
+        references_unresolved += unresolved
+        available_images.update(f"images/{name}" for name in stored_names)
+        if not has_local_refs and not stored_names:
             continue
 
         new_content, rewrite_count = _rewrite_content(
@@ -454,10 +517,91 @@ async def rewrite_image_uris(
 
     logger.info(
         f"[image_rewrite] Processed {len(md_uris)} .md files, "
-        f"rewrote {references_rewritten} image reference(s) in {files_processed} file(s)"
+        f"rewrote {references_rewritten} image reference(s) in {files_processed} file(s), "
+        f"materialized {images_materialized} remote image(s), "
+        f"left {references_unresolved} remote reference(s) unresolved"
     )
 
-    return {"files_processed": files_processed, "references_rewritten": references_rewritten}
+    return {
+        "files_processed": files_processed,
+        "references_rewritten": references_rewritten,
+        "images_materialized": images_materialized,
+        "references_unresolved": references_unresolved,
+    }
+
+
+def _remote_fetch_policy() -> tuple[bool, float]:
+    """Read the markdown parser's remote-asset policy from the live registry.
+
+    A post-commit pass has no parser instance of its own, yet the switch that
+    decides whether ingestion may reach an external host belongs to the parser
+    configuration — so it is looked up rather than duplicated here. An
+    unavailable registry falls back to the documented default (fetch, 20s).
+    """
+    config = None
+    try:
+        from openviking.parse.registry import get_registry
+
+        config = get_registry().get_parser_config("markdown")
+    except Exception:
+        logger.debug("[image_rewrite] Remote asset policy unavailable; using defaults")
+    return (
+        bool(getattr(config, "fetch_remote_images", True)) if config is not None else True,
+        float(getattr(config, "remote_image_timeout", 20.0)) if config is not None else 20.0,
+    )
+
+
+async def _materialize_remote_images(
+    viking_fs,
+    md_dir: str,
+    content: str,
+    *,
+    ctx: Optional[RequestContext] = None,
+    lease_ref: Optional[Dict[str, Any]] = None,
+    enabled: bool = True,
+    timeout: float = 20.0,
+) -> tuple[str, list, int]:
+    """Store every fetchable remote figure beside *md_dir* and rewrite its reference.
+
+    Returns ``(content, stored_filenames, unresolved_count)``. An unfetchable
+    reference keeps its authored URL: this pass publishes content the user already
+    wrote, so it must not delete an occurrence it merely could not resolve (the
+    chapter-layout path, which builds a tree from a parse plan, drops instead).
+    """
+    if not enabled or not content:
+        return content, [], 0
+
+    from openviking.parse.remote_images import (
+        RemoteImage,
+        apply_replacements,
+        collect_remote_spans,
+        resolve_remote_images,
+    )
+
+    spans = collect_remote_spans(content)
+    if not spans:
+        return content, [], 0
+
+    outcomes = await resolve_remote_images((span[2] for span in spans), timeout=timeout)
+    image_dir = f"{md_dir}/images"
+    directory_created = False
+    replacements = []
+    stored: list = []
+    unresolved = 0
+    for start, end, reference in spans:
+        asset = outcomes.get(reference)
+        if not isinstance(asset, RemoteImage):
+            unresolved += 1
+            continue
+        if not directory_created:
+            await viking_fs.mkdir(image_dir, exist_ok=True, ctx=ctx, lease_ref=lease_ref)
+            directory_created = True
+        await viking_fs.write_file_bytes(
+            f"{image_dir}/{asset.filename}", asset.data, ctx=ctx, lease_ref=lease_ref
+        )
+        stored.append(asset.filename)
+        replacements.append((start, end, f"images/{asset.filename}"))
+    return apply_replacements(content, replacements), stored, unresolved
 
 
 def _rewrite_content(
@@ -555,6 +699,15 @@ def _rewrite_content(
         image_name = mappings.get(path)
         if image_name and image_name in available_images:
             return f"{image_dir}/{image_name}"
+        if "://" in path:
+            stored = _scheme_sibling(path, available_images)
+            if stored is not None:
+                return f"{image_dir}/{stored}"
+            logger.warning(
+                f"[image_rewrite] Scheme reference has no stored sibling: path = {path}, "
+                f"image_dir = {image_dir}, leaving reference unchanged"
+            )
+            return None
         # Chapter layout publishes references as images/<name> with no sidecar;
         # the sibling listing is authoritative there.
         stripped = path.lstrip("./")

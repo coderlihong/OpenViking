@@ -21,7 +21,7 @@
 
 ## 1.1 主动工具面（Agentic 调用能力）
 
-- **MCP 型 harness（claude-code、codex/trae-cli、cursor、trae/trae-cn、zcode、opencode）的主动工具面完全一致，共 15 个工具**：这些工具由服务端统一定义，插件通过代理获得 `~/.openviking/ovcli.conf` 配置后连接服务器定义的 MCP 工具。
+- **MCP 型 harness（claude-code、codex/trae-cli、cursor、trae/trae-cn、zcode、opencode）的主动工具面完全一致，共 17 个工具**：这些工具由服务端统一定义，插件通过代理获得 `~/.openviking/ovcli.conf` 配置后连接服务器定义的 MCP 工具。
 
 - trae-cli 指 TraeCode CLI 2.0（仅支持 2.0），经 codex 插件别名安装，插件与 codex 格式兼容，下文矩阵并入 codex 行。
 
@@ -88,21 +88,23 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 
 | # | 工具名 | 功能 | 参数要点（定义行号） |
 |---|---|---|---|
-| 1 | `find` | 不依赖会话上下文的快速语义检索 | `query, target_uri="", limit=10, min_score=0.35, level, context_type`（`:259`） |
+| 1 | `find` | 不依赖会话上下文的快速语义检索 | `query, target_uri="", limit=10, min_score=0.35, level, context_type`（`:252`） |
 | 2 | `search` | 深检索，可带 `session_id` + 意图分析 | `session_id` 仅在服务端 `retrieval.enable_intent`（默认 true）开启时才会加载会话（`:285`，`:302-304`） |
-| 3 | `read` | 读取单个或多个 `viking://` 文件全文 | 并发信号量 10；单条失败返回 `(nothing found at <uri>)` 不抛错（`:389`） |
-| 4 | `list` | 列目录（函数名 `ls`，注册名显式改写为 `list`） | `recursive=False`（`:423`） |
-| 5 | `tree` | 递归目录树 | `level_limit=3, node_limit=1000, include_abstract=False`（`:449`） |
+| 3 | `read` | 读取单个或多个 `viking://` 文件全文 | 并发信号量 10；单条失败返回 `(nothing found at <uri>)` 不抛错（`:581`） |
+| 4 | `list` | 列目录（函数名 `ls`，注册名显式改写为 `list`） | `recursive=False`（`:724`） |
+| 5 | `tree` | 递归目录树 | `level_limit=3, node_limit=1000, include_abstract=False`（`:786`） |
 | 6 | `remember` | 写长期记忆 | 内部建一次性会话 `mcp-store-<uuid12>` 并立即 `commit_async`（`:504-523`）——这是 MCP 面唯一的 commit 入口；MCP 没有显式 commit 工具 |
 | 7 | `write` | 写 `viking://` 文件 | `mode=replace\|append\|create`：replace 覆盖或在缺失时创建，append 追加或在缺失时创建，create 仅创建缺失文件且已存在时返回冲突；显式 create 的文件扩展名白名单为 `.md .txt .json .yaml .yml .toml .py .js .ts`；可写域 `resources/user/agent`；用户根下 `skills/ peers/ privacy/ sessions/` 只读；已存在的 `.abstract.md/.overview.md` sidecar 可改正文，但公共 API 不能创建（`:529`；`content_write.py:60-81`） |
-| 8 | `edit` | 精确字符串替换 | `old_string` 空/0 命中/多命中且非 replace_all 均报错，且文件内容不变（`:569`） |
+| 8 | `edit` | 精确字符串替换 | `old_string` 空/0 命中/多命中且非 replace_all 均报错，且文件内容不变（`:927`） |
 | 9 | `add_resource` | 资源摄取（远程 URL / 本地文件签名上传 / Connector） | `watch_interval` 单位为分钟（0=不 watch）；本地路径分支返回签名上传 URL（TTL 默认 600s），上传后自动入库，无需二次调用（`:723-947`） |
-| 10 | `list_watches` | 列 watch 订阅，商业版尚未支持 | scheduler 未运行时返回错误串（`:958`） |
-| 11 | `cancel_watch` | 按 `to_uri` 取消，商业版尚未支持 | 刻意不暴露 pause/resume/trigger/update（`:990`） |
-| 12 | `grep` | 正则内容检索 | 多 pattern 并发（信号量 10），`node_limit=10`（`:1032`） |
-| 13 | `glob` | 文件名 glob | `node_limit=100`（`:1084`） |
-| 14 | `forget` | 删除 URI（不可恢复） | 默认 `recursive=False`；类型边界详见 [§3.5](#_3-5-写入与删除的类型边界)（`:1110-1117`） |
-| 15 | `health` | 健康检查 | 无参（`:1123`） |
+| 10 | `list_watches` | 列 watch 订阅，商业版尚未支持 | scheduler 未运行时返回错误串（`:1340`） |
+| 11 | `cancel_watch` | 按 `to_uri` 取消，商业版尚未支持 | 刻意不暴露 pause/resume/trigger/update（`:1372`） |
+| 12 | `grep` | 正则内容检索 | 多 pattern 并发（信号量 10），`node_limit=10`（`:1415`） |
+| 13 | `glob` | 文件名 glob | `node_limit=100`（`:1481`） |
+| 14 | `index_search` | 目录清单（`index.md`）关键词定位——agent 定位腿；只召回清单条目，不碰正文、向量与 BM25 行 | `uri`、`query` 必选；`limit=20`, `case_insensitive=False`, `level_limit=10`, `include_content=False`（`:1522`） |
+| 15 | `vector_search` | 向量+BM25 混合融合的语义检索；不带会话意图、查询扩展与上下文组装 | 召回口径同 `find`；评分阈值参数名为 `min_score`（`:1569`） |
+| 16 | `forget` | 删除 URI（不可恢复） | 默认 `recursive=False`；类型边界详见 [§3.5](#_3-5-写入与删除的类型边界)（`:1110-1117`） |
+| 17 | `health` | 健康检查 | 无参（`:1641`） |
 
 配套机制：
 
@@ -659,7 +661,7 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 
 ## 6.2 路径①：通用 MCP 直连（推荐起步）
 
-任何支持 MCP 的 agent，只需在其 `mcpServers` 配置里指向服务端 `/mcp`（各客户端的具体配置位置见 [MCP 客户端](./06-mcp-clients.md)），即可立刻获得全部 15 个工具（[§2.1](#_2-1-服务端-mcp-工具面)）。最小配置如下：
+任何支持 MCP 的 agent，只需在其 `mcpServers` 配置里指向服务端 `/mcp`（各客户端的具体配置位置见 [MCP 客户端](./06-mcp-clients.md)），即可立刻获得全部 17 个工具（[§2.1](#_2-1-服务端-mcp-工具面)）。最小配置如下：
 
 ```json
 {

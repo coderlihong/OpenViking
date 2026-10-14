@@ -1009,9 +1009,15 @@ class ContentWriteCoordinator:
     ) -> None:
         """Re-index the semantic levels that exist for one directory."""
 
+        from openviking.indexing.content import draft_sources
+
         async def read_if_exists(uri: str) -> Optional[str]:
             try:
-                return await self._viking_fs.read_file(uri, ctx=ctx)
+                # The plan bodies must be the revision the publication archive
+                # captures; the agent-facing view lags a fresh write until its
+                # lease publishes, and comparing the two retires a good write.
+                with draft_sources():
+                    return await self._viking_fs.read_file(uri, ctx=ctx)
             except Exception as exc:
                 if self._is_not_found(exc):
                     return None

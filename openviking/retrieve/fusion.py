@@ -122,6 +122,24 @@ class FusionProfile:
             "parent_token_budget": self.parent_token_budget,
         }
 
+    def with_row_budget(self, limit: int) -> "FusionProfile":
+        """Return a profile whose stage budgets can carry ``limit`` rows.
+
+        Any per-stage cap below the requested row count silently truncates a
+        larger request (MMR top defaults to 10), so those caps are raised to
+        ``limit``; caps already above it stay untouched.
+        """
+        smallest = min(self.recall_limit, self.fused_limit, self.rerank_limit, self.mmr_top)
+        if limit <= smallest:
+            return self
+        return replace(
+            self,
+            recall_limit=max(self.recall_limit, limit),
+            fused_limit=max(self.fused_limit, limit),
+            rerank_limit=max(self.rerank_limit, limit),
+            mmr_top=max(self.mmr_top, limit),
+        )
+
 
 def profile_for(name: str, **overrides: Any) -> FusionProfile:
     """Build a profile by name, applying explicit budget overrides."""

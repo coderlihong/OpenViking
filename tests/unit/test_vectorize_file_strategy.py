@@ -6,6 +6,7 @@ import pytest
 from PIL import Image
 
 from openviking.core.context import ResourceContentType
+from openviking.indexing.metadata_integration import SIDECAR
 from openviking.parse.parsers.media.utils import (
     MPEG_TS_PACKET_SIZE,
     MPEG_TS_PROBE_BYTES,
@@ -53,16 +54,29 @@ class DummyFS:
         self.read_file_calls = 0
         self.read_file_bytes_calls = 0
 
+    @staticmethod
+    def _reject_sidecar(path):
+        """A single blob cannot double as every file the write path walks.
+
+        The business-meta sidecar lookup treats an absent ``.business_meta.json`` as
+        'no authored metadata'; answering it with the resource body would report an
+        unparseable sidecar and fail the ingestion the caller is only queueing.
+        """
+        if str(path).endswith("/" + SIDECAR):
+            raise FileNotFoundError(path)
+
     async def read(self, _path, offset=0, size=-1, ctx=None):
         self.read_calls.append((offset, size))
         raw = self.content if isinstance(self.content, bytes) else str(self.content).encode("utf-8")
         return raw[offset : offset + size]
 
     async def read_file(self, _path, ctx=None):
+        self._reject_sidecar(_path)
         self.read_file_calls += 1
         return self.content
 
     async def read_file_bytes(self, _path, ctx=None):
+        self._reject_sidecar(_path)
         self.read_file_bytes_calls += 1
         if isinstance(self.content, bytes):
             return self.content
@@ -73,6 +87,21 @@ class DummyFS:
 
     async def ls(self, _uri, ctx=None):
         return []
+
+
+@pytest.fixture(autouse=True)
+def _no_publication_side_effects(monkeypatch, tmp_path):
+    """Keep this suite about the messages it enqueues, not about the registry.
+
+    Two publication behaviours would otherwise follow the developer's own ``ov.conf``:
+    the write path archives every semantic body through a real VikingFS when
+    ``publish_content`` is on (and fails on this module's fs double), and the sidecar
+    walk opens the account's registry at ``publication_path`` -- a unit test must not
+    touch the registry that a live instance uses.
+    """
+    chunking = embedding_utils.get_openviking_config().embedding.chunking
+    monkeypatch.setattr(chunking, "publish_content", False)
+    monkeypatch.setattr(chunking, "publication_path", str(tmp_path / "publication.db"))
 
 
 class DummyUser:
@@ -327,6 +356,7 @@ async def test_vectorize_directory_propagates_enqueue_failures(monkeypatch):
     monkeypatch.setattr(
         embedding_utils, "get_queue_manager", lambda: DummyQueueManager(FailingQueue())
     )
+    monkeypatch.setattr(embedding_utils, "get_viking_fs", lambda: DummyFS("ignored"))
 
     with pytest.raises(RuntimeError, match="queue unavailable"):
         await embedding_utils.vectorize_directory_meta(

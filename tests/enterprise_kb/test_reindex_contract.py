@@ -417,6 +417,79 @@ async def test_recursive_semantic_mode_does_not_double_refresh_ancestors(
     assert calls == [("viking://resources/raw/manual", True)]
 
 
+async def test_semantic_reindex_does_not_normalize_figure_citations(
+    environment, monkeypatch
+):
+    """Citation normalization is its own stage: reindex must not rewrite the
+    markdown it is about to archive. The vector phase reads the published
+    bytes as they stand, so a reindex that normalized citations would be a
+    hidden write stage instead of pure compute."""
+    e = environment
+    await e.fs.write("viking://resources/raw/manual/ch1.md", "正文", ctx=e.ctx)
+
+    monkeypatch.setattr(reindex, "get_viking_fs", lambda: e.fs)
+    executor = reindex.ReindexExecutor()
+    events: list[tuple] = []
+
+    async def fake_rewrite(uri, ctx=None, lease_ref=None):
+        events.append(("normalize", uri, lease_ref))
+        return {"files_processed": 1, "references_rewritten": 2}
+
+    async def fake_semantic(**kwargs):
+        events.append(("semantic", kwargs["uri"]))
+        return {}
+
+    monkeypatch.setattr(
+        "openviking.parse.image_rewrite.rewrite_image_uris", fake_rewrite
+    )
+    executor._run_semantic_processor = fake_semantic
+    executor._reindex_resource_vectors = AsyncMock()
+    lease = {"id": "tree-lease"}
+    run = reindex._ReindexRunContext(
+        ctx=e.ctx, counters=reindex._ReindexCounters(), lock=lease, ingest_options=None
+    )
+
+    await executor._reindex_resource(
+        uri="viking://resources/raw/manual",
+        mode="semantic_and_vectors",
+        run=run,
+    )
+
+    assert [event[0] for event in events] == ["semantic"]
+
+
+async def test_semantic_reindex_without_a_lease_skips_normalization(
+    environment, monkeypatch
+):
+    e = environment
+    monkeypatch.setattr(reindex, "get_viking_fs", lambda: e.fs)
+    executor = reindex.ReindexExecutor()
+    called: list = []
+
+    async def fake_rewrite(*args, **kwargs):
+        called.append((args, kwargs))
+        return {}
+
+    monkeypatch.setattr(
+        "openviking.parse.image_rewrite.rewrite_image_uris", fake_rewrite
+    )
+    executor._run_semantic_processor = AsyncMock(return_value={})
+    executor._reindex_resource_vectors = AsyncMock()
+    counters = reindex._ReindexCounters()
+    run = reindex._ReindexRunContext(
+        ctx=e.ctx, counters=counters, lock=None, ingest_options=None
+    )
+
+    await executor._reindex_resource(
+        uri="viking://resources/raw/manual",
+        mode="semantic_and_vectors",
+        run=run,
+    )
+
+    assert called == []
+    assert counters.warnings == []
+
+
 # --------------------------------------------------------------------------- #
 # TC-11.3: namespace semantic refresh must forward joint image summaries
 # --------------------------------------------------------------------------- #
@@ -494,7 +567,7 @@ def _image_entries_env(e, embedding, monkeypatch):
     return executor
 
 
-async def test_joint_image_without_valid_summary_is_semantics_required(
+async def test_joint_image_without_valid_summary_is_skipped(
     environment, embedding, monkeypatch
 ):
     e = environment
@@ -514,11 +587,11 @@ async def test_joint_image_without_valid_summary_is_semantics_required(
         root_uri=IMAGE, directories=[], files=[IMAGE], counters=counters, ctx=e.ctx
     )
 
-    assert counters.semantics_required_records == 1
+    # A captionless image is a skip (unsupported), never an error path.
+    assert counters.unsupported_records == 1
     assert counters.failed_records == 0
     assert e.queue.messages == []
     executor._upsert_context.assert_not_awaited()
-    assert any("SEMANTICS_REQUIRED" in w for w in counters.warnings)
 
 
 async def test_joint_image_with_fresh_summary_keeps_joint_input(
@@ -546,7 +619,6 @@ async def test_joint_image_with_fresh_summary_keeps_joint_input(
     )
 
     assert counters.failed_records == 0, counters.warnings
-    assert counters.semantics_required_records == 0
     message = e.queue.messages[0]
     assert message.context_data["_require_joint_image_embedding"] is True
     assert {part["type"] for part in message.message} == {"text", "image_url"}
@@ -627,15 +699,15 @@ async def test_execute_allows_admin_resource_reindex(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# TC-11.1: result surfaces SEMANTICS_REQUIRED business code
+# TC-11.1: result counters surface the skip verdict without a business code
 # --------------------------------------------------------------------------- #
 
 
-async def test_run_result_surfaces_semantics_required_code(monkeypatch):
+async def test_run_result_counts_unsupported_without_error_code(monkeypatch):
     executor = reindex.ReindexExecutor()
 
     async def fake_reindex_resource(*, uri, mode, run, recursive=True):
-        run.counters.semantics_required_records += 1
+        run.counters.unsupported_records += 1
 
     monkeypatch.setattr(executor, "_reindex_resource", fake_reindex_resource)
 
@@ -676,8 +748,8 @@ async def test_run_result_surfaces_semantics_required_code(monkeypatch):
         ctx=ctx,
     )
     assert result["status"] == "completed"
-    assert result["semantics_required_records"] == 1
-    assert result["code"] == "SEMANTICS_REQUIRED"
+    assert result["unsupported_records"] == 1
+    assert "code" not in result
 
 
 # --------------------------------------------------------------------------- #
@@ -740,7 +812,8 @@ async def test_resource_reindex_reports_semantic_and_vector_stages(monkeypatch):
             ),
         )
 
-    # semantic stage before L0/L1 regeneration, vector stage before rebuilds.
+    # Citation normalization is its own stage and must not appear here;
+    # the semantic stage precedes the vector stage, which runs last.
     assert stages[0].startswith("semantic:")
     assert stages[-1].startswith("vectors:")
 

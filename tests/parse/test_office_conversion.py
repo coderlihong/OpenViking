@@ -30,7 +30,6 @@ from openviking.parse.office_converter import (
     OfficeConverterConfig,
 )
 from openviking.parse.parser_router import ParserRouter
-from openviking_cli.exceptions import InvalidArgumentError
 
 
 def _soffice_available() -> bool:
@@ -461,12 +460,17 @@ async def test_router_structure_policy_allowed_for_office(tmp_path):
     assert registry.parse.await_args.kwargs["structure_policy"] == "bookmarks_preferred"
 
 
-async def test_router_still_rejects_non_pdf_structure_request(tmp_path):
+async def test_router_keeps_a_non_pdf_on_its_own_parser_when_a_model_is_named(tmp_path):
+    """Naming a PDF model is not a reason to refuse an authored markdown file."""
     md = tmp_path / "notes.md"
     md.write_text("# hi")
-    router = ParserRouter(SimpleNamespace(parse=AsyncMock()))
-    with pytest.raises(InvalidArgumentError):
-        await router.parse(str(md), structure_policy="bookmarks_preferred")
+    registry = SimpleNamespace(parse=AsyncMock(return_value=object()))
+    router = ParserRouter(registry)
+
+    await router.parse(str(md), structure_policy="bookmarks_preferred")
+
+    assert registry.parse.await_args is not None
+    assert "structure_policy" not in registry.parse.await_args.kwargs
 
 
 async def test_router_propagates_conversion_error(tmp_path):

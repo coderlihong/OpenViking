@@ -25,9 +25,7 @@ def configured_lexical_recall(fs):
         if owned:
             lease, manifest = await asyncio.to_thread(registry.capture, ctx.account_id)
         else:
-            if view[0] != ctx.account_id or view[1].path != registry.path:
-                raise RuntimeError('Lexical view belongs to a different account/store')
-            lease, manifest = view[2], view[3]
+            lease, manifest = await asyncio.to_thread(view.read, ctx.account_id, registry)
         try:
             # Derived records published from contributor sources carry the source
             # intersection rule too; the bare URI ACL below cannot see it.

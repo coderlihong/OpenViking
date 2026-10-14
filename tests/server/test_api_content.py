@@ -13,6 +13,7 @@ from openviking.server.routers import content as content_router
 from openviking.server.routers.content import ReindexRequest, WriteContentRequest, reindex
 from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.session.user_id import UserIdentifier
+from tests.server.authored_content_helpers import first_authored_file_uri
 
 _DB_BYTES = b"\x00SQLite format 3\x00\xff\xfebinary not utf-8"
 
@@ -157,20 +158,9 @@ async def test_write_rejects_invalid_base64(monkeypatch):
         )
 
 
-async def _first_child_uri(client, uri: str) -> str:
-    response = await client.get(
-        "/api/v1/fs/ls",
-        params={"uri": uri, "simple": True, "recursive": True, "output": "original"},
-    )
-    children = response.json().get("result", [])
-    if children and isinstance(children[0], str):
-        return children[0]
-    return uri
-
-
 async def test_read_content(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_child_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
 
     resp = await client.get("/api/v1/content/read", params={"uri": file_uri})
     assert resp.status_code == 200
@@ -238,10 +228,12 @@ async def test_read_internal_scope_uri_returns_invalid_uri(client, uri: str):
     assert "frozenset" not in body["error"]["message"]
 
 
-async def test_abstract_content(client_with_resource, service):
+async def test_abstract_without_a_document_renders_not_ready(client_with_resource, service):
     client, uri = client_with_resource
     ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
-    await service.viking_fs.write_file(f"{uri}/.abstract.md", "---\n", ctx=ctx)
+    # A malformed replacement body would not reach the reader: the published
+    # revision keeps serving the last good abstract.  Only its absence is "not ready".
+    await service.viking_fs.rm(f"{uri}/.abstract.md", ctx=ctx)
 
     resp = await client.get("/api/v1/content/abstract", params={"uri": uri})
     assert resp.status_code == 200
@@ -250,10 +242,10 @@ async def test_abstract_content(client_with_resource, service):
     assert body["result"] == f"# {uri} [Directory abstract is not ready]"
 
 
-async def test_overview_content(client_with_resource, service):
+async def test_overview_without_a_document_renders_not_ready(client_with_resource, service):
     client, uri = client_with_resource
     ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
-    await service.viking_fs.write_file(f"{uri}/.overview.md", "---\n", ctx=ctx)
+    await service.viking_fs.rm(f"{uri}/.overview.md", ctx=ctx)
 
     resp = await client.get("/api/v1/content/overview", params={"uri": uri})
     assert resp.status_code == 200
@@ -262,15 +254,15 @@ async def test_overview_content(client_with_resource, service):
     assert body["result"] == f"# {uri}\n\n[Directory overview is not ready]"
 
 
-async def test_abstract_file_uri_returns_failed_precondition(client_with_resource):
+async def test_abstract_of_a_file_uri_serves_its_directory_abstract(client_with_resource):
     client, uri = client_with_resource
-    file_uri = await _first_child_uri(client, uri)
+    file_uri = await first_authored_file_uri(client, uri)
+
+    directory = await client.get("/api/v1/content/abstract", params={"uri": uri})
     resp = await client.get("/api/v1/content/abstract", params={"uri": file_uri})
-    assert resp.status_code == 412
-    body = resp.json()
-    assert body["status"] == "error"
-    assert body["error"]["code"] == "FAILED_PRECONDITION"
-    assert "not a directory" in body["error"]["message"]
+
+    assert resp.status_code == 200
+    assert resp.json() == directory.json()
 
 
 async def test_overview_missing_uri_returns_not_found(client):

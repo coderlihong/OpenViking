@@ -26,6 +26,16 @@ from openviking.storage.abstract_overview import (
 )
 from openviking.storage.acl import CreatorAclGrant
 from openviking.storage.errors import LockAcquisitionError
+from openviking.core.directory_index import (
+    DIRECTORY_INDEX_FILENAME,
+    DirectoryIndexEntry,
+    is_directory_index_uri,
+    is_generated_directory_index,
+    one_line,
+    navigation_description,
+    read_head as _read_head_for_index,
+    write_directory_index,
+)
 from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
 from openviking.storage.viking_fs import LS_ALL_NODES, get_viking_fs
 from openviking.telemetry import bind_telemetry, get_current_telemetry
@@ -184,6 +194,7 @@ class SemanticDagExecutor:
         generation_trigger: str = "semantic_refresh",
         aggregate_directory: bool = True,
         copy_source_uri: str = "",
+        allow_vlm: bool = True,
     ):
         self._processor = processor
         self._context_type = context_type
@@ -203,6 +214,7 @@ class SemanticDagExecutor:
         self._generation_trigger = generation_trigger
         self._aggregate_directory = aggregate_directory
         self._copy_source_uri = copy_source_uri
+        self._allow_vlm = bool(allow_vlm)
         self._publication_batch = producer_batch_context()
         self._task_context = get_task_context()
         self._telemetry = get_current_telemetry()
@@ -216,6 +228,18 @@ class SemanticDagExecutor:
         self._viking_fs = get_viking_fs()
         self._nodes: Dict[str, DirNode] = {}
         self.image_summaries: Dict[str, dict] = {}
+        # Files whose own vectorization is finished or deliberately skipped. A
+        # caption written into one of them after that point has to re-enqueue it:
+        # the archived revision and the chunk vectors were built without the
+        # caption, and readers/lexical search serve the archived revision. A file
+        # still pending here will simply read the captioned bytes in its own pass.
+        self._file_vector_settled: set[str] = set()
+        # Markdown rewrote by this run's caption backfill, so N figures in one
+        # chapter cost one re-vectorization instead of N.
+        self._recaptioned_markdown: set[str] = set()
+        # Images whose joint row was enqueued against the markdown *before* this run
+        # wrote their caption, so each owes exactly one rebuild.
+        self._recaptioned_images: set[str] = set()
         self._parent: Dict[str, Optional[str]] = {}
         self._root_uri: Optional[str] = None
         self._root_done: Optional[asyncio.Event] = None
@@ -308,6 +332,21 @@ class SemanticDagExecutor:
     def _release_dir_node(self, dir_uri: str) -> None:
         self._nodes.pop(dir_uri, None)
         self._parent.pop(dir_uri, None)
+
+    def _is_media_directory(self, dir_uri: str) -> bool:
+        """True when every file under this child uri (within the node) is media.
+
+        Only files the current node knows about are considered; a mixed
+        directory never takes the listing description.
+        """
+
+        from openviking.parse.parsers.media.utils import get_media_type
+
+        prefix = dir_uri.rstrip("/") + "/"
+        files = [p for p in (self._node_files or []) if p.startswith(prefix)]
+        if not files:
+            return False
+        return all(get_media_type(p.rsplit("/", 1)[-1], None) == "image" for p in files)
 
     @property
     def closed(self) -> bool:
@@ -600,6 +639,11 @@ class SemanticDagExecutor:
                 continue
 
             item_uri = VikingURI(uri).join(name).uri
+            if name == DIRECTORY_INDEX_FILENAME and await self._is_generated_navigation_index(
+                item_uri
+            ):
+                # A catalogue describes knowledge; it is not knowledge.
+                continue
             if entry.get("isDir", False):
                 children_dirs.append(item_uri)
             else:
@@ -813,7 +857,7 @@ class SemanticDagExecutor:
                 self._file_change_status[file_path] = True
             if summary_dict is None:
                 summary_dict = await self._processor._generate_single_file_summary(
-                    file_path, llm_sem=self._llm_sem, ctx=self._ctx
+                    file_path, llm_sem=self._llm_sem, ctx=self._ctx, allow_vlm=self._allow_vlm
                 )
         except NotFoundError:
             # Source vanished between attempts (e.g. replaced tree). Retry can
@@ -854,6 +898,13 @@ class SemanticDagExecutor:
             self.image_summaries[file_path] = summary_dict
         if need_vectorize and not self._skip_vectorization:
             use_summary = self._is_code_repo and bool(summary_dict.get("summary"))
+            # A caption written into this file's citing markdown is only a
+            # problem for files that have already read their bytes: mark the
+            # boundary here, at the moment the content is taken in, so a
+            # concurrent image task knows this file owes a fresh revision.
+            # `_on_file_done` marks every other outcome as well (reused
+            # unchanged, failed forward).
+            self._file_vector_settled.add(file_path)
             try:
                 await self._processor._vectorize_single_file(
                     parent_uri=parent_uri,
@@ -907,12 +958,144 @@ class SemanticDagExecutor:
             return
         if updated:
             logger.info(
-                f"[SemanticDag] Backfilled figure captions for {file_path} into {updated} file(s)"
+                f"[SemanticDag] Backfilled figure captions for {file_path} into "
+                f"{len(updated)} file(s)"
+            )
+        for md_uri in updated:
+            await self._revectorize_recaptioned_markdown(md_uri)
+        if updated:
+            await self._revectorize_recaptioned_image(file_path, summary_dict)
+
+    async def _revectorize_recaptioned_image(self, image_uri: str, summary_dict: dict) -> None:
+        """Rebuild an image's joint row after this run captioned it in its chapter.
+
+        The joint row was enqueued before the caption was written into the citing
+        markdown, and it declares that markdown as its context source: the write
+        bumps the markdown's draft epoch, so the publication gate condemns the row
+        that is already in flight ("Image context changed during index build").
+        Nothing else re-enqueues it, so the figure's VL embedding stayed invisible
+        to retrieval for the whole branch while the ingest still reported success.
+        """
+        if image_uri in self._recaptioned_images:
+            return
+        if image_uri not in self._file_vector_settled:
+            return
+        self._recaptioned_images.add(image_uri)
+        try:
+            await self._processor._vectorize_single_file(
+                parent_uri=image_uri.rsplit("/", 1)[0],
+                context_type=self._context_type,
+                file_path=image_uri,
+                # Re-collected against the captioned chapter, never the summary
+                # this run started with: those occurrences freeze the context
+                # hash and draft epoch read *before* the caption write, so the
+                # rebuild would trip the same gate it exists to clear
+                # ("Image context changed before index enqueue").
+                summary_dict=await self._recaptioned_image_summary(image_uri, summary_dict),
+                ctx=self._ctx,
+                preserve_existing_created_at=True,
+                ingest_options=self._ingest_options_for_file(image_uri),
+                creator_acl_grant=self._creator_acl_grant(image_uri),
+            )
+        except Exception as e:
+            # Same contract as the markdown rebuild: a caption is derived
+            # convenience and never fails the ingestion DAG.
+            logger.warning(
+                f"[SemanticDag] Joint rebuild after caption backfill failed "
+                f"for {image_uri}: {e}"
+            )
+
+    async def _recaptioned_image_summary(
+        self, image_uri: str, summary_dict: dict
+    ) -> dict:
+        """Re-read this image's occurrences against the chapter as it now stands.
+
+        Only the reference context is collected again; every description comes
+        from ``summary_dict``. The caption the pipeline just wrote is now authored
+        markdown, so re-running the summary step would describe the same picture
+        from its own caption -- a second VLM round trip buying nothing.
+
+        Falls back to the original dict whenever the references no longer line up
+        one for one: a partial re-description would pair a chapter's text with
+        another chapter's picture, and the publication gate is the right owner of
+        that case.
+        """
+        records = summary_dict.get("image_occurrences") or []
+        if not records:
+            return summary_dict
+        from openviking.indexing.image_context import collect_image_contexts
+
+        try:
+            current = await collect_image_contexts(self._viking_fs, image_uri, self._ctx)
+        except Exception as e:
+            logger.warning(
+                f"[SemanticDag] Image context refresh failed for {image_uri}: {e}"
+            )
+            return summary_dict
+        if len(current) != len(records):
+            return summary_dict
+        by_reference = {(r.get("context_uri"), r.get("ordinal")): r for r in records}
+        refreshed = []
+        for occurrence in current:
+            previous = by_reference.get((occurrence.get("context_uri"), occurrence.get("ordinal")))
+            description = str((previous or {}).get("summary") or "").strip()
+            if not description:
+                return summary_dict
+            refreshed.append(
+                {
+                    **occurrence,
+                    "summary": description,
+                    "asset_sha256": (previous or {}).get("asset_sha256"),
+                    "semantics_signature": (previous or {}).get("semantics_signature"),
+                }
+            )
+        return {
+            **summary_dict,
+            "image_occurrences": refreshed,
+            "summary": "\n\n".join(r["summary"] for r in refreshed),
+        }
+
+    async def _revectorize_recaptioned_markdown(self, md_uri: str) -> None:
+        """Rebuild a chapter's vectors after this run wrote its figure caption.
+
+        The caption the pipeline generated was not in the uploaded markdown, so
+        the chapter's archived source revision, its parent-child chunk vectors and
+        its lexical row were all produced without it. ``content/read`` and BM25
+        serve that archived revision, so the description would stay invisible to
+        an agent until some later rebuild happened to re-chunk the file. A
+        markdown still pending in this run needs nothing: its own pass reads the
+        captioned bytes.
+        """
+        if md_uri in self._recaptioned_markdown:
+            return
+        if md_uri not in self._file_vector_settled:
+            return
+        self._recaptioned_markdown.add(md_uri)
+        try:
+            await self._processor._vectorize_single_file(
+                parent_uri=md_uri.rsplit("/", 1)[0],
+                context_type=self._context_type,
+                file_path=md_uri,
+                summary_dict={"name": md_uri.rsplit("/", 1)[-1], "summary": ""},
+                ctx=self._ctx,
+                preserve_existing_created_at=True,
+                ingest_options=self._ingest_options_for_file(md_uri),
+                creator_acl_grant=self._creator_acl_grant(md_uri),
+            )
+        except Exception as e:
+            # A caption is derived convenience: never fail the ingestion DAG
+            # over its re-publication. The text is on disk and a reindex owns
+            # the repair.
+            logger.warning(
+                f"[SemanticDag] Vector rebuild after caption backfill failed for {md_uri}: {e}"
             )
 
     async def _on_file_done(
         self, parent_uri: str, file_path: str, summary_dict: Dict[str, str]
     ) -> None:
+        # Reached whether the file was vectorized, reused unchanged, or failed
+        # forward: this run will not touch its vectors again on its own.
+        self._file_vector_settled.add(file_path)
         node = self._nodes.get(parent_uri)
         if not node:
             return
@@ -1022,6 +1205,174 @@ class SemanticDagExecutor:
         from openviking.storage.queuefs.semantic_queue import is_semantic_coalesce_stale
 
         return is_semantic_coalesce_stale(self._coalesce_key, self._coalesce_version)
+
+    async def _is_generated_navigation_index(self, uri: str) -> bool:
+        """Decide by content marker, so a legacy chapter body keeps its index."""
+
+        if not is_directory_index_uri(uri):
+            return False
+        cache = getattr(self, "_navigation_index_cache", None)
+        if cache is None:
+            cache = {}
+            self._navigation_index_cache = cache
+        if uri in cache:
+            return cache[uri]
+        try:
+            verdict = is_generated_directory_index(
+                await _read_head_for_index(self._viking_fs, uri, ctx=self._ctx)
+            )
+        except Exception:
+            verdict = False
+        cache[uri] = verdict
+        return verdict
+
+    async def _chapter_manifest(self) -> Dict[str, Dict[str, Any]]:
+        """Map a resource root's `_manifest.json` paths to title/page records."""
+
+        cached = getattr(self, "_chapter_manifest_cache", None)
+        if cached is not None:
+            return cached
+        records: Dict[str, Dict[str, Any]] = {}
+        try:
+            raw = await _read_head_for_index(
+                self._viking_fs, f"{self._root_uri}/_manifest.json", ctx=self._ctx
+            )
+            if raw:
+                import json
+
+                manifest = json.loads(raw)
+                for record in manifest.get("chapters") or []:
+                    path = str(record.get("path") or "").strip("/")
+                    if path:
+                        records.setdefault(path.lower(), record)
+        except Exception:
+            records = {}
+        self._chapter_manifest_cache = records
+        return records
+
+    def _manifest_hint(self, relative_path: str) -> str:
+        """Chapter title and page range for one entry, when the manifest knows."""
+
+        manifest = getattr(self, "_chapter_manifest_cache", None) or {}
+        record = manifest.get(str(relative_path).strip("/").lower())
+        if not record:
+            return ""
+        parts: List[str] = []
+        title = str(record.get("title") or "").strip()
+        if title and title.strip("/") != str(relative_path).strip("/"):
+            parts.append(title)
+        page = record.get("page_start")
+        if isinstance(page, int) and page > 0:
+            parts.append(f"p.{page}")
+        return one_line(" · ".join(parts))
+
+    def _is_media_directory(self, dir_uri: str) -> bool:
+        """True when every file inside this child directory is media."""
+
+        from openviking.parse.parsers.media.utils import get_media_type
+
+        prefix = dir_uri.rstrip("/") + "/"
+        files = [p for p in (self._node_files or []) if p.startswith(prefix)]
+        if not files:
+            return False
+        return all(get_media_type(p.rsplit("/", 1)[-1], None) == "image" for p in files)
+
+    def _media_listing_for(self, child_uri: str) -> str:
+        """Listing description for an images/ child; empty unless all-media."""
+
+        from openviking.parse.parsers.media.utils import get_media_type
+
+        prefix = child_uri.rstrip("/") + "/"
+        names = [
+            p.rsplit("/", 1)[-1]
+            for p in (self._node_files or [])
+            if p.startswith(prefix) and get_media_type(p.rsplit("/", 1)[-1], None) == "image"
+        ]
+        if not names:
+            return ""
+        head = ", ".join(names[:4]) + ("…" if len(names) > 4 else "")
+        return f"{len(names)} images: {head}"
+
+    async def _write_navigation_index(self, dir_uri: str, node: DirNode) -> None:
+        """Publish `{dir}/index.md`: every direct child with its viking URI."""
+
+        from openviking.core.namespace import context_type_for_uri
+
+        if context_type_for_uri(dir_uri) != "resource":
+            # Memory and skill trees have their own discovery contracts; a
+            # generated catalogue would collide with those directories' bodies.
+            return
+
+        manifest = await self._chapter_manifest()
+        self._chapter_manifest_cache = manifest
+        self._node_files = list(node.file_paths or [])
+
+        summaries = {
+            path.rsplit("/", 1)[-1]: item
+            for path, item in zip(node.file_paths, node.file_summaries, strict=True)
+            if item
+        }
+        abstracts = {
+            path.rsplit("/", 1)[-1]: item
+            for path, item in zip(node.children_dirs, node.children_abstracts, strict=True)
+            if item
+        }
+
+        root = str(self._root_uri).rstrip("/") + "/"
+        directories: List[DirectoryIndexEntry] = []
+        for child_uri in node.children_dirs:
+            name = child_uri.rstrip("/").rsplit("/", 1)[-1]
+            child = abstracts.get(name) or {}
+            hint = self._manifest_hint(child_uri[len(root) :] if child_uri.startswith(root) else name)
+            directories.append(
+                DirectoryIndexEntry(
+                    name=name,
+                    uri=child_uri,
+                    description=hint
+                    or self._media_listing_for(child_uri)
+                    or navigation_description(child.get("abstract")),
+                    kind="directory",
+                ).normalized()
+            )
+
+        files: List[DirectoryIndexEntry] = []
+        for file_uri in node.file_paths:
+            name = file_uri.rsplit("/", 1)[-1]
+            if name == DIRECTORY_INDEX_FILENAME:
+                continue
+            child = summaries.get(name) or {}
+            hint = self._manifest_hint(file_uri[len(root) :] if file_uri.startswith(root) else name)
+            files.append(
+                DirectoryIndexEntry(
+                    name=name,
+                    uri=file_uri,
+                    description=hint or navigation_description(child.get("summary")),
+                    kind="file",
+                ).normalized()
+            )
+
+        try:
+            wrote = await write_directory_index(
+                viking_fs=self._viking_fs,
+                dir_uri=dir_uri,
+                directories=directories,
+                files=files,
+                ctx=self._ctx,
+                title=dir_uri.rstrip("/").rsplit("/", 1)[-1] or dir_uri,
+                generated_by={
+                    "component": "SemanticDagExecutor",
+                    "trigger": self._generation_trigger,
+                },
+                lock=self._lock,
+            )
+            if wrote.reason == "foreign_body":
+                logger.info(
+                    "[SemanticDag] Kept authored %s as chapter content; no navigation index",
+                    wrote.uri,
+                )
+        except Exception as exc:
+            # Navigation is an affordance; it must never fail a semantic batch.
+            logger.warning("[SemanticDag] Navigation index write failed for %s: %s", dir_uri, exc)
 
     async def _write_directory_semantics(
         self,
@@ -1156,6 +1507,7 @@ class SemanticDagExecutor:
                 except Exception:
                     need_vectorize = False
                     logger.info(f"[SemanticDag] {dir_uri} write failed, skipping")
+                await self._write_navigation_index(dir_uri, node)
 
         except AbstractOverviewFormatError:
             raise

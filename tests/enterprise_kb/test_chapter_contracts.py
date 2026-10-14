@@ -142,8 +142,10 @@ async def test_chapter_router_bypasses_understanding(monkeypatch):
     monkeypatch.setattr(router, "should_use_understanding_api", lambda *_a, **_k: True)
     assert await router.parse("manual.pdf", structure_policy="bookmarks_preferred") == "parsed"
     assert registry.parse.await_args.kwargs["structure_policy"] == "bookmarks_preferred"
-    with pytest.raises(InvalidArgumentError, match="PDF"):
-        await router.parse("manual.md", structure_policy="bookmarks_preferred")
+    # An authored markdown asked for a chapter tree, so it still stays away from
+    # the external parser; the PDF-only policy just has nothing to act on here.
+    assert await router.parse("manual.md", structure_policy="bookmarks_preferred") == "parsed"
+    assert "structure_policy" not in registry.parse.await_args.kwargs
 
 
 @pytest.mark.parametrize("size", [True, "1024", 0, 100001])
