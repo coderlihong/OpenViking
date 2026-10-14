@@ -120,7 +120,13 @@ class SemanticNodeScheduler:
 
     def _ensure_workers(self) -> None:
         self._workers = {task for task in self._workers if not task.done()}
-        target = min(self._max_workers, self._queue.qsize())
+        if not self._queue.qsize():
+            return
+        # Size the pool to the work that is waiting *plus* what is already in
+        # flight. Sizing it to the raw queue depth let the pool collapse every
+        # time an await drained the queue, which serialised the DAG (measured
+        # ~0.6 concurrent LLM calls against a configured width of 8).
+        target = min(self._max_workers, len(self._workers) + self._queue.qsize())
         while len(self._workers) < target:
             task = asyncio.create_task(self._worker())
             task.add_done_callback(self._workers.discard)
