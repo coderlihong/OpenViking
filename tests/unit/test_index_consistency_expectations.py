@@ -55,6 +55,15 @@ class FakeVectorStore:
         return [row for row in self.rows if row.get("uri") == uri][:limit]
 
 
+class PagedFakeVectorStore(FakeVectorStore):
+    """Serves offset-paginated reads like the real store does."""
+
+    async def filter(self, filter: Any, limit: int = 10, offset: int = 0, output_fields=None, ctx=None):
+        uri = filter.value if isinstance(filter, Eq) else None
+        rows = [row for row in self.rows if row.get("uri") == uri]
+        return rows[offset : offset + limit]
+
+
 def _ctx() -> RequestContext:
     return RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
 
@@ -149,3 +158,13 @@ async def test_real_chapter_body_absence_is_still_a_missing_record() -> None:
     )
     assert not report.ok
     assert [item.key for item in report.missing_records] == ["chapter/chapter.md#level=2"]
+
+
+@pytest.mark.asyncio
+async def test_level_map_survives_pagination_past_legacy_rows() -> None:
+    """A URI with build history must not hide a present level behind page one."""
+    rows = [{"uri": ROOT, "level": 1} for _ in range(120)] + _rows_for_expected()
+    report = await check_index_consistency(
+        FakeVikingFS(_files()), PagedFakeVectorStore(rows), ROOT, _entries(), _ctx()
+    )
+    assert report.ok, [item.key for item in report.missing_records]

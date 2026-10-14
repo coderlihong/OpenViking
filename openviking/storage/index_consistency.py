@@ -22,6 +22,8 @@ logger = get_logger(__name__)
 NON_INDEX_SCOPES = frozenset({"session"})
 PUBLIC_MISSING_RECORD_LIMIT = 20
 ERROR_DETAILS_MISSING_RECORD_LIMIT = 1
+INDEX_RECORD_PAGE_LIMIT = 100
+INDEX_RECORD_SCAN_CAP = 1000
 
 
 @dataclass(frozen=True)
@@ -190,24 +192,41 @@ def _record_level(record: dict[str, Any]) -> int | None:
 
 
 async def _fetch_index_records(vector_store, uri: str, ctx: RequestContext) -> list[dict[str, Any]]:
+    """Fetch every record stored under the exact URI.
+
+    A URI keeps one row per level per generation for its whole lifetime, so a
+    fixed small limit truncates the level map on URIs with build history and
+    reports a present level as missing. Paginate until the store is exhausted.
+    """
     if not vector_store or not hasattr(vector_store, "filter"):
         return []
 
-    kwargs = {
-        "filter": Eq("uri", uri),
-        "limit": 10,
-        "output_fields": ["uri", "level"],
-    }
-    try:
-        return await vector_store.filter(**kwargs, ctx=ctx)
-    except TypeError:
+    records: list[dict[str, Any]] = []
+    offset = 0
+    while len(records) < INDEX_RECORD_SCAN_CAP:
+        kwargs = {
+            "filter": Eq("uri", uri),
+            "limit": INDEX_RECORD_PAGE_LIMIT,
+            "output_fields": ["uri", "level"],
+        }
+        if offset:
+            kwargs["offset"] = offset
         try:
-            return await vector_store.filter(**kwargs)
+            page = await vector_store.filter(**kwargs, ctx=ctx)
+        except TypeError:
+            try:
+                page = await vector_store.filter(**kwargs)
+            except Exception as exc:
+                logger.warning(f"Failed to check vector index records for {uri}: {exc}")
+                return records
         except Exception as exc:
             logger.warning(f"Failed to check vector index records for {uri}: {exc}")
-    except Exception as exc:
-        logger.warning(f"Failed to check vector index records for {uri}: {exc}")
-    return []
+            return records
+        records.extend(page)
+        if len(page) < INDEX_RECORD_PAGE_LIMIT:
+            break
+        offset += len(page)
+    return records
 
 
 async def check_index_consistency(
