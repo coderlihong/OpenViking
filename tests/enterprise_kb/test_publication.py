@@ -1,5 +1,6 @@
 """Durable publication, producer/consumer integration, and fixed query views."""
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ from test_index_plan import embedding as embedding
 from openviking.indexing.enqueue import enqueue_text_plan
 from openviking.indexing.publication import (
     PublicationStore,
+    QueryView,
     configured_store,
     query_snapshot,
     visible_filter,
@@ -353,6 +355,29 @@ def test_expired_leases_are_pruned_by_the_next_capture(tmp_path):
         store.release(lease)
         store.release(held_lease)
     assert (_open_leases(store), _open_gc_leases(store)) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_query_view_heartbeat_keeps_a_long_read_lease_alive(tmp_path, monkeypatch):
+    """A read that outlives one TTL must not fail its end-of-query renew.
+
+    The end-of-query check refuses a result whose lease lapsed, but a wide
+    rerank legitimately runs longer than one TTL between manifest touches;
+    the view renews the lease on its own until the query finishes.
+    """
+    from openviking.indexing import publication as publication_module
+
+    monkeypatch.setattr(publication_module, "QUERY_LEASE_TTL_SECONDS", 0.6)
+    store = PublicationStore(str(tmp_path / "publication.db"))
+    publish(store, URI)
+    view = QueryView(store)
+    view.read("acct", store)
+
+    await asyncio.sleep(1.0)
+    view.renew()  # must still pass: the heartbeat renewed across the TTL
+
+    view.release()
+    assert _open_leases(store) == 0
 
 
 def test_compiled_prefilter_excludes_staged_legacy_and_remapped_rows(tmp_path):

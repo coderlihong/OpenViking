@@ -14,6 +14,8 @@ from __future__ import annotations
 import inspect
 import os
 
+import asyncio
+
 if os.name == "posix":
     import fcntl
 import json
@@ -1230,6 +1232,11 @@ def visible_filter(ctx):
         registry.release(lease)
 
 
+# A query's publication view lease. Kept in sync with ``capture``/``renew``'s
+# own default so the heartbeat renews well inside the window.
+QUERY_LEASE_TTL_SECONDS = 120
+
+
 class QueryView:
     """One query's publication view, opened by ``pin_query_snapshot`` or by the
     first read that needs it.
@@ -1248,6 +1255,7 @@ class QueryView:
         self._account = account
         self._lease = None
         self._manifest = None
+        self._heartbeat = None
 
     def _same_store(self, registry):
         return registry is self._registry or registry.path == self._registry.path
@@ -1264,17 +1272,45 @@ class QueryView:
             if self._account is not None and self._account != account:
                 raise RuntimeError("Index query view belongs to a different account/store")
             self._account = account
-            self._lease, self._manifest = registry.capture(account)
+            self._lease, self._manifest = registry.capture(account, ttl=QUERY_LEASE_TTL_SECONDS)
+            self._start_heartbeat()
         elif self._account != account:
             raise RuntimeError("Index query view belongs to a different account/store")
         registry.renew(self._lease)
         return self._lease, self._manifest
+
+    def _start_heartbeat(self):
+        """Renew the lease while the query runs.
+
+        The end-of-query renew refuses to return a result whose lease lapsed,
+        but a legitimate long read (a wide rerank) can outlive one TTL between
+        manifest touches and would fail there. A periodic renewal keeps the
+        lease — and the blob protection it stands for — alive for exactly as
+        long as the query does.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        async def beat():
+            while True:
+                await asyncio.sleep(QUERY_LEASE_TTL_SECONDS / 3)
+                try:
+                    self._registry.renew(self._lease)
+                except RuntimeError:
+                    return
+
+        self._heartbeat = loop.create_task(beat())
 
     def renew(self):
         if self._lease is not None:
             self._registry.renew(self._lease)  # Never return a result after its view lease expired.
 
     def release(self):
+        if self._heartbeat is not None:
+            self._heartbeat.cancel()
+            self._heartbeat = None
         if self._lease is not None:
             self._registry.release(self._lease)
             self._lease = None
