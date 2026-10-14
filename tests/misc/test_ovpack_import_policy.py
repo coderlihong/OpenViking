@@ -1533,6 +1533,28 @@ def test_image_occurrence_records_replays_rows_in_ordinal_order():
     assert out_of_root == [replayed[0]]
 
 
+def test_image_occurrence_records_collapses_duplicate_generations():
+    def row(caption: str, generation: str) -> dict:
+        return {
+            "path": "dir/images/a.jpg",
+            "level": 2,
+            "scalars": {
+                "chunk_id": "image:dup",
+                "chunk_ordinal": 0,
+                "chunk_text": caption,
+                "image_context_uri": "viking://resources/raw/dir/ch.md",
+                "image_context_hash": "hash",
+                "parent_text": "ctx",
+                "index_generation": generation,
+            },
+        }
+
+    records = [row("old caption", "gen-1"), row("new caption", "gen-2")]
+    replayed = _image_occurrence_records(records, "dir/images/a.jpg", "viking://resources/raw")
+    assert len(replayed) == 1
+    assert replayed[0]["summary"] == "new caption"
+
+
 @pytest.mark.asyncio
 async def test_recompute_import_replays_image_occurrences_with_source_meta(
     request_ctx: RequestContext, monkeypatch: pytest.MonkeyPatch

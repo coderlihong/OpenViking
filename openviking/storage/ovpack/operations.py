@@ -137,25 +137,30 @@ def _image_occurrence_records(
     tree and tokenizer budget, and could disagree with the very rows being
     reproduced. The pack already holds each occurrence exactly as the source
     wrote it — citing chapter, context window and hash, caption — so the
-    import replays them in ordinal order. An occurrence whose chapter lives
-    outside the imported root is dropped rather than rewritten: its context
-    text embeds the exporting path.
+    import replays them in ordinal order, one row per logical occurrence.
+    An occurrence whose chapter lives outside the imported root is dropped
+    rather than rewritten: its context text embeds the exporting path.
     """
-    rows = []
+    rows: dict[str, dict[str, Any]] = {}
     for record in index_records:
         if not isinstance(record, dict) or record.get("path") != rel_path:
             continue
         scalars = record.get("scalars")
         if not isinstance(scalars, dict):
             continue
-        if not str(scalars.get("chunk_id") or "").startswith("image:"):
+        chunk_id = str(scalars.get("chunk_id") or "")
+        if not chunk_id.startswith("image:"):
             continue
-        rows.append(scalars)
+        # One logical occurrence can appear once per live generation (the pack
+        # emits them oldest first, newest last); restore collapses them onto
+        # the canonical record id and keeps the newest. Replaying every row
+        # instead would index a twice-written occurrence twice.
+        rows[chunk_id] = scalars
     if not rows:
         return None
-    rows.sort(key=lambda scalars: int(scalars.get("chunk_ordinal") or 0))
+    ordered = sorted(rows.values(), key=lambda scalars: int(scalars.get("chunk_ordinal") or 0))
     occurrences: list[dict[str, Any]] = []
-    for scalars in rows:
+    for scalars in ordered:
         summary = str(scalars.get("chunk_text") or scalars.get("abstract") or "")
         if not summary.strip():
             continue
