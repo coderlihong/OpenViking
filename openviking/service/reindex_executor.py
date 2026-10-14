@@ -1380,7 +1380,14 @@ class ReindexExecutor:
                 recursive if propagate_to_parent is None else propagate_to_parent
             ),
         )
-        result = await processor.on_dequeue({"data": msg.to_json()}, lock=lock)
+        # Every image node resolves its citing chapters by walking the tree;
+        # memoize that per run so a tree of images costs one walk rather than a
+        # walk per image (the vector path does the same in
+        # _reindex_resource_vectors).
+        from openviking.indexing.image_context import image_context_cache
+
+        with image_context_cache():
+            result = await processor.on_dequeue({"data": msg.to_json()}, lock=lock)
         if result.outcome is not ProcessOutcome.SUCCESS:
             # Spec gate (TC-13.x): a requeued message has no synchronous
             # consumer inside the reindex run — continuing would rebuild
