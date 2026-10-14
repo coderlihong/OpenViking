@@ -12,14 +12,14 @@ Images, directory layout and BM25 are not yet part of this barrier.
 from __future__ import annotations
 
 import inspect
+import logging
 import os
-
-import asyncio
 
 if os.name == "posix":
     import fcntl
 import json
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -36,6 +36,8 @@ from openviking.indexing.write_recovery import WriteRecoveryMixin
 from openviking.storage.expr import And, Eq, Or, RawDSL
 from openviking.storage.vector_ids import publication_member_id
 from openviking_cli.exceptions import FailedPreconditionError
+
+logger = logging.getLogger(__name__)
 
 _view = ContextVar("text_index_query_view", default=None)
 
@@ -1276,40 +1278,51 @@ class QueryView:
             self._start_heartbeat()
         elif self._account != account:
             raise RuntimeError("Index query view belongs to a different account/store")
-        registry.renew(self._lease)
+        registry.renew(self._lease, ttl=QUERY_LEASE_TTL_SECONDS)
         return self._lease, self._manifest
 
     def _start_heartbeat(self):
-        """Renew the lease while the query runs.
+        """Renew the lease from a dedicated thread, not an event-loop task.
 
-        The end-of-query renew refuses to return a result whose lease lapsed,
-        but a legitimate long read (a wide rerank) can outlive one TTL between
-        manifest touches and would fail there. A periodic renewal keeps the
-        lease — and the blob protection it stands for — alive for exactly as
-        long as the query does.
+        The view is captured from a worker thread (``pin_query_snapshot`` runs
+        under ``asyncio.to_thread``), where no loop is running to schedule a
+        task on, and a legitimate long read (a wide rerank) can also block the
+        event loop for minutes. An asyncio-task heartbeat is never scheduled
+        then: the lease expires under the query and the end-of-query renew
+        refuses the result. A thread renews independently because the renewal
+        is a small sqlite write and the GIL is released during I/O and every
+        switch interval, so renewal survives loop saturation.
         """
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
+        if self._heartbeat is not None or self._lease is None:
             return
+        stop = threading.Event()
+        self._heartbeat = stop
+        lease = self._lease
 
-        async def beat():
-            while True:
-                await asyncio.sleep(QUERY_LEASE_TTL_SECONDS / 3)
+        def _run():
+            while not stop.wait(QUERY_LEASE_TTL_SECONDS / 3):
                 try:
-                    self._registry.renew(self._lease)
+                    self._registry.renew(lease, ttl=QUERY_LEASE_TTL_SECONDS)
                 except RuntimeError:
+                    # The lease genuinely lapsed (or was released); the
+                    # end-of-query renew refuses the result either way.
                     return
+                except Exception:
+                    # Transient store errors (e.g. sqlite 'database is locked'
+                    # while a BEGIN IMMEDIATE waits out its busy timeout) must
+                    # not stop renewal; retry on the next tick.
+                    logger.warning("Query lease renewal failed transiently; retrying", exc_info=True)
 
-        self._heartbeat = loop.create_task(beat())
+        threading.Thread(target=_run, name="query-lease-heartbeat", daemon=True).start()
 
     def renew(self):
         if self._lease is not None:
-            self._registry.renew(self._lease)  # Never return a result after its view lease expired.
+            # Never return a result after its view lease expired.
+            self._registry.renew(self._lease, ttl=QUERY_LEASE_TTL_SECONDS)
 
     def release(self):
         if self._heartbeat is not None:
-            self._heartbeat.cancel()
+            self._heartbeat.set()
             self._heartbeat = None
         if self._lease is not None:
             self._registry.release(self._lease)

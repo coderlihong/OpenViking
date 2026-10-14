@@ -364,16 +364,33 @@ async def test_query_view_heartbeat_keeps_a_long_read_lease_alive(tmp_path, monk
     The end-of-query check refuses a result whose lease lapsed, but a wide
     rerank legitimately runs longer than one TTL between manifest touches;
     the view renews the lease on its own until the query finishes.
+
+    The view is captured from a worker thread, exactly as
+    ``pin_query_snapshot`` does under ``asyncio.to_thread``: an event-loop
+    task heartbeat is never scheduled there, so the renewal must come from
+    a thread that keeps ticking while the query runs.
     """
     from openviking.indexing import publication as publication_module
 
     monkeypatch.setattr(publication_module, "QUERY_LEASE_TTL_SECONDS", 0.6)
     store = PublicationStore(str(tmp_path / "publication.db"))
     publish(store, URI)
-    view = QueryView(store)
-    view.read("acct", store)
 
-    await asyncio.sleep(1.0)
+    renewals = []
+    real_renew = store.renew
+
+    def counting_renew(lease, ttl=120):
+        renewals.append(lease)
+        return real_renew(lease, ttl=ttl)
+
+    monkeypatch.setattr(store, "renew", counting_renew)
+    view = QueryView(store)
+    await asyncio.to_thread(view.read, "acct", store)
+    assert len(renewals) == 1  # the capture's own renew
+
+    await asyncio.sleep(1.0)  # five heartbeat intervals at the patched TTL
+    assert len(renewals) > 1  # the heartbeat kept renewing off-loop
+
     view.renew()  # must still pass: the heartbeat renewed across the TTL
 
     view.release()
