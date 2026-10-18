@@ -24,6 +24,7 @@ from openviking.server.search_request import (
 from openviking.server.telemetry import run_operation
 from openviking.telemetry import TelemetryRequest
 from openviking.utils.search_filters import _resolve_levels
+from openviking_cli.utils.config.concurrency_config import concurrency_config
 
 router = APIRouter(prefix="/api/v1/vector", tags=["vector"])
 
@@ -57,7 +58,7 @@ async def _inline_read_content(
         for hit in result.get(category, [])
         if isinstance(hit, dict) and isinstance(hit.get("uri"), str)
     ]
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(concurrency_config().max_request_concurrency)
 
     async def _read(hit: Dict[str, Any]) -> None:
         async with semaphore:

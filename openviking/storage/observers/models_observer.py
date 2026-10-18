@@ -82,12 +82,20 @@ class ModelsObserver(BaseObserver):
 
         # Rerank section
         if self._rerank_instance:
+            rerank_data = None
             try:
                 rerank_data = self._get_rerank_usage()
-                if rerank_data:
-                    sections.append(("Rerank", rerank_data))
             except Exception as e:
                 logger.warning(f"Error getting Rerank usage: {e}")
+            if not rerank_data:
+                # A reranker that has never answered has no usage to show, and
+                # that is exactly when an operator needs to see it: the configured
+                # endpoint was down for hours while this table silently omitted
+                # the whole Rerank section, so every search quietly fell back to
+                # RRF-only ranking.
+                rerank_data = self._get_configured_rerank()
+            if rerank_data:
+                sections.append(("Rerank", rerank_data))
 
         if not sections:
             return "No model usage data available."
@@ -173,6 +181,30 @@ class ModelsObserver(BaseObserver):
                 )
 
         return data
+
+    def _get_configured_rerank(self) -> Optional[list]:
+        """Return the configured reranker when it has no successful call yet.
+
+        The endpoint is part of the row on purpose: the failure mode this covers
+        is a reranker that is configured but unreachable, where "which address is
+        it trying?" is the first question an operator has.
+        """
+        model = getattr(self._rerank_instance, "model_name", None) or getattr(
+            self._rerank_instance, "model", None
+        )
+        if not model:
+            return None
+        row: dict[str, Any] = {
+            "Model": model,
+            "Provider": getattr(self._rerank_instance, "provider", None) or "unknown",
+            "Status": "configured; no successful call yet",
+        }
+        endpoint = getattr(self._rerank_instance, "endpoint_url", None) or getattr(
+            self._rerank_instance, "api_base", None
+        )
+        if endpoint:
+            row["Endpoint"] = endpoint
+        return [row]
 
     def _get_rerank_usage(self) -> Optional[list]:
         """Get Rerank token usage data."""

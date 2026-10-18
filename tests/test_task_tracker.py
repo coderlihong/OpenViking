@@ -1092,3 +1092,39 @@ async def test_create_if_no_running_still_rejects_fresh_running(tracker: TaskTra
         )
         is None
     )
+
+
+async def test_create_if_no_running_settles_a_cancelled_record_whose_runner_died(
+    tracker: TaskTracker, monkeypatch
+):
+    """A dead runner can never settle its own cancellation, so it must not block the URI.
+
+    Regression: after the 01:40 restart two cancelled manuals stayed 'cancelling'
+    with the dead runner's epoch while the rebuilt work index still listed their
+    durable work.  ``_ACTIVE_STATUSES`` counts 'cancelling' as active, so
+    ``create_if_no_running`` refused their re-dispatch with HTTP 409 for good.
+    """
+    orphan = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/cancelled", **_owner_kwargs()
+    )
+    assert orphan is not None
+    await tracker.start(orphan.task_id)
+    # Simulate the post-restart store row: the cancellation was requested by the
+    # dead process, which is also the only process that could have settled it.
+    current = await tracker.get(orphan.task_id, **_owner_kwargs())
+    stale = deepcopy(current)
+    stale.status = TaskStatus.CANCELLING
+    stale.meta["runner_epoch"] = "dead-runner-epoch"
+    await tracker._store.update(stale)
+    # Durable work still nominally owns the record, which used to keep it alive.
+    monkeypatch.setattr(tracker._work_index, "has_work", lambda _task_id: True)
+
+    redispatched = await tracker.create_if_no_running(
+        "admin_reindex", "viking://resources/cancelled", **_owner_kwargs()
+    )
+
+    assert redispatched is not None
+    assert redispatched.task_id != orphan.task_id
+    settled = await tracker.get(orphan.task_id, **_owner_kwargs())
+    assert settled.status == TaskStatus.FAILED
+    assert "orphaned" in settled.error

@@ -299,19 +299,27 @@ class QueueManager:
             # Prune completed tasks
             active_tasks = {t for t in active_tasks if not t.done()}
 
-            # While capacity remains, keep draining the queue
+            # While capacity remains, keep draining the queue. Fill the window
+            # with one batched dequeue instead of one AGFS round-trip per
+            # message: a serial per-message dequeue capped dispatch at
+            # ~1/deq_latency tasks/s and left most of the concurrency idle.
             while len(active_tasks) < max_concurrent:
                 if not queue.has_dequeue_handler():
                     break
-                data = await queue.dequeue_raw()
-                if data is None:
+                batch = await queue.dequeue_batch_raw(max_concurrent - len(active_tasks))
+                if not batch:
                     break
-                task = asyncio.create_task(process_one(data))
-                active_tasks.add(task)
+                for data in batch:
+                    task = asyncio.create_task(process_one(data))
+                    active_tasks.add(task)
                 logger.debug(
-                    f"[QueueManager] Dispatched concurrent task for {queue.name} "
-                    f"(active={len(active_tasks)})"
+                    f"[QueueManager] Dispatched {len(batch)} tasks from batch dequeue "
+                    f"for {queue.name} (active={len(active_tasks)})"
                 )
+                if len(batch) < 2:
+                    # Either the queue is nearly drained or the backend lacks
+                    # the batch operation; avoid a tight spin on it.
+                    await asyncio.sleep(poll_interval)
 
             await asyncio.sleep(poll_interval)
 

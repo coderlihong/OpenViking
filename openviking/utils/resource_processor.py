@@ -43,6 +43,7 @@ from openviking.utils.summarizer import Summarizer
 from openviking_cli.exceptions import OpenVikingError
 from openviking_cli.utils import VikingURI, get_logger
 from openviking_cli.utils.config import get_openviking_config
+from openviking_cli.utils.config.concurrency_config import clamp_file_vectorization
 from openviking_cli.utils.storage import StoragePath
 
 if TYPE_CHECKING:
@@ -50,7 +51,6 @@ if TYPE_CHECKING:
     from openviking.parse.vlm import VLMProcessor
 
 logger = get_logger(__name__)
-_MAX_FILE_VECTORIZATION_CONCURRENCY = 64
 VECTORDB_MAX_QUERY_LIMIT = 100_000
 
 
@@ -816,13 +816,7 @@ class ResourceProcessor:
         ]
 
         config = get_openviking_config().queue_workers.add_resource
-        concurrency = max(
-            1,
-            min(
-                int(config.file_vectorization_concurrency),
-                _MAX_FILE_VECTORIZATION_CONCURRENCY,
-            ),
-        )
+        concurrency = clamp_file_vectorization(config.file_vectorization_concurrency)
 
         async def vectorize(entry_uri: str, name: str, parent_uri: str) -> None:
             await vectorize_file(

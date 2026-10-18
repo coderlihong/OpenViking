@@ -357,6 +357,17 @@ class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 1933
     workers: int = 1
+    listen_backlog: int = Field(
+        default=2048,
+        gt=0,
+        description=(
+            "Socket backlog handed to the listening socket. Under a request burst the "
+            "kernel drops SYNs once this queue fills (macOS caps it at "
+            "kern.ipc.somaxconn, 128 by default, and reports 'listen queue overflow'), "
+            "which clients see as connection timeouts; raise somaxconn as well to make "
+            "large values effective."
+        ),
+    )
     executor_threads: int = Field(
         default=0,
         ge=0,

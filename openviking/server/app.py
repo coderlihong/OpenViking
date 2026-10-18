@@ -27,7 +27,7 @@ from openviking.server.config import (
 )
 from openviking.server.dependencies import set_server_config, set_service
 from openviking.server.error_mapping import map_exception
-from openviking.server.identity import Role
+from openviking.server.identity import RequestContext, Role
 from openviking.server.models import ERROR_CODE_TO_HTTP_STATUS, ErrorInfo, Response
 from openviking.server.profile_middleware import create_profile_http_middleware
 from openviking.server.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
@@ -67,6 +67,7 @@ from openviking.server.routers import (
 from openviking.service.core import OpenVikingService
 from openviking.service.task_tracker import get_task_tracker
 from openviking_cli.exceptions import OpenVikingError
+from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils import get_logger
 from openviking_cli.utils.config import (
     DEFAULT_OV_CONF,
@@ -80,6 +81,21 @@ logger = get_logger(__name__)
 
 WORKER_WITH_BOT_ENV = "OPENVIKING_WORKER_WITH_BOT"
 WORKER_BOT_API_URL_ENV = "OPENVIKING_WORKER_BOT_API_URL"
+
+# Upper bound on the directories a single startup re-fires for interrupted
+# generations: the point is to resume the work, not to stampede the writer.
+RESUME_INTERRUPTED_DIRECTORY_LIMIT = 20
+
+# Retired generations examined per maintenance sweep when reclaiming orphan
+# vectors. Each one costs a filtered query, so the janitor is bounded rather
+# than one long pass that would hold the store. The grace period keeps a
+# generation that a reader captured moments ago alive for an hour.
+RETIRED_VECTOR_RECLAIM_GENERATIONS = int(
+    os.environ.get("OPENVIKING_RETIRED_VECTOR_RECLAIM_GENERATIONS", "50")
+)
+RETIRED_VECTOR_GRACE_SECONDS = float(
+    os.environ.get("OPENVIKING_RETIRED_VECTOR_GRACE_SECONDS", "3600")
+)
 
 
 def _configure_default_executor(config: ServerConfig) -> None:
@@ -383,6 +399,228 @@ def create_app(
         # Start TaskTracker cleanup loop
         task_tracker = get_task_tracker()
         task_tracker.start_cleanup_loop()
+
+        # A producer killed mid-batch (restart, cancelled job, dead client)
+        # never reaches ``seal_batch``, and nothing else re-checks its batch, so
+        # every chapter it had already finished stayed invisible to retrieval.
+        # Seal the ones whose receipts are complete before serving traffic.
+        from openviking.indexing.publication import configured_store
+
+        registry = configured_store()
+        recover = getattr(registry, "recover_stranded_batches", None)
+        prune = getattr(registry, "prune_snapshots", None)
+        if recover is not None:
+            try:
+                sealed = await asyncio.to_thread(recover)
+                if sealed:
+                    logger.info(
+                        "Recovered %d stranded publication batch(es) at startup", sealed
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Stranded publication batch recovery failed: %s", e)
+
+            async def _stranded_batch_sweep() -> None:
+                # A producer can also die without a restart (cancelled job,
+                # killed client).  The idle window keeps this from racing a live
+                # producer that is between its last receipt and seal_batch.
+                while True:
+                    try:
+                        await asyncio.sleep(60)
+                        swept = await asyncio.to_thread(recover, 200, 60.0)
+                        if swept:
+                            logger.info(
+                                "Sealed %d stranded publication batch(es)", swept
+                            )
+                        if prune is not None:
+                            # Each publish writes a whole manifest snapshot; only
+                            # the head of each account (and unexpired leases) can
+                            # still read one, so the rest is dead weight that grew
+                            # the store to 30GB of unreachable manifests.
+                            dropped = await asyncio.to_thread(prune, 3600.0, 64)
+                            if dropped:
+                                logger.info(
+                                    "Pruned %d unreachable manifest snapshot(s)", dropped
+                                )
+                        windows = getattr(registry, "prune_generation_write_windows", None)
+                        if windows is not None:
+                            # One row per managed vector write and nothing ever
+                            # deleted them: 1.19M rows / 545MB of a 37GB store.
+                            dropped = await asyncio.to_thread(windows, 86400.0, 20000)
+                            if dropped:
+                                logger.info(
+                                    "Pruned %d confirmed generation write window(s)", dropped
+                                )
+                        lexical = getattr(registry, "prune_superseded_lexical", None)
+                        if lexical is not None:
+                            # Immutable per generation, so every reindex wrote a
+                            # fresh copy of the text: 717k rows / 9.1GB of a
+                            # 13.6GB store, and the store only grew.
+                            dropped = await asyncio.to_thread(lexical, 86400.0, 2000)
+                            if dropped:
+                                logger.info(
+                                    "Pruned %d superseded lexical row(s)", dropped
+                                )
+                        settled = getattr(registry, "prune_settled_builds", None)
+                        if settled is not None:
+                            # Append-only history: 653,922 rows / 337MB, and only
+                            # the newest row per URI is ever read.
+                            dropped = await asyncio.to_thread(settled, 604800.0, 20000)
+                            if dropped:
+                                logger.info("Pruned %d settled build row(s)", dropped)
+                        await _reclaim_retired_vectors()
+                        checkpoint = getattr(registry, "checkpoint_wal", None)
+                        if checkpoint is not None:
+                            # An unchecked WAL reached 2.5GB and every write had
+                            # to append to it; keep it truncated between bursts.
+                            await asyncio.to_thread(checkpoint, "TRUNCATE")
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("Stranded publication batch sweep failed: %s", e)
+
+            async def _reclaim_retired_vectors() -> None:
+                """Delete vectors whose generation nothing can reach any more.
+
+                Every reindex writes a *new* generation's records (the record id
+                embeds the generation), so the previous copy becomes an orphan
+                that no code ever removed: live, 957,757 of 1,303,573 vectors
+                (73.5%) belonged to retired generations, 78 GB of store. Worse,
+                retrieval never filters by generation, so those stale copies were
+                still searchable and competed with the current record of the same
+                URI in every result set.
+
+                Bounded per sweep and off the request path: the janitor catches
+                up over time instead of holding the store for one long pass.
+                """
+                store = getattr(service, "vikingdb_manager", None)
+                scan = getattr(registry, "retired_generations", None)
+                if store is None or scan is None:
+                    return
+                retired = await asyncio.to_thread(
+                    scan, RETIRED_VECTOR_GRACE_SECONDS, RETIRED_VECTOR_RECLAIM_GENERATIONS
+                )
+                if not retired:
+                    return
+                reclaimed = 0
+                for row in retired:
+                    ctx = RequestContext(
+                        user=UserIdentifier(row["account"], "system"),
+                        role=Role.ROOT,
+                        bypass_acl=True,
+                    )
+                    ids: list[str] = []
+                    offset = 0
+                    while True:
+                        page = await store.query(
+                            filter={
+                                "op": "must",
+                                "field": "index_generation",
+                                "conds": [row["generation"]],
+                            },
+                            limit=1000,
+                            offset=offset,
+                            output_fields=["id"],
+                            ctx=ctx,
+                        )
+                        ids.extend(str(item["id"]) for item in page if item.get("id"))
+                        if len(page) < 1000:
+                            break
+                        offset += len(page)
+                    if ids:
+                        reclaimed += await store.delete(ids, ctx=ctx)
+                if reclaimed:
+                    logger.info(
+                        "Reclaimed %d vector(s) from %d retired generation(s)",
+                        reclaimed,
+                        len(retired),
+                    )
+
+            app.state.stranded_batch_task = asyncio.create_task(_stranded_batch_sweep())
+
+        # A restart orphans whatever was in flight: those generations stay
+        # 'failed' with an interrupt error and nothing retries them, so a tree
+        # can sit half-indexed until an operator notices (live: one interrupted
+        # run left 14,688 URIs for 40 hours and needed a hand-written re-fire).
+        # Re-fire the affected directories through the ordinary reindex path,
+        # bounded and sequential so a big interruption cannot stampede the
+        # writer. The pass runs off the request path.
+        interrupted = getattr(registry, "interrupted_uris", None)
+        if interrupted is not None:
+
+            async def _resume_interrupted_generations() -> None:
+                try:
+                    rows = await asyncio.to_thread(interrupted, 2000)
+                    if not rows:
+                        return
+                    targets = list(
+                        dict.fromkeys(
+                            (row["account"], row["uri"].rsplit("/", 1)[0]) for row in rows
+                        )
+                    )[:RESUME_INTERRUPTED_DIRECTORY_LIMIT]
+                    logger.warning(
+                        "Resuming %d interrupted generation(s): re-firing %d "
+                        "director(ies), newest %s",
+                        len(rows),
+                        len(targets),
+                        targets[0][1],
+                    )
+                    fired = 0
+                    for account, parent in targets:
+                        ctx = RequestContext(
+                            user=UserIdentifier(account, "system"),
+                            role=Role.ROOT,
+                            bypass_acl=True,
+                        )
+                        try:
+                            await service.reindex(
+                                uri=parent,
+                                mode="vectors_only",
+                                recursive=True,
+                                wait=False,
+                                ctx=ctx,
+                            )
+                            fired += 1
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("Resume reindex failed for %s: %s", parent, exc)
+                    logger.warning(
+                        "Interrupted-generation resume fired %d/%d director(ies)",
+                        fired,
+                        len(targets),
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Interrupted-generation resume failed: %s", e)
+
+            app.state.resume_interrupted_task = asyncio.create_task(
+                _resume_interrupted_generations()
+            )
+
+        # Lexical search ranks against a per-account FTS mirror of the published
+        # lexical rows. Databases written before the mirror existed, and mirrors a
+        # crash left half-built, are filled in here, off the request path, so an
+        # upgrade needs no manual migration step and search stops paying for the
+        # brute-force scan of the whole account scope.
+        rebuild_lexical = getattr(registry, "rebuild_lexical_index", None)
+        if rebuild_lexical is not None:
+
+            async def _lexical_mirror_backfill() -> None:
+                try:
+                    built = await asyncio.to_thread(rebuild_lexical)
+                    if built:
+                        logger.info("Built %d lexical FTS mirror(s): %s", len(built), built)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Lexical FTS mirror backfill failed: %s", e)
+
+            app.state.lexical_mirror_task = asyncio.create_task(_lexical_mirror_backfill())
+
+        # Optional diagnostics: dump stacks when the event loop stops responding.
+        from openviking.utils.loop_watchdog import start_loop_watchdog
+
+        if start_loop_watchdog():
+            logger.info("Event-loop stall watchdog enabled")
 
         # Initialize tracing and OTLP log export from server.observability.
         from openviking.telemetry import tracer_module

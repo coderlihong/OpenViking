@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Stage a joint image vector and its original asset behind the shared barrier."""
 
+import asyncio
 from copy import deepcopy
+from functools import partial
 import hashlib
 import json
 
-from openviking.indexing.batch import current_batch_id
+from openviking.indexing.batch import begin_batched
 from openviking.indexing.publication import configured_store
 
 VERSION = "image-occurrences-v3"
@@ -83,7 +85,20 @@ async def enqueue_image_plan(message, embedding_config, queue, source_ref=None, 
         values=provenance,
     )
     document_id = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-    prepared = prepare_meta(fields, registry, document_id, source_ref["sha256"] if source_ref else revision) if registry else None
+    prepared = (
+        # metadata_latest() takes a query lease (a write transaction); keeping it
+        # on the event loop froze every in-flight request while a bulk publish
+        # held the write lock.
+        await asyncio.to_thread(
+            prepare_meta,
+            fields,
+            registry,
+            document_id,
+            source_ref["sha256"] if source_ref else revision,
+        )
+        if registry
+        else None
+    )
     plan = hashlib.sha256(
         json.dumps([VERSION, identity, revision, config, prepared["fingerprint"] if prepared else None], sort_keys=True).encode()
     ).hexdigest()
@@ -120,18 +135,28 @@ async def enqueue_image_plan(message, embedding_config, queue, source_ref=None, 
     if registry:
         if prepared:
             members.append("metadata:" + plan)
-        generation = registry.begin(
-            *identity,
+        # The registry serialises every writer behind one SQLite write lock, and
+        # a bulk publication can hold it for seconds.  Running this transaction
+        # inline stalled the event loop for that whole window (the loop watchdog
+        # caught the main thread inside publication.db `BEGIN IMMEDIATE` reached
+        # from here, with /health at 7s).  The store keeps a per-thread
+        # connection, so a worker thread waits on the lock without freezing
+        # every in-flight VLM and embedding request.
+        generation = await asyncio.to_thread(
+            begin_batched,
+            registry,
+            identity[0],
+            identity[1],
+            *identity[2:],
             plan,
             members,
             source_ref=source_ref,
-            batch=current_batch_id(registry, identity[0], identity[1]),
         )
         for item in messages:
             item.context_data["index_generation"] = generation
             item.context_data.update(bind_meta(prepared, generation))
     try:
-        write_meta(registry, generation, prepared)
+        await asyncio.to_thread(write_meta, registry, generation, prepared)
         from openviking.utils.embedding_utils import _enqueue_embedding_message
 
         for item in messages:
@@ -140,12 +165,14 @@ async def enqueue_image_plan(message, embedding_config, queue, source_ref=None, 
             ):
                 raise RuntimeError("Image enqueue failed; index is not ready")
         if registry:
-            registry.seal(generation)
-            state = registry.state(generation)
+            await asyncio.to_thread(registry.seal, generation)
+            state = await asyncio.to_thread(registry.state, generation)
             if state["state"] in {"failed", "superseded"}:
                 raise RuntimeError(state.get("error") or "Image generation cannot publish")
     except BaseException:
         if registry:
-            registry.fail(generation, "Image producer failed before publication seal")
+            await asyncio.to_thread(
+                registry.fail, generation, "Image producer failed before publication seal"
+            )
         raise
     return len(messages)

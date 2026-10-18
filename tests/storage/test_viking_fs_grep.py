@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import openviking.storage.viking_fs as viking_fs_module
 from openviking.storage.expr import And, PathScope, RawDSL
-from openviking.storage.viking_fs import _DEFAULT_GREP_FILE_CONCURRENCY, VikingFS
+from openviking.storage.viking_fs import VikingFS
+from openviking.storage.viking_fs._grep import grep_file_concurrency
 from openviking_cli.utils.config.grep_config import GrepConfig
 
 
@@ -540,7 +540,7 @@ async def test_grep_parallel_reads_respect_concurrency_limit(monkeypatch):
     assert result["count"] == 12
     assert result["files_scanned"] == 12
     assert max_active_reads > 1
-    assert max_active_reads <= min(12, _DEFAULT_GREP_FILE_CONCURRENCY)
+    assert max_active_reads <= min(12, grep_file_concurrency())
 
 
 @pytest.mark.asyncio
@@ -611,7 +611,7 @@ async def test_grep_stops_scheduling_later_batches_after_node_limit(monkeypatch)
         lambda uri, ctx=None: uri.replace("viking://", "/"),
     )
     monkeypatch.setattr(fs.agfs, "read", fake_agfs_read, raising=False)
-    monkeypatch.setattr(viking_fs_module, "_DEFAULT_GREP_FILE_CONCURRENCY", 2)
+    monkeypatch.setattr("openviking.storage.viking_fs._grep.grep_file_concurrency", lambda: 2)
 
     result = await fs.grep("viking://resources", pattern="match", node_limit=2)
 

@@ -58,6 +58,12 @@ def _maybe_offer_init() -> None:
 
 def main():
     """Bootstrap the server while binding a stable execution-level log trace ID."""
+    # Debug aid: when OPENVIKING_SQL_TRACE_MS is set, wrap sqlite3 before any
+    # store exists so a slow query is logged together with its caller stack.
+    from openviking_cli.utils import sql_trace  # noqa: PLC0415
+
+    sql_trace.install_from_env()
+
     # Pre-parse --config from sys.argv before any openviking imports,
     # so the env var is visible when the config singleton first initialises.
     # This is done for all subcommands (init, doctor, server) to ensure

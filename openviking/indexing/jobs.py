@@ -12,6 +12,8 @@ import re
 import time
 from uuid import uuid4
 
+from openviking.indexing.manifest_codec import decode_manifest
+
 KINDS = {'D1', 'D2', 'W1', 'W2'}
 STAGES = {'validate', 'parse_write', 'index', 'wiki_extract', 'wiki_validate', 'publish_gate'}
 TERMINAL = {'ready', 'draft_ready', 'failed', 'cancelled'}
@@ -215,8 +217,8 @@ class DurableJobsMixin:
         if not published or not head:
             missing['version_switch'].append(f'{account}/{namespace}')
             return missing
-        manifest = json.loads(db.execute('SELECT manifest FROM snapshots WHERE id=?',
-                                         (head[0],)).fetchone()[0])
+        manifest = decode_manifest(db.execute('SELECT manifest FROM snapshots WHERE id=?',
+                                              (head[0],)).fetchone()[0])
         for row in rows:
             item = manifest.get(row['uri'])
             if not item or item.get('generation') != row['generation']:
@@ -244,6 +246,7 @@ class DurableJobsMixin:
 
     def job_publication_seal(self, job_id, owner, fence):
         """Fence producer closure and any resulting head switch in one transaction."""
+        outcome = {}
         with self.db() as db:
             job = self._job_owner(db, job_id, owner, fence)
             checkpoint = json.loads(job['checkpoint'])
@@ -257,9 +260,13 @@ class DurableJobsMixin:
             if batch['state'] not in {'building', 'queued', 'published'}:
                 raise ValueError('Failed publication batch cannot be sealed')
             db.execute("UPDATE batches SET state='queued' WHERE id=? AND state='building'", (batch_id,))
-            published = self._publish_batch_if_complete(db, batch_id)
-            return {'batch_id': batch_id, 'published': published,
-                    'state': db.execute('SELECT state FROM batches WHERE id=?', (batch_id,)).fetchone()[0]}
+            self._settle_batch(db, batch_id, outcome=outcome)
+        # The publish runs after this transaction closes, so the batch state is
+        # read on a fresh transaction: inside the frame it is still 'queued'.
+        with self.db(readonly=True) as db:
+            state = db.execute('SELECT state FROM batches WHERE id=?', (batch_id,)).fetchone()[0]
+        return {'batch_id': batch_id, 'published': bool(outcome.get('published')),
+                'state': state}
 
     def job_list(self, account, namespace=None, limit=100, principal=None):
         if type(limit) is not int or not 1 <= limit <= 1000:

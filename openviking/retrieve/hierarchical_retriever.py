@@ -53,6 +53,49 @@ from openviking_cli.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# The dense leaf pool is fused by rank position, so a pool owned by one record
+# type starves every other kind of document: with 406k image vectors in the live
+# corpus, the whole-tree top-100 was images only, and the text document that
+# actually matched the query got no dense contribution at all (its fused score
+# was exactly one lexical term, tying the image's single dense term). Over-fetch
+# and cap the share of any one type before fusion.
+DENSE_POOL_OVERFETCH = 4
+_DENSE_POOL_MAX_TYPE_SHARE = 0.5
+
+
+def diversify_by_type(
+    results: List[Dict[str, Any]],
+    limit: int,
+    *,
+    max_share: float = _DENSE_POOL_MAX_TYPE_SHARE,
+) -> List[Dict[str, Any]]:
+    """Cap one record type's share of a recall pool, keeping the pool size.
+
+    ``type`` groups recall rows by modality (``image`` vs text). Rows beyond a
+    type's share are held back rather than dropped, and are used to refill the
+    pool in their original order once diversified rows run out -- so a
+    single-modality pool (every other deployment) comes back byte-identical,
+    and only a mixed pool changes.
+    """
+    if limit <= 0 or len(results) <= limit:
+        return results
+    cap = max(1, int(limit * max_share))
+    kept: List[Dict[str, Any]] = []
+    held: List[Dict[str, Any]] = []
+    per_type: Dict[str, int] = {}
+    for result in results:
+        kind = str(result.get("type") or "")
+        if per_type.get(kind, 0) < cap:
+            per_type[kind] = per_type.get(kind, 0) + 1
+            kept.append(result)
+        else:
+            held.append(result)
+        if len(kept) >= limit:
+            break
+    if len(kept) < limit:
+        kept.extend(held[: limit - len(kept)])
+    return kept
+
 
 class RetrieverMode(str):
     THINKING = "thinking"
@@ -427,6 +470,7 @@ class HierarchicalRetriever:
         """
         profile = self.fusion_profile.with_row_budget(limit)
         telemetry = get_current_telemetry()
+        stage_started = time.monotonic()
 
         recall_limit = max(profile.recall_limit, limit)
         # Leaf global recall — independent of navigation and rerank toggles.
@@ -441,8 +485,10 @@ class HierarchicalRetriever:
                     target_directories=target_dirs,
                     extra_filter=scope_dsl,
                     level=[2] if level is None else [lv for lv in level if lv == 2] or [2],
-                    limit=recall_limit,
+                    limit=recall_limit * DENSE_POOL_OVERFETCH,
                 )
+                leaf_results = diversify_by_type(leaf_results, recall_limit)
+        vector_done = time.monotonic()
         telemetry.count("vector.searches", int(dense_searched))
         telemetry.count("vector.scored", len(leaf_results))
         telemetry.count("vector.scanned", len(leaf_results))
@@ -454,6 +500,7 @@ class HierarchicalRetriever:
             ]
         }
 
+        lexical_count = 0
         if self._lexical_search is not None:
             try:
                 lexical_rows = await self._lexical_search(
@@ -469,10 +516,12 @@ class HierarchicalRetriever:
                 telemetry.record_error("hybrid.lexical_recall", "LEXICAL_RECALL_FAILED", str(exc))
             else:
                 if lexical_rows:
+                    lexical_count = len(lexical_rows)
                     ranked_paths["lexical"] = [
                         candidate_from_result(result, rank=index + 1)
                         for index, result in enumerate(lexical_rows)
                     ]
+        lexical_done = time.monotonic()
 
         # The pipeline is pure CPU work plus one blocking provider call; run it off
         # the event loop rather than stalling concurrent requests on rerank.
@@ -485,13 +534,49 @@ class HierarchicalRetriever:
             estimate=estimate_text_tokens,
         )
 
+        fusion_done = time.monotonic()
+
         for key, value in fusion_result.trace.items():
             telemetry.set(f"hybrid.{key}", value)
         telemetry.set("hybrid.rerank_requested", rerank_enabled)
+        rerank_applied = bool(fusion_result.trace.get("rerank_applied"))
+        rerank_degraded = bool(rerank_enabled and not rerank_applied)
+        if rerank_degraded:
+            # Silent degradation served rank-only RRF scores for a whole
+            # acceptance run: the fused score depends only on rank position, so
+            # an unrelated query tied with a matching one and no counter or log
+            # line said so. Rerank is the only query-dependent scoring stage.
+            degrade_reason = str(fusion_result.trace.get("rerank_reason") or "reranker unavailable")
+            logger.warning(
+                "[HybridRetrieval] Rerank degraded, serving rank-only fused order: %s. "
+                "Fused scores carry no relevance magnitude until the reranker is reachable.",
+                degrade_reason,
+            )
+            telemetry.record_error("hybrid.rerank", "RERANK_DEGRADED", degrade_reason)
 
         candidates = [candidate.as_dict() for candidate in fusion_result.selected]
         matched = await self._convert_to_matched_contexts(candidates, ctx=ctx)
         final = matched[:limit]
+        convert_done = time.monotonic()
+
+        stage_total = convert_done - stage_started
+        if stage_total >= 5.0:
+            # Tree-scoped finds can take minutes; keep a stage breakdown so the
+            # cost centre is visible without a profiler (see round-14 notes).
+            logger.warning(
+                "[HybridRetrieval] slow find %.1fs: vector=%.1fs rows=%d lexical=%.1fs rows=%d "
+                "fusion=%.1fs convert=%.1fs candidates=%d target_dirs=%s rerank=%s",
+                stage_total,
+                vector_done - stage_started,
+                len(leaf_results),
+                lexical_done - vector_done,
+                lexical_count,
+                fusion_done - lexical_done,
+                convert_done - fusion_done,
+                len(candidates),
+                target_dirs,
+                rerank_enabled,
+            )
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         get_stats_collector().record_query(
@@ -499,7 +584,11 @@ class HierarchicalRetriever:
             result_count=len(final),
             scores=[m.score for m in final],
             latency_ms=elapsed_ms,
-            rerank_used=bool(fusion_result.trace.get("rerank_applied")),
+            rerank_used=rerank_applied,
+            # The observer's "Rerank Fallback" counter is what an operator reads
+            # to decide whether ranking is trustworthy; leaving it at 0 while
+            # every query silently served rank-only order hid the outage.
+            rerank_fallback=rerank_degraded,
         )
 
         return QueryResult(

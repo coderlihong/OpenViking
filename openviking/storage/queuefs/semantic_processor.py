@@ -798,6 +798,13 @@ class SemanticProcessor(DequeueHandlerBase):
             llm_sem=llm_sem,
             total_files=len(file_paths),
         )
+        if generated_content is None:
+            # The model produced nothing: keep the sidecars already on disk and
+            # let this directory be reported as unfinished instead of writing
+            # placeholder text over real L0/L1 content.
+            raise RuntimeError(
+                f"Failed to generate overview for {dir_uri}: model returned no content"
+            )
         overview, abstract = self._normalize_overview_generation(generated_content)
 
         try:
@@ -1325,8 +1332,13 @@ class SemanticProcessor(DequeueHandlerBase):
         llm_sem: Optional[asyncio.Semaphore] = None,
         total_files: Optional[int] = None,
         total_children: Optional[int] = None,
-    ) -> str:
+    ) -> Optional[str]:
         """Generate raw directory overview model output.
+
+        Returns ``None`` when the model produced nothing (dead endpoint, timeout,
+        malformed reply). Callers must then keep whatever sidecar is already on
+        disk: overwriting a real overview with placeholder text silently
+        degrades published L0/L1 content and hides the outage.
 
         For small directories, generates a single overview from all file summaries.
         For large directories that would exceed the prompt budget, splits file
@@ -1418,59 +1430,111 @@ class SemanticProcessor(DequeueHandlerBase):
         entry_count = len(file_summaries) + len(children_abstracts)
         many_entries = entry_count > semantic.overview_batch_size
 
-        if over_budget and many_entries:
-            # Many entries, oversized prompt → batch and merge
-            logger.info(
-                f"Overview prompt for {dir_uri} exceeds budget "
-                f"({estimated_size} chars, {len(file_summaries)} files, "
-                f"{len(children_abstracts)} subdirectories). "
-                f"Splitting into batches of {semantic.overview_batch_size}."
-            )
-            overview = await self._batched_generate_overview(
-                dir_uri,
-                file_summaries,
-                children_abstracts,
-                link_map,
-                llm_sem=llm_sem,
-                output_language=output_language,
-                directory_coverage=directory_coverage,
-            )
-        elif over_budget:
-            # Few files but long summaries → truncate summaries to fit budget
-            logger.info(
-                f"Overview prompt for {dir_uri} exceeds budget "
-                f"({estimated_size} chars) with {len(file_summaries)} files. "
-                f"Truncating summaries to fit."
-            )
-            budget = semantic.max_overview_prompt_chars
-            budget -= len(children_abstracts_str)
-            per_file = max(100, budget // max(len(file_summaries), 1))
-            truncated_lines = []
-            for idx, item in enumerate(file_summaries, 1):
-                summary = item["summary"][:per_file]
-                truncated_lines.append(
-                    f"- {item['name']} (link: viking://input_sample_f{idx}): {summary}"
+        def _summaries_str(items) -> str:
+            """Render file summaries with the same placeholders as the full prompt.
+
+            The placeholders are what the model links back to, so a retry that
+            truncates summaries must keep the identical mapping.
+            """
+            lines = []
+            for idx, item in enumerate(items, 1):
+                placeholder = f"viking://input_sample_f{idx}"
+                link_map[placeholder] = self._markdown_link_target(dir_uri, item["name"])
+                lines.append(f"- {item['name']} (link: {placeholder}): {item['summary']}")
+            return "\n".join(lines) if lines else "None"
+
+        async def _attempt_overview(shrink: int = 0) -> Optional[str]:
+            # A retry that resends the same prompt cannot change the outcome when
+            # the endpoint simply could not finish it inside the client timeout:
+            # live, one directory timed out twice (10 minutes of wall clock) and
+            # ended up with no L0/L1 at all. Each retry therefore halves the
+            # per-file summary budget, so the prompt the model sees actually gets
+            # smaller.
+            attempt_files = file_summaries
+            if shrink and file_summaries:
+                longest = max(
+                    (len(item.get("summary") or "") for item in file_summaries), default=0
                 )
-            file_summaries_str = "\n".join(truncated_lines)
-            overview = await self._single_generate_overview(
+                per_file_budget = max(200, longest // (2 ** shrink))
+                attempt_files = [
+                    {**item, "summary": (item.get("summary") or "")[:per_file_budget]}
+                    for item in file_summaries
+                ]
+                logger.warning(
+                    f"Overview retry for {dir_uri} with each file summary truncated "
+                    f"to {per_file_budget} chars (attempt {shrink + 1}/{attempts})"
+                )
+            if over_budget and many_entries:
+                # Many entries, oversized prompt → batch and merge
+                logger.info(
+                    f"Overview prompt for {dir_uri} exceeds budget "
+                    f"({estimated_size} chars, {len(file_summaries)} files, "
+                    f"{len(children_abstracts)} subdirectories). "
+                    f"Splitting into batches of {semantic.overview_batch_size}."
+                )
+                return await self._batched_generate_overview(
+                    dir_uri,
+                    attempt_files,
+                    children_abstracts,
+                    link_map,
+                    llm_sem=llm_sem,
+                    output_language=output_language,
+                    directory_coverage=directory_coverage,
+                )
+            if over_budget:
+                # Few files but long summaries → truncate summaries to fit budget
+                logger.info(
+                    f"Overview prompt for {dir_uri} exceeds budget "
+                    f"({estimated_size} chars) with {len(file_summaries)} files. "
+                    f"Truncating summaries to fit."
+                )
+                budget = semantic.max_overview_prompt_chars
+                budget -= len(children_abstracts_str)
+                per_file = max(100, budget // max(len(attempt_files), 1))
+                truncated_lines = []
+                for idx, item in enumerate(attempt_files, 1):
+                    summary = item["summary"][:per_file]
+                    truncated_lines.append(
+                        f"- {item['name']} (link: viking://input_sample_f{idx}): {summary}"
+                    )
+                return await self._single_generate_overview(
+                    dir_uri,
+                    "\n".join(truncated_lines),
+                    children_abstracts_str,
+                    link_map,
+                    output_language=output_language,
+                    directory_coverage=directory_coverage,
+                )
+            return await self._single_generate_overview(
                 dir_uri,
-                file_summaries_str,
-                children_abstracts_str,
-                link_map,
-                output_language=output_language,
-                directory_coverage=directory_coverage,
-            )
-        else:
-            overview = await self._single_generate_overview(
-                dir_uri,
-                file_summaries_str,
+                _summaries_str(attempt_files),
                 children_abstracts_str,
                 link_map,
                 output_language=output_language,
                 directory_coverage=directory_coverage,
             )
 
-        return overview
+        # A dead endpoint, a timeout and a malformed reply all arrive here as
+        # ``None``, and the caller then leaves the directory without L0/L1 --
+        # live, one VLM timeout left ``fault_mechanism/中挖`` (23 chapters) with no
+        # .overview.md and the vector stage skipped the whole directory. Retry
+        # the failures that had something to summarise; a directory with no text
+        # at all cannot succeed on a retry, so it is attempted once. Three
+        # Each retry halves the per-file summary budget (see ``_attempt_overview``):
+        # a prompt the endpoint cannot finish in 240s fails the same way twice, so
+        # the retry has to send less, not merely again.
+        attempts = 3 if (file_summaries or children_abstracts) else 1
+        for attempt in range(attempts):
+            overview = await _attempt_overview(attempt)
+            if overview:
+                return overview
+            if attempt + 1 < attempts:
+                logger.warning(
+                    f"Overview generation for {dir_uri} returned nothing "
+                    f"(attempt {attempt + 1}/{attempts}); retrying"
+                )
+                await asyncio.sleep(1.0 * (attempt + 1))
+        return None
 
     async def _single_generate_overview(
         self,
@@ -1480,7 +1544,7 @@ class SemanticProcessor(DequeueHandlerBase):
         link_map: Dict[str, str],
         output_language: str = "en",
         directory_coverage: str = "",
-    ) -> str:
+    ) -> Optional[str]:
         """Generate overview from a single prompt (small directories)."""
         config = get_openviking_config()
         vlm = config.vlm
@@ -1509,7 +1573,10 @@ class SemanticProcessor(DequeueHandlerBase):
                 f"Failed to generate overview for {dir_uri}: {e}",
                 exc_info=True,
             )
-            return f"# {dir_uri.split('/')[-1]}\n\n[Directory overview is not generated]"
+            # Return no content instead of a placeholder sentence: the caller
+            # keeps the previous sidecar (and reports the failure) rather than
+            # replacing good L0/L1 content with "not generated" text.
+            return None
 
     async def _batched_generate_overview(
         self,
@@ -1590,7 +1657,12 @@ class SemanticProcessor(DequeueHandlerBase):
         partial_overviews = [p for p in partial_overviews if p is not None]
 
         if not partial_overviews:
-            return f"# {dir_name}\n\n[Directory overview is not generated]"
+            # Nothing generated for any batch: report the outage to the caller
+            # instead of writing a placeholder overview over a good sidecar.
+            logger.error(
+                f"Failed to generate overview for {dir_uri}: no batch produced content"
+            )
+            return None
 
         # If only one batch succeeded, use it directly
         if len(partial_overviews) == 1:

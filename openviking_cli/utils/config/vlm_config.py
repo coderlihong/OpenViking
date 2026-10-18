@@ -465,6 +465,8 @@ class VLMConfig(BaseModel):
             # Apply top-level defaults where credential doesn't specify
             if not cred.provider:
                 cred.provider = self.provider
+            if not cred.model:
+                cred.model = self.model
             if not cred.api_key:
                 cred.api_key = self._get_credential_api_key(cred)
             if not cred.api_base:
@@ -479,6 +481,27 @@ class VLMConfig(BaseModel):
                 cred.extra_request_body = self.extra_request_body
             if not cred.reasoning_effort:
                 cred.reasoning_effort = self.reasoning_effort
+            # Credentials may pin their own endpoint/model for failover, and a
+            # pinned value silently wins over the top-level one. A partially
+            # updated config (only vlm.api_base switched to a new deployment)
+            # therefore keeps calling the old endpoint and shows up much later as
+            # "Connection error" -- which the semantic stage used to swallow.
+            # Announce the divergence instead.
+            if cred.api_base and self.api_base and cred.api_base != self.api_base:
+                logger.warning(
+                    "vlm.credentials[{}] api_base={} differs from vlm.api_base={}; "
+                    "update both or drop the credential override if this is not an "
+                    "intentional failover endpoint".format(
+                        cred.id, cred.api_base, self.api_base
+                    )
+                )
+            if cred.model and self.model and cred.model != self.model:
+                logger.warning(
+                    "vlm.credentials[{}] model={} differs from vlm.model={}; make sure "
+                    "the credential override is intentional".format(
+                        cred.id, cred.model, self.model
+                    )
+                )
 
     def _has_legacy_provider_config(self) -> bool:
         """Check if there's legacy provider config (not credentials-based)."""

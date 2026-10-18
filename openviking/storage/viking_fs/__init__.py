@@ -59,7 +59,6 @@ from openviking.storage.viking_fs import _base as _base_mod
 from openviking.storage.viking_fs._access import _AccessMixin
 from openviking.storage.viking_fs._base import (
     _ABSTRACT_WORKER_COUNT,
-    _DEFAULT_GREP_FILE_CONCURRENCY,
     _T,
     LS_ALL_NODES,
     SNAPSHOT_DIFF_MAX_FILE_BYTES,

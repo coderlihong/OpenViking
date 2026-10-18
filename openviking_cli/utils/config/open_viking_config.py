@@ -14,6 +14,7 @@ from openviking_cli.session.user_id import UserIdentifier
 from .cache_config import CacheConfig
 from .config_loader import resolve_config_path
 from .config_utils import format_validation_error, raise_unknown_config_fields
+from .concurrency_config import ConcurrencyConfig
 from .consts import (
     DEFAULT_CONFIG_DIR,
     DEFAULT_OV_CONF,
@@ -279,6 +280,11 @@ class OpenVikingConfig(BaseModel):
     queue_workers: QueueWorkersConfig = Field(
         default_factory=QueueWorkersConfig,
         description="Queue worker runtime configuration",
+    )
+
+    concurrency: ConcurrencyConfig = Field(
+        default_factory=ConcurrencyConfig,
+        description="Deployment-wide concurrency ceilings (admission control)",
     )
 
     reindex: ReindexConfig = Field(

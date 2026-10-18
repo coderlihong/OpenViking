@@ -164,6 +164,21 @@ pub trait QueueBackend: Send + Sync {
     /// Remove and return the first message from the queue
     fn dequeue(&mut self, queue_name: &str) -> Result<Option<Message>>;
 
+    /// Remove and return up to `max` messages in one atomic step.
+    ///
+    /// The default implementation loops `dequeue`, which keeps per-call
+    /// transaction cost; backends override this to batch the SELECT+UPDATE.
+    fn dequeue_batch(&mut self, queue_name: &str, max: usize) -> Result<Vec<Message>> {
+        let mut out = Vec::with_capacity(max);
+        for _ in 0..max {
+            match self.dequeue(queue_name)? {
+                Some(msg) => out.push(msg),
+                None => break,
+            }
+        }
+        Ok(out)
+    }
+
     /// View the first message without removing it
     fn peek(&self, queue_name: &str) -> Result<Option<Message>>;
 
@@ -693,6 +708,90 @@ impl QueueBackend for SQLiteQueueBackend {
         Ok(Some(stored.into_message()))
     }
 
+    fn dequeue_batch(&mut self, queue_name: &str, max: usize) -> Result<Vec<Message>> {
+        if max == 0 {
+            return Ok(Vec::new());
+        }
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::internal(format!("sqlite mutex poisoned: {}", e)))?;
+
+        Self::require_queue_exists(&conn, queue_name)?;
+
+        let tx = conn
+            .transaction()
+            .map_err(|e| Error::internal(format!("sqlite transaction begin error: {}", e)))?;
+
+        let limit = max.min(i64::MAX as usize) as i64;
+        let mut stmt = tx
+            .prepare_cached(
+                "SELECT id, data FROM queue_messages
+                 WHERE queue_name = ?1 AND status = 'pending'
+                 ORDER BY id LIMIT ?2",
+            )
+            .map_err(|e| Error::internal(format!("sqlite dequeue batch query error: {}", e)))?;
+        let rows = stmt
+            .query_map(params![queue_name, limit], |row| {
+                Ok((row.get::<_, i64>(0)?, read_sqlite_text(row, 1)?))
+            })
+            .map_err(|e| Error::internal(format!("sqlite dequeue batch scan error: {}", e)))?;
+        let mut picked: Vec<(i64, String)> = Vec::new();
+        for row in rows {
+            match row {
+                Ok(pair) => picked.push(pair),
+                Err(e) => {
+                    return Err(Error::internal(format!(
+                        "sqlite dequeue batch read error: {}",
+                        e
+                    )))
+                }
+            }
+        }
+        drop(stmt);
+
+        if picked.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // One UPDATE covers the whole batch inside the same transaction.
+        let ids: Vec<String> = picked.iter().map(|(id, _)| id.to_string()).collect();
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "UPDATE queue_messages SET status = 'processing', processing_started_at = ? WHERE id IN ({})",
+            placeholders
+        );
+        let now = Utc::now().timestamp();
+        let mut update_stmt = tx.prepare(&sql).map_err(|e| {
+            Error::internal(format!("sqlite batch mark processing prepare error: {}", e))
+        })?;
+        let bound = std::iter::once(&now as &(dyn rusqlite::ToSql))
+            .chain(ids.iter().map(|id| id as &(dyn rusqlite::ToSql)))
+            .collect::<Vec<_>>();
+        let updated = update_stmt
+            .execute(&bound[..])
+            .map_err(|e| Error::internal(format!("sqlite batch mark processing error: {}", e)))?;
+        drop(update_stmt);
+        if updated != picked.len() {
+            return Err(Error::internal(format!(
+                "sqlite batch mark processing mismatch: picked {} but updated {}",
+                picked.len(),
+                updated
+            )));
+        }
+
+        tx.commit()
+            .map_err(|e| Error::internal(format!("sqlite transaction commit error: {}", e)))?;
+
+        let mut out = Vec::with_capacity(picked.len());
+        for (_id, raw_data) in picked {
+            let stored: StoredMessage = serde_json::from_str(&raw_data)
+                .map_err(|e| Error::Serialization(e.to_string()))?;
+            out.push(stored.into_message());
+        }
+        Ok(out)
+    }
+
     fn peek(&self, queue_name: &str) -> Result<Option<Message>> {
         let conn = self
             .conn
@@ -1079,6 +1178,46 @@ mod tests {
 
         let dequeued = backend.dequeue("test").unwrap().unwrap();
         assert_eq!(dequeued.data, payload);
+    }
+
+    #[test]
+    fn test_sqlite_backend_dequeue_batch() {
+        let (_dir, _db_path, mut backend) = sqlite_backend();
+        backend.create_queue("test").unwrap();
+        for i in 0..5 {
+            backend
+                .enqueue("test", Message::new(format!("msg{i}").into_bytes()))
+                .unwrap();
+        }
+        // A batch larger than the queue drains everything, FIFO order.
+        let batch = backend.dequeue_batch("test", 16).unwrap();
+        assert_eq!(batch.len(), 5);
+        for (i, msg) in batch.iter().enumerate() {
+            assert_eq!(msg.data, format!("msg{i}").into_bytes());
+        }
+        assert_eq!(backend.dequeue_batch("test", 16).unwrap().len(), 0);
+
+        // Partial batch leaves the tail pending.
+        for i in 0..3 {
+            backend
+                .enqueue("test", Message::new(format!("tail{i}").into_bytes()))
+                .unwrap();
+        }
+        let batch = backend.dequeue_batch("test", 2).unwrap();
+        assert_eq!(batch.len(), 2);
+        // The first batch of 5 was never acked, so it still counts as
+        // processing; the second batch adds 2 more.
+        assert_eq!(backend.status("test").unwrap().processing, 7);
+        assert_eq!(backend.status("test").unwrap().pending, 1);
+    }
+
+    #[test]
+    fn test_sqlite_backend_dequeue_batch_empty_queue() {
+        let (_dir, _db_path, mut backend) = sqlite_backend();
+        backend.create_queue("test").unwrap();
+        assert_eq!(backend.dequeue_batch("test", 8).unwrap().len(), 0);
+        // Zero-size request is a no-op, not an error.
+        assert_eq!(backend.dequeue_batch("test", 0).unwrap().len(), 0);
     }
 
     #[test]

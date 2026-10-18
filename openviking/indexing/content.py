@@ -8,8 +8,9 @@ use the existing account-scoped AGFS encryption stack, and have no public URI.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from functools import wraps
 
@@ -50,7 +51,14 @@ async def archive_source(fs, uri, ctx):
     # Authorized read of the latest working source; private data never lives in
     # the SQLite metadata database or a queue message.
     registry = configured_store()
-    epoch = registry.observe_draft(ctx.account_id, uri) if registry else None
+    # ``observe_draft`` takes the publication write lock; keep it off the event
+    # loop so a busy writer cannot stall every other coroutine (measured as
+    # multi-second loop stalls on this call during fleet reindex).
+    epoch = (
+        await asyncio.to_thread(registry.observe_draft, ctx.account_id, uri)
+        if registry
+        else None
+    )
     with draft_sources():
         raw = await fs.read_file_bytes(uri, ctx=ctx)
     reference = await archive_bytes(fs, raw, ctx)
@@ -100,7 +108,36 @@ async def archive_bytes(fs, raw, ctx):
             # this caller still needs its own write.
             if not _is_lock_conflict(exc) and not isinstance(exc, FileExistsError):
                 raise
-    stored = fs._handle_agfs_read(await fs._async_agfs.read(path))
+    # Read the blob back and verify it byte-for-byte. Two live races make a
+    # single attempt unreliable: the caller that lost the directory lock skips
+    # its write expecting a winner that has not landed yet (or a store cleaned
+    # out from under a running build keeps stale visibility), which surfaces as
+    # not-found; and two writers of the *same* content (same sha256) can be
+    # observed mid-write, which surfaces as a byte mismatch. Both were reported
+    # as file-level failures -- 15 "Failed to vectorize" plus "Immutable source
+    # revision failed verification" on a case image.
+    #
+    # Not-found is repaired (the bytes are in hand); a mismatch is only re-read,
+    # never overwritten: a blob whose content really is wrong is corruption, and
+    # rewriting it would hide exactly the failure this verification exists to
+    # report.
+    stored = None
+    for attempt in range(3):
+        try:
+            stored = fs._handle_agfs_read(await fs._async_agfs.read(path))
+        except Exception as exc:
+            if not is_not_found_error(exc) and not isinstance(exc, FileNotFoundError):
+                raise
+            stored = None
+            try:
+                await fs._async_agfs.write(path, raw)
+            except Exception as exc:
+                if not _is_lock_conflict(exc) and not isinstance(exc, FileExistsError):
+                    raise
+        if stored == raw:
+            break
+        if attempt < 2:
+            await asyncio.sleep(0.2 * (attempt + 1))
     if stored != raw:
         raise RuntimeError("Immutable source revision failed verification")
     reference = {"sha256": sha, "size": len(raw)}
@@ -144,19 +181,26 @@ def invalidate_draft(uri, ctx):
         registry.invalidate_draft(ctx.account_id, uri)
 
 
-@contextmanager
-def source_write(uri, ctx, backend=None):
+@asynccontextmanager
+async def source_write(uri, ctx, backend=None):
     """Hold a durable fence until the storage await confirms completion.
 
     Cancellation/transport failure cannot prove that the backend stopped.
     Keep an uncertain fence for verified recovery instead of expiring it.
+
+    Each transition is a sqlite write transaction. Running them on the event
+    loop put every concurrent request behind the single writer: the loop
+    watchdog caught /health stalls of 30-45 s with the main thread parked in
+    ``begin_write`` -> ``db`` (BEGIN IMMEDIATE) from this context manager, once
+    per file write. They are offloaded to a worker thread; the wrapped operation
+    still runs on the caller's loop.
     """
     registry = configured_store()
     if registry is None:
         yield
         return
     reference = backend.prepare_source_write(ctx.account_id, uri) if backend is not None and hasattr(backend, 'prepare_source_write') else None
-    token = registry.begin_write(ctx.account_id, uri, backend_ref=reference)
+    token = await asyncio.to_thread(registry.begin_write, ctx.account_id, uri, reference)
     try:
         if reference is not None:
             with backend.activate_source_write(reference):
@@ -164,7 +208,7 @@ def source_write(uri, ctx, backend=None):
         else:
             yield
     except BaseException:
-        registry.uncertain_write(token)
+        await asyncio.to_thread(registry.uncertain_write, token)
         raise
     else:
-        registry.finish_write(token)
+        await asyncio.to_thread(registry.finish_write, token)

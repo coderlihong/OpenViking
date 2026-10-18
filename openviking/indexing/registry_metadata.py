@@ -5,6 +5,11 @@ import json
 import time
 
 from openviking.indexing.business_meta import AuthoritativeMeta, MetaValue, build_meta
+from openviking.indexing.registry_gc import (
+    _snapshot_generation_index,
+    _tombstone_covers,
+    _under_tombstone,
+)
 from openviking_cli.exceptions import FailedPreconditionError
 
 METADATA_COMMANDS = ("metadata_write", "metadata_read", "metadata_latest")
@@ -81,8 +86,8 @@ class RegistryMetadataMixin:
             if existing and (existing["payload"], existing["dependencies"]) != (serialized, references):
                 raise ValueError("Immutable metadata generation changed")
             db.execute("INSERT OR IGNORE INTO publication_metadata VALUES (?,?,?)", (generation, serialized, references))
-            db.execute("INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, marker))
-            return self._publish_if_complete(db, build)
+            inserted = db.execute("INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, marker)).rowcount
+            return self._receipt_recorded(db, self._build(db, generation), inserted)
 
     def metadata_invalid_reason(self, db, build):
         row = db.execute("SELECT dependencies FROM publication_metadata WHERE generation=?", (build["generation"],)).fetchone()
@@ -105,30 +110,63 @@ class RegistryMetadataMixin:
         """Read only immutable metadata in an authorized, leased snapshot."""
         if not isinstance(authorized_uris, list) or len(authorized_uris) > 50000 or any(not isinstance(uri, str) for uri in authorized_uris):
             raise ValueError("Explicit bounded authorized URI list required")
-        with self.db() as db:
+        # Read-only: taking BEGIN IMMEDIATE here queued this pure reader behind
+        # every writer in the process (measured: thousands of >400ms lock waits
+        # from metadata_read during the vector phase).
+        with self.db(readonly=True) as db:
             held = db.execute("SELECT snapshots FROM leases WHERE id=? AND expires>?", (lease, time.time())).fetchone()
             if held is None:
                 raise ValueError("Metadata query lease expired")
             selected = set(authorized_uris)
-            denied = [row[0] for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))]
+            # Set-based ancestor test: the previous per-URI `any(...)` scan over
+            # every tombstone of the account multiplied into 88k x 60k string
+            # comparisons per metadata_read.
+            denied = {row[0] for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))}
             result = []
             for snapshot_id in json.loads(held["snapshots"]):
-                snapshot = db.execute("SELECT * FROM snapshots WHERE id=?", (snapshot_id,)).fetchone()
+                # Only the two identifying columns: reading the manifest column
+                # here pulled an ~11MB gzip blob into Python on every call.
+                snapshot = db.execute("SELECT account,namespace FROM snapshots WHERE id=?", (snapshot_id,)).fetchone()
                 if snapshot is None or snapshot["account"] != account:
                     raise ValueError("Metadata snapshot account mismatch")
-                for uri, item in json.loads(snapshot["manifest"]).items():
-                    if uri not in selected or any(uri == root or uri.startswith(root.rstrip("/") + "/") for root in denied):
+                # Memoized immutable {uri: generation} view of the snapshot
+                # manifest. Decoding it inline cost ~116ms of event-loop CPU per
+                # node (metadata_latest runs once per file during reindex and was
+                # measured as multi-second readonly transactions with 0ms of lock
+                # wait).
+                for uri, generation in _snapshot_generation_index(db, snapshot_id).items():
+                    if uri not in selected or _under_tombstone(uri, denied):
                         continue
-                    record = db.execute("SELECT payload,dependencies FROM publication_metadata WHERE generation=?", (item["generation"],)).fetchone()
+                    record = db.execute("SELECT payload,dependencies FROM publication_metadata WHERE generation=?", (generation,)).fetchone()
                     result.append({"uri": uri, "namespace_id": snapshot["namespace"],
-                                   "generation": item["generation"], "payload": json.loads(record["payload"]) if record else None,
+                                   "generation": generation, "payload": json.loads(record["payload"]) if record else None,
                                    "dependencies": json.loads(record["dependencies"]) if record else []})
             return result
 
     def metadata_latest(self, account, uri):
-        lease, _ = self.capture(account)
-        try:
-            rows = self.metadata_read(account, lease, [uri])
-            return rows[0] if rows else None
-        finally:
-            self.release(lease)
+        """Latest published authoritative metadata for a single URI.
+
+        ``capture`` + ``metadata_read`` materialize and merge the whole account
+        manifest (tens of thousands of entries, after decoding an ~11MB snapshot
+        blob) just to answer for one URI, and this runs once per file during
+        reindex. Reading the head snapshot directly is equivalent for one URI
+        and costs two indexed lookups: snapshot manifests are append-only and
+        head snapshots are exactly what pins published generations.
+        """
+        with self.db(readonly=True) as db:
+            if _tombstone_covers(db, account, uri):
+                return None
+            for row in db.execute(
+                "SELECT s.id, s.namespace FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
+                (account,),
+            ).fetchall():
+                generation = _snapshot_generation_index(db, row["id"]).get(uri)
+                if generation is None:
+                    continue
+                record = db.execute(
+                    "SELECT payload,dependencies FROM publication_metadata WHERE generation=?", (generation,)
+                ).fetchone()
+                return {"uri": uri, "namespace_id": row["namespace"], "generation": generation,
+                        "payload": json.loads(record["payload"]) if record else None,
+                        "dependencies": json.loads(record["dependencies"]) if record else []}
+            return None

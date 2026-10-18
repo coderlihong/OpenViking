@@ -7,14 +7,126 @@ physical execution stays blocked rather than accepting a worker Boolean proof.
 """
 import json
 import math
+import sqlite3
 import time
 from uuid import uuid4
 
+from openviking.indexing.manifest_codec import decode_manifest
 from openviking.storage.vector_ids import publication_member_id
 from openviking_cli.exceptions import ConflictError, FailedPreconditionError, NotFoundError
 
 GC_COMMANDS = ('generation_write_begin', 'generation_write_confirm', 'generation_write_unknown',
                'generation_writes', 'physical_gc_prepare', 'physical_gc_get', 'physical_gc_execute')
+
+# Snapshot rows are append-only (publication only ever INSERTs them), so the
+# {uri: generation} index derived from a snapshot manifest is immutable and safe
+# to memoize.  Without this, generation_write_begin re-decoded an ~11MB gzip
+# manifest for *every* managed write (i.e. per embedded item) while holding the
+# single writer lock, which is what put multi-second lock waits in front of
+# every other writer during a reindex (measured 0.6-10s lock waits).
+_SNAPSHOT_MANIFEST_CACHE: dict[str, dict] = {}
+_SNAPSHOT_GENERATIONS_CACHE: dict[str, dict[str, str]] = {}
+_SNAPSHOT_MANIFEST_CACHE_MAX = 2
+
+
+def _cache_snapshot(snapshot, manifest):
+    """Memoize one snapshot's manifest together with its {uri: generation} index.
+
+    Both caches are keyed by snapshot id and must stay in step, so they are
+    filled from the same call.
+    """
+    if len(_SNAPSHOT_MANIFEST_CACHE) >= _SNAPSHOT_MANIFEST_CACHE_MAX and snapshot not in _SNAPSHOT_MANIFEST_CACHE:
+        _SNAPSHOT_MANIFEST_CACHE.clear()
+        _SNAPSHOT_GENERATIONS_CACHE.clear()
+    _SNAPSHOT_MANIFEST_CACHE[snapshot] = manifest
+    index = {}
+    for uri, item in manifest.items():
+        if isinstance(item, dict) and item.get('generation'):
+            index[uri] = item['generation']
+    if len(_SNAPSHOT_GENERATIONS_CACHE) >= _SNAPSHOT_MANIFEST_CACHE_MAX and snapshot not in _SNAPSHOT_GENERATIONS_CACHE:
+        _SNAPSHOT_GENERATIONS_CACHE.clear()
+    _SNAPSHOT_GENERATIONS_CACHE[snapshot] = index
+    return index
+
+
+def record_snapshot_manifest(snapshot, manifest):
+    """Seed the snapshot caches with a manifest the caller has just published.
+
+    Every publish stores a *new* snapshot id, so a reader deriving the manifest
+    itself would miss the cache almost every time and gunzip + parse a ~13MB
+    blob (~154ms of GIL-bound CPU per call, once per file during reindex).  The
+    publisher still holds the exact mapping it wrote, so hand it over instead.
+    """
+    _cache_snapshot(snapshot, manifest)
+
+
+def _snapshot_manifest(db, snapshot):
+    """Decoded manifest of one snapshot.
+
+    Snapshot rows are append-only, so the decoded value is immutable and can be
+    memoized across calls.  Callers must treat the returned mapping as
+    read-only (copy before mutating an entry).
+    """
+    cached = _SNAPSHOT_MANIFEST_CACHE.get(snapshot)
+    if cached is not None:
+        return cached
+    row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (snapshot,)).fetchone()
+    if row is None:
+        raise FailedPreconditionError('Pinned snapshot dependency is missing')
+    manifest = decode_manifest(row[0])
+    _cache_snapshot(snapshot, manifest)
+    return manifest
+
+
+def _snapshot_generation_index(db, snapshot):
+    """Immutable {uri: generation} view of one snapshot manifest."""
+    cached = _SNAPSHOT_GENERATIONS_CACHE.get(snapshot)
+    if cached is not None:
+        return cached
+    return _cache_snapshot(snapshot, _snapshot_manifest(db, snapshot))
+
+
+def _tombstone_covers(db, account, uri):
+    """True when uri or one of its ancestors has an active tombstone.
+
+    The previous implementation scanned every tombstone of the account (59,713
+    rows / ~21ms) and this runs on every source read, including from the event
+    loop; primary-key lookups along the URI's ancestor chain answer the same
+    question with a couple of dozen index seeks.
+    """
+    candidates = {uri, uri.rstrip('/')}
+    trimmed = uri.rstrip('/')
+    while '/' in trimmed:
+        trimmed = trimmed.rsplit('/', 1)[0]
+        if not trimmed:
+            break
+        candidates.add(trimmed)
+        candidates.add(trimmed + '/')
+    candidates.discard('')
+    placeholders = ','.join('?' * len(candidates))
+    row = db.execute(
+        f'SELECT 1 FROM tombstones WHERE account=? AND uri IN ({placeholders}) LIMIT 1',
+        (account, *candidates),
+    ).fetchone()
+    return row is not None
+
+
+def _under_tombstone(uri, denied):
+    """Set-based form of :func:`_tombstone_covers` for many URIs at once.
+
+    ``denied`` is the account's tombstone URIs as a set; testing one URI costs a
+    handful of hash lookups instead of a scan over every tombstone.
+    """
+    if uri in denied or uri.rstrip('/') in denied:
+        return True
+    trimmed = uri.rstrip('/')
+    while '/' in trimmed:
+        trimmed = trimmed.rsplit('/', 1)[0]
+        if not trimmed:
+            break
+        if trimmed in denied or (trimmed + '/') in denied:
+            return True
+    return False
 
 
 def _seconds(value):
@@ -24,6 +136,42 @@ def _seconds(value):
 
 
 class RegistryGCMixin:
+    def checkpoint_wal(self, mode="TRUNCATE"):
+        """Copy the WAL back into the database and truncate it.
+
+        A write-ahead log that nothing checkpoints grows without bound: live it
+        reached 2.5 GB against a 37 GB store, and every write transaction had to
+        append to it while readers walked it.  ``TRUNCATE`` also returns the file
+        to zero bytes, so the next burst starts from an empty log.
+        """
+        if mode not in {"PASSIVE", "FULL", "RESTART", "TRUNCATE"}:
+            raise ValueError("Unsupported WAL checkpoint mode")
+        conn = sqlite3.connect(self.path, timeout=30)
+        try:
+            row = conn.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
+            return tuple(row) if row else ()
+        finally:
+            conn.close()
+
+    def prune_generation_write_windows(self, older_than_seconds=86400.0, limit=20000):
+        """Drop confirmed managed-write windows nothing can still need.
+
+        ``generation_write_begin`` inserts one row per managed write and no code
+        ever deleted them: live, 1.19M rows / 545 MB inside a 37 GB store, all
+        unreachable once their generation published.  ``writing``/``unknown``
+        rows stay -- those are exactly what blocks GC for a generation.
+        """
+        _seconds(older_than_seconds)
+        cutoff = time.time() - float(older_than_seconds)
+        with self.db() as db:
+            removed = db.execute(
+                "DELETE FROM generation_write_windows WHERE token IN ("
+                "  SELECT token FROM generation_write_windows "
+                "  WHERE state='confirmed' AND created < ? ORDER BY created LIMIT ?)",
+                (cutoff, int(limit)),
+            ).rowcount
+        return removed or 0
+
     def init_physical_gc(self):
         with self.db() as db:
             db.executescript('''
@@ -47,10 +195,7 @@ class RegistryGCMixin:
                 snapshots.update(json.loads(row[0]))
         protected = set()
         for snapshot in snapshots:
-            row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (snapshot,)).fetchone()
-            if row is None:
-                raise FailedPreconditionError('Pinned snapshot dependency is missing')
-            protected.update(item['generation'] for item in json.loads(row[0]).values())
+            protected.update(_snapshot_generation_index(db, snapshot).values())
         return protected
 
     def generation_write_begin(self, account, backend, records):
@@ -60,6 +205,7 @@ class RegistryGCMixin:
         if not isinstance(records, list) or not 1 <= len(records) <= 10000:
             raise ValueError('A bounded managed write batch is required')
         bound = []
+        protected = None
         with self.db() as db:
             for fields in records:
                 if not isinstance(fields, dict) or fields.get('account_id') != account:
@@ -78,9 +224,11 @@ class RegistryGCMixin:
                 if row['state'] in {'building', 'queued'}:
                     live = desired and desired[0] == generation
                 elif row['state'] == 'published':
-                    head = db.execute('SELECT s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=? AND h.namespace=?',
+                    if protected is None:
+                        protected = self._protected_generations(db)
+                    head = db.execute('SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=? AND h.namespace=?',
                                       (account, row['namespace'])).fetchone()
-                    live = (head and json.loads(head[0]).get(row['uri'], {}).get('generation') == generation) or generation in self._protected_generations(db)
+                    live = (bool(head) and _snapshot_generation_index(db, head[0]).get(row['uri']) == generation) or generation in protected
                 else:
                     live = False
                 if not live:

@@ -128,5 +128,9 @@ class StorageConfig(BaseModel):
         """Build the persistent TaskTracker from storage config."""
         from openviking.service.task_store import PersistentTaskStore
         from openviking.service.task_tracker import TaskTracker
+        from openviking_cli.utils.config.concurrency_config import concurrency_config
 
-        return TaskTracker(store=PersistentTaskStore(agfs))
+        return TaskTracker(
+            store=PersistentTaskStore(agfs),
+            max_concurrent_store_io=concurrency_config().max_task_store_io,
+        )

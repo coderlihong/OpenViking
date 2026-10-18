@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Optional
 
 from openviking.core.context import (
@@ -17,6 +18,7 @@ from openviking.core.context import (
     ResourceContentType,
     Vectorize,
 )
+from openviking.core.directory_index import DIRECTORY_INDEX_FILENAME
 from openviking.core.namespace import (
     classify_uri,
     content_owner_context_for_uri,
@@ -44,6 +46,7 @@ from openviking.storage.queuefs.embedding_msg_converter import EmbeddingMsgConve
 from openviking.storage.queuefs.process_result import ProcessOutcome
 from openviking.storage.queuefs.semantic_msg import SemanticMsg
 from openviking.storage.queuefs.semantic_processor import SemanticProcessor
+from openviking.storage.vector_ids import chunk_vector_record_id
 from openviking.storage.viking_fs import get_viking_fs
 from openviking.telemetry import get_current_telemetry
 from openviking.telemetry.request_wait_tracker import get_request_wait_tracker
@@ -65,6 +68,10 @@ from openviking_cli.exceptions import (
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils import VikingURI, get_logger
 from openviking_cli.utils.config import get_openviking_config
+from openviking_cli.utils.config.concurrency_config import (
+    effective_file_vectorization_concurrency,
+    effective_subtree_shard_concurrency,
+)
 from openviking_cli.utils.config.embedding_config import SUMMARY_TEXT_SOURCES
 
 logger = get_logger(__name__)
@@ -72,7 +79,6 @@ logger = get_logger(__name__)
 REINDEX_TASK_TYPE = "admin_reindex"
 PRUNE_ORPHAN_CANDIDATE_LIMIT = 100000
 PRUNE_OUTPUT_FIELDS = ["id", "uri", "level", "context_type", "account_id", "owner_user_id"]
-_MAX_FILE_VECTORIZATION_CONCURRENCY = 64
 
 # The two enterprise build modes share one IndexPlan with D1 ingestion. They are
 # the only modes that may take a dry_run preview (``prune_orphans`` keeps its own
@@ -80,6 +86,10 @@ _MAX_FILE_VECTORIZATION_CONCURRENCY = 64
 # regenerates image summaries and directory L0/L1 before the vector phase.
 ENTERPRISE_REINDEX_MODES = frozenset({"vectors_only", "semantic_and_vectors"})
 DRY_RUN_MODES = ENTERPRISE_REINDEX_MODES | {"prune_orphans"}
+
+# A placeholder sidecar delete can lose against a still-open write fence; retry
+# briefly after the stage that owns the fence has finished.
+_PLACEHOLDER_SWEEP_ATTEMPTS = 3
 
 
 # Trailing markers VikingFS appends when a directory has no generated .abstract.md/.overview.md
@@ -120,6 +130,9 @@ def get_reindex_executor() -> "ReindexExecutor":
 class _ReindexCounters:
     scanned_records: int = 0
     rebuilt_records: int = 0
+    # Records whose published generation already held the exact same content, so
+    # the vector stage reused it instead of paying for another embedding call.
+    reused_records: int = 0
     deleted_records: int = 0
     would_delete_records: int = 0
     unsupported_records: int = 0
@@ -129,6 +142,7 @@ class _ReindexCounters:
     def merge_from(self, other: "_ReindexCounters") -> None:
         self.scanned_records += other.scanned_records
         self.rebuilt_records += other.rebuilt_records
+        self.reused_records += other.reused_records
         self.deleted_records += other.deleted_records
         self.would_delete_records += other.would_delete_records
         self.unsupported_records += other.unsupported_records
@@ -187,6 +201,9 @@ class _ReindexRunContext:
     counters: _ReindexCounters
     lock: dict | None = None
     ingest_options: IngestOptions | None = None
+    # Ancestor directories this run will refresh bottom-up. Resolved before the
+    # lease is acquired so the lease can cover the files written up there.
+    refreshed_ancestors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -210,14 +227,13 @@ class ReindexExecutor:
 
     @staticmethod
     def _effective_file_vectorization_concurrency() -> int:
-        config = get_openviking_config().reindex
-        return max(
-            1,
-            min(
-                int(config.file_vectorization_concurrency),
-                _MAX_FILE_VECTORIZATION_CONCURRENCY,
-            ),
-        )
+        """File concurrency for this reindex; ceilings come from global config."""
+        return effective_file_vectorization_concurrency()
+
+    @staticmethod
+    def _effective_subtree_shard_concurrency() -> int:
+        """Child-subtree parallelism; 0 keeps the serial walk."""
+        return effective_subtree_shard_concurrency()
 
     async def _run_ordered_counter_batches(
         self,
@@ -706,6 +722,12 @@ class ReindexExecutor:
             stat = await service.viking_fs.stat(uri, ctx=ctx, skip_count=True)
             if not stat.get("isDir", stat.get("is_dir")):
                 acquire_lock = service.viking_fs._async_agfs.pathlock_acquire_exact
+        # A finished leaf bubbles L0/L1 (and the navigation index) up into its
+        # ancestor directories. Those writes live outside the target's lock
+        # scope, so the ancestor pass takes its own short-lived lease (see
+        # _refresh_ancestor_semantics); the list is resolved here so the pass and
+        # the lease it takes cannot disagree about which directories those are.
+        ancestors = await self._refreshable_ancestors(uri, ctx=ctx)
         lease = await acquire_lock(path)
         try:
             borrowed = await service.viking_fs._async_agfs.pathlock_as_borrowed(lease)
@@ -714,6 +736,7 @@ class ReindexExecutor:
                 counters=counters,
                 lock=borrowed,
                 ingest_options=ingest_options,
+                refreshed_ancestors=ancestors,
             )
             await self._update_stage(f"{mode}:{object_type}")
             if mode == "prune_orphans":
@@ -782,6 +805,7 @@ class ReindexExecutor:
             "mode": mode,
             "scanned_records": counters.scanned_records,
             "rebuilt_records": counters.rebuilt_records,
+            "reused_records": counters.reused_records,
             "deleted_records": counters.deleted_records,
             "would_delete_records": counters.would_delete_records,
             "unsupported_records": counters.unsupported_records,
@@ -1240,6 +1264,166 @@ class ReindexExecutor:
             from_oauth=ctx.from_oauth,
         )
 
+    async def _reindex_resource_sharded(
+        self,
+        *,
+        uri: str,
+        mode: str,
+        run: _ReindexRunContext,
+    ) -> bool:
+        """Process one recursive directory as independent per-child units.
+
+        A serial recursive walk rebuilds the entire subtree's L0/L1 first and
+        only then starts the vector phase, and the semantic phase is the only
+        consumer of the remote VLM: for the whole vector phase (the long one)
+        the VLM therefore sits idle, so a client that reindexes one tree at a
+        time leaves the model unused most of the wall clock.
+
+        Sharding keeps the same per-unit order (semantic -> vectors over the
+        child's own subtree, directory L0/L1 before that directory's vector
+        record) but lets the semantic phase of one child overlap the vector
+        phase of another. Nothing about what is published changes; only the
+        order in which independent subtrees are visited.
+
+        Returns True when this call handled the subtree, False to fall back to
+        the serial walk (leaf, fewer than two children, sharding disabled, or
+        the subtree could not be listed).
+        """
+        concurrency = self._effective_subtree_shard_concurrency()
+        if concurrency < 2:
+            return False
+        ctx = run.ctx
+        try:
+            viking_fs = get_viking_fs()
+            stat = await viking_fs.stat(uri, ctx=ctx, skip_count=True)
+            is_dir = stat.get("isDir", stat.get("is_dir")) if isinstance(stat, dict) else False
+            if not is_dir:
+                return False
+            entries = await self._tree_all(viking_fs, uri, show_all_hidden=True, ctx=ctx)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Sharded reindex could not list %s (%r); falling back to the serial walk",
+                uri,
+                exc,
+            )
+            return False
+
+        root = uri.rstrip("/")
+        directories: list[str] = []
+        files: list[str] = []
+        for entry in entries:
+            child_uri = entry.get("uri")
+            if not child_uri:
+                continue
+            child = child_uri.rstrip("/")
+            if child == root or child.rsplit("/", 1)[0] != root:
+                continue
+            if entry.get("isDir"):
+                directories.append(child)
+            elif not self._is_hidden_meta_file(child):
+                files.append(child)
+        try:
+            # Generated navigation indexes are never indexable content: the
+            # vector phase drops them through the same helper. As a shard unit
+            # one of them never completes its semantic generation (observed
+            # live: nine recursions sat on ``<manual>/index.md`` for hours and
+            # then failed the whole directory refresh).
+            files = await self._drop_navigation_indexes(files, ctx=ctx)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Sharded reindex could not classify navigation indexes under %s (%r); "
+                "falling back to the serial walk",
+                uri,
+                exc,
+            )
+            return False
+        children: list[tuple[str, bool]] = [(directory, True) for directory in directories]
+        children.extend((file_uri, False) for file_uri in files)
+        if len(children) < 2:
+            return False
+
+        logger.info(
+            "Sharded reindex for %s: %d child unit(s) at concurrency %d",
+            uri,
+            len(children),
+            concurrency,
+        )
+        await self._update_stage(f"semantic+vectors:{uri}")
+        semaphore = asyncio.Semaphore(concurrency)
+        child_runs = [
+            (
+                child_uri,
+                child_is_dir,
+                replace(run, counters=_ReindexCounters()),
+            )
+            for child_uri, child_is_dir in children
+        ]
+
+        async def process_child(
+            child_uri: str,
+            child_is_dir: bool,
+            child_run: _ReindexRunContext,
+        ) -> None:
+            async with semaphore:
+                await self._reindex_resource(
+                    uri=child_uri,
+                    mode=mode,
+                    run=child_run,
+                    recursive=child_is_dir,
+                    shard=False,
+                    propagate_to_parent=False,
+                )
+
+        results = await asyncio.gather(
+            *(
+                asyncio.create_task(process_child(child_uri, child_is_dir, child_run))
+                for child_uri, child_is_dir, child_run in child_runs
+            ),
+            return_exceptions=True,
+        )
+        failure: BaseException | None = None
+        for (_child_uri, _child_is_dir, child_run), result in zip(child_runs, results):
+            run.counters.merge_from(child_run.counters)
+            if isinstance(result, BaseException) and failure is None:
+                failure = result
+
+        # This directory's own L0/L1 is rebuilt last, from the sidecars the child
+        # units just wrote, so the directory has exactly one writer instead of one
+        # per child.
+        try:
+            await self._run_semantic_processor(
+                uri=uri,
+                context_type="resource",
+                ctx=ctx,
+                lock=run.lock,
+                recursive=False,
+                propagate_to_parent=False,
+            )
+            await self._update_stage(f"vectors:{uri}")
+            await self._reindex_resource_vectors(
+                **self._with_ingest_options(
+                    {
+                        "uri": uri,
+                        "counters": run.counters,
+                        "ctx": ctx,
+                        "recursive": False,
+                    },
+                    run.ingest_options,
+                )
+            )
+        except Exception as exc:
+            if failure is None:
+                failure = exc
+            else:
+                logger.warning(
+                    "Sharded reindex for %s: directory-level refresh failed: %r",
+                    uri,
+                    exc,
+                )
+        if failure is not None:
+            raise failure
+        return True
+
     async def _reindex_resource(
         self,
         *,
@@ -1247,6 +1431,8 @@ class ReindexExecutor:
         mode: str,
         run: _ReindexRunContext,
         recursive: bool = True,
+        shard: bool = True,
+        propagate_to_parent: bool = True,
     ) -> None:
         counters = run.counters
         ctx = run.ctx
@@ -1254,6 +1440,9 @@ class ReindexExecutor:
         vector_kwargs = {"uri": uri, "counters": counters, "ctx": ctx}
         if not recursive:
             vector_kwargs["recursive"] = False
+        if config.write_directory_levels and recursive and shard:
+            if await self._reindex_resource_sharded(uri=uri, mode=mode, run=run):
+                return
         if config.write_directory_levels:
             # semantic_and_vectors regenerates directory L0/L1 before the shared
             # vector phase; vectors_only keeps the published L0/L1 untouched.
@@ -1269,6 +1458,8 @@ class ReindexExecutor:
             }
             if not recursive:
                 semantic_kwargs["recursive"] = False
+            if not propagate_to_parent:
+                semantic_kwargs["propagate_to_parent"] = False
             semantic_value = await self._run_semantic_processor(**semantic_kwargs)
             if isinstance(semantic_value, dict) and semantic_value.get("image_summaries"):
                 vector_kwargs["image_summaries"] = semantic_value["image_summaries"]
@@ -1284,6 +1475,12 @@ class ReindexExecutor:
                 run.ingest_options,
             )
         )
+        # Placeholder L0/L1 left by the pre-fix overview path can only be deleted
+        # once this reindex stopped writing under the directory: the vector stage
+        # holds a write fence on every image directory it publishes, so the walk's
+        # own attempt (and any attempt made during the semantic stage) is refused
+        # with "Resource is being processed".
+        await self._sweep_stale_placeholder_sidecars(uri, ctx=ctx)
 
     async def _reindex_skill(
         self,
@@ -1399,6 +1596,70 @@ class ReindexExecutor:
             )
         return result.value
 
+    async def _sweep_stale_placeholder_sidecars(self, uri: str, *, ctx: RequestContext) -> int:
+        """Delete placeholder L0/L1 sidecars the semantic walk could not remove.
+
+        The walk attempts that delete while it still holds the directory lock, so
+        the attempt loses its lock race and the file survives. Once the walk is
+        over nothing holds those paths, and the marker is unambiguous: only a
+        sidecar whose visible body is the placeholder is removed.
+        """
+
+        from openviking.storage.abstract_overview import body_for_preview
+        from openviking.storage.queuefs.semantic_dag import _PLACEHOLDER_OVERVIEW_MARKER
+
+        stats = SemanticProcessor.consume_dag_stats(uri=uri)
+        dirs = list(getattr(stats, "placeholder_sidecar_dirs", []) or [])
+        if not dirs:
+            if stats is None:
+                # Another consumer took the stats for this URI, so the walk's
+                # placeholder candidates are gone. Say so instead of returning
+                # as if the sweep had found nothing to do.
+                logger.warning(
+                    "Placeholder sweep skipped for %s: the semantic walk stats for "
+                    "this URI were already consumed",
+                    uri,
+                )
+            return 0
+        viking_fs = get_viking_fs()
+        removed = 0
+        for dir_uri in dict.fromkeys(dirs):
+            for name in (".overview.md", ".abstract.md"):
+                sidecar_uri = f"{dir_uri.rstrip('/')}/{name}"
+                try:
+                    body = await viking_fs.read_file(sidecar_uri, ctx=ctx)
+                except Exception:
+                    continue
+                if not isinstance(body, (str, bytes)):
+                    continue
+                if _PLACEHOLDER_OVERVIEW_MARKER not in body_for_preview(body):
+                    continue
+                last_error: BaseException | None = None
+                for attempt in range(_PLACEHOLDER_SWEEP_ATTEMPTS):
+                    try:
+                        await viking_fs.rm(sidecar_uri, ctx=ctx)
+                        removed += 1
+                        last_error = None
+                        break
+                    except Exception as exc:
+                        # A still-open write fence ("Resource is being processed")
+                        # clears once the stage that owns it finishes.
+                        last_error = exc
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                if last_error is not None:
+                    logger.warning(
+                        "Could not remove the stale placeholder sidecar %s: %s",
+                        sidecar_uri,
+                        last_error,
+                    )
+        if removed:
+            logger.warning(
+                "Removed %d stale placeholder sidecar(s) under %s after the semantic walk",
+                removed,
+                uri,
+            )
+        return removed
+
     @staticmethod
     def _ancestor_directories(uri: str, *, namespace_root: str | None = None) -> list[str]:
         """Ancestor directories of *uri* that stay inside the same domain.
@@ -1437,6 +1698,128 @@ class ReindexExecutor:
             ancestors.append("viking://" + "/".join(parts[:depth]))
         return ancestors
 
+    # Files a bottom-up ancestor refresh rewrites inside each ancestor directory.
+    # ``index.md`` is the generated navigation catalogue, the other two are L0/L1.
+    _ANCESTOR_REFRESH_FILENAMES = (DIRECTORY_INDEX_FILENAME, ".abstract.md", ".overview.md")
+    # Bounded retries for the ancestor lease. Concurrent reindexes share these
+    # files, so a busy ancestor delays the refresh into per-write locks instead
+    # of failing the reindex that owns it.
+    _ANCESTOR_LEASE_ATTEMPTS = 3
+
+    async def _refreshable_ancestors(self, uri: str, *, ctx: RequestContext) -> list[str]:
+        """Ancestor directories a reindex of *uri* refreshes bottom-up."""
+        registry = configured_store()
+        namespace_root = None
+        if registry is not None:
+            namespaces = await asyncio.to_thread(registry.namespace_list, ctx.account_id)
+            roots = [row["root_uri"] for row in namespaces
+                     if uri == row["root_uri"] or uri.startswith(row["root_uri"] + "/")]
+            if len(roots) > 1:
+                raise InvalidArgumentError("Target belongs to overlapping registered knowledge roots")
+            namespace_root = roots[0] if roots else None
+        return self._ancestor_directories(uri, namespace_root=namespace_root)
+
+    async def _acquire_ancestor_refresh_lease(
+        self,
+        *,
+        ancestors: list[str],
+        ctx: RequestContext,
+    ) -> dict | None:
+        """Lease covering exactly the files the ancestor refresh rewrites.
+
+        The run's own lease is a tree lock on the target and cannot cover an
+        ancestor write: the native coverage rule rejects that with "does not
+        cover the requested operation", and because ``source_write`` had already
+        opened a fence the rejection became a permanent ``uncertain`` fence that
+        blocked the URI's generation with WRITE_RECOVERY_REQUIRED.
+
+        Taking these exact locks for the whole run would serialize every
+        concurrent reindex on the shared ancestors (``raw/index.md`` and
+        friends), so the refresh takes them for its own short duration, retrying
+        a bounded number of times. ``None`` means "no aggregated lease": the
+        refresh then runs with per-write locks, which is always safe -- what is
+        never safe is borrowing a lease that covers a different subtree.
+        """
+        viking_fs = get_viking_fs()
+        agfs = getattr(viking_fs, "_async_agfs", None)
+        acquire = getattr(agfs, "pathlock_acquire_exact_batch", None)
+        if not ancestors or acquire is None:
+            return None
+        exact_paths = [
+            viking_fs._uri_to_path(f"{ancestor.rstrip('/')}/{name}", ctx=ctx)
+            for ancestor in ancestors
+            for name in self._ANCESTOR_REFRESH_FILENAMES
+        ]
+        exact_paths = [p for p in dict.fromkeys(exact_paths) if p]
+        if not exact_paths:
+            return None
+        last_error: BaseException | None = None
+        for attempt in range(self._ANCESTOR_LEASE_ATTEMPTS):
+            try:
+                return await acquire(exact_paths)
+            except Exception as exc:  # noqa: BLE001 - retried, then per-write locks
+                last_error = exc
+                message = str(exc).lower()
+                if "lock" not in message and "busy" not in message:
+                    break
+                await asyncio.sleep(0.5 * (attempt + 1))
+        logger.warning(
+            "Ancestor refresh for %s will take per-write locks: could not lease %d "
+            "ancestor file(s) after %d attempt(s): %s",
+            ancestors[0],
+            len(exact_paths),
+            self._ANCESTOR_LEASE_ATTEMPTS,
+            last_error,
+        )
+        return None
+
+    async def _image_summary_for_reindex(
+        self, file_uri: str, *, ctx: RequestContext
+    ) -> tuple[dict | None, str]:
+        """Best-effort image summary for the vector stage.
+
+        Order: the published occurrence cache first (it already encodes the
+        model/prompt signature and the citing-context fingerprint), then a
+        rebuild from the chapters that cite the image -- which is exactly the
+        state a reindex exists to repair.  Returns ``(summary, reason)``; the
+        caller reports a ``None`` summary together with ``reason``.
+        """
+        cache_error = ""
+        try:
+            from openviking.indexing.image_cache import load_image_semantics
+
+            cached = await load_image_semantics(get_viking_fs(), file_uri, ctx)
+            if cached and str(cached.get("summary") or "").strip():
+                return cached, ""
+            cache_error = "published image semantics carry no caption"
+        except Exception as exc:  # noqa: BLE001 - any failure means "rebuild it"
+            cache_error = (
+                f"published image semantics unavailable ({type(exc).__name__}: {exc})"
+            )
+        try:
+            from openviking.indexing.image_context import collect_image_contexts
+            from openviking.parse.parsers.media.utils import generate_image_summary
+
+            contexts = await collect_image_contexts(get_viking_fs(), file_uri, ctx)
+            rebuilt = await generate_image_summary(
+                file_uri,
+                file_uri.rsplit("/", 1)[-1],
+                None,
+                ctx=ctx,
+                contexts=contexts,
+                allow_vlm=False,
+            )
+            if rebuilt and str(rebuilt.get("summary") or "").strip():
+                logger.info(
+                    "Rebuilt image summary from its citing chapters: %s (%s)",
+                    file_uri,
+                    cache_error or "published cache missing",
+                )
+                return rebuilt, ""
+            return None, f"{cache_error}; its citing chapters carry no figcaption"
+        except Exception as exc:  # noqa: BLE001
+            return None, f"{cache_error}; rebuild failed ({type(exc).__name__}: {exc})"
+
     async def _refresh_ancestor_semantics(
         self,
         *,
@@ -1448,32 +1831,54 @@ class ReindexExecutor:
         A leaf change must be reflected in the L0/L1 of the directories that
         depend on it (TC-9.4 / TC-11.6). Ancestors are refreshed deepest-first
         and never beyond the target's domain root.
+
+        The refresh runs under its own exact lease on the files it rewrites; the
+        target's tree lease does not cover an ancestor path, and reusing it made
+        every ancestor write fail with "does not cover the requested operation"
+        inside ``source_write`` -- which converted a coverage bug into permanent
+        ``uncertain`` write fences. A busy ancestor skips the refresh (it is an
+        affordance) instead of failing the run that owns it.
         """
         ctx = run.ctx
-        registry = configured_store()
-        namespace_root = None
-        if registry is not None:
-            namespaces = await asyncio.to_thread(registry.namespace_list, ctx.account_id)
-            roots = [row["root_uri"] for row in namespaces
-                     if uri == row["root_uri"] or uri.startswith(row["root_uri"] + "/")]
-            if len(roots) > 1:
-                raise InvalidArgumentError("Target belongs to overlapping registered knowledge roots")
-            namespace_root = roots[0] if roots else None
-        for ancestor in self._ancestor_directories(uri, namespace_root=namespace_root):
-            try:
-                stat = await get_viking_fs().stat(ancestor, ctx=ctx, skip_count=True)
-            except Exception:
-                continue
-            if not stat.get("isDir", stat.get("is_dir")):
-                continue
-            await self._run_semantic_processor(
-                uri=ancestor,
-                context_type="resource",
-                ctx=ctx,
-                lock=run.lock,
-                recursive=False,
-                propagate_to_parent=False,
+        ancestors = run.refreshed_ancestors or await self._refreshable_ancestors(uri, ctx=ctx)
+        if not ancestors:
+            return
+        lease = await self._acquire_ancestor_refresh_lease(ancestors=ancestors, ctx=ctx)
+        borrowed: dict | None = None
+        if lease is not None:
+            as_borrowed = getattr(
+                getattr(get_viking_fs(), "_async_agfs", None), "pathlock_as_borrowed", None
             )
+            if as_borrowed is not None:
+                borrowed = await as_borrowed(lease)
+            else:
+                borrowed = lease
+        try:
+            for ancestor in ancestors:
+                try:
+                    stat = await get_viking_fs().stat(ancestor, ctx=ctx, skip_count=True)
+                except Exception:
+                    continue
+                if not stat.get("isDir", stat.get("is_dir")):
+                    continue
+                await self._run_semantic_processor(
+                    uri=ancestor,
+                    context_type="resource",
+                    ctx=ctx,
+                    lock=borrowed,
+                    recursive=False,
+                    propagate_to_parent=False,
+                )
+        finally:
+            if lease is not None:
+                release = getattr(
+                    getattr(get_viking_fs(), "_async_agfs", None), "pathlock_release", None
+                )
+                if release is not None:
+                    try:
+                        await release(lease)
+                    except Exception as exc:  # noqa: BLE001 - lease TTL expires anyway
+                        logger.warning("Could not release the ancestor refresh lease: %s", exc)
 
     async def _reindex_resource_vectors(
         self,
@@ -1528,6 +1933,55 @@ class ReindexExecutor:
                 ingest_options,
             )
         )
+
+    async def _published_content_unchanged(
+        self, file_uri: str, *, ctx: RequestContext
+    ) -> bool:
+        """True when the live generation already holds this exact content.
+
+        Re-embedding identical chunks burns the scarcest resource in the system
+        (the remote embedding endpoint) and writes a second generation whose
+        records the reclaimer then has to delete: live, that is how 957,757 of
+        1,303,573 vectors (73.5% of a 78GB store) became orphaned copies.
+
+        The published ``content_revision`` is the sha256 of the source text, so an
+        unchanged file needs no new generation -- but only after its published
+        records are verified to still exist, because a missing record must be
+        rebuilt rather than assumed present.
+        """
+        store = configured_store()
+        if store is None:
+            return False
+        try:
+            published = store.published_chunks(ctx.account_id, file_uri)
+        except Exception:  # noqa: BLE001 - never let the fast path break a run
+            return False
+        if not published:
+            return False
+        generation, chunks = published
+        try:
+            raw = await get_viking_fs().read_file(file_uri, ctx=ctx)
+        except Exception:  # noqa: BLE001
+            return False
+        content = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        revision = hashlib.sha256((content or "").encode()).hexdigest()
+        if any(chunk_revision != revision for _chunk_id, chunk_revision in chunks):
+            return False
+        service = get_service()
+        backend = getattr(service, "vikingdb_manager", None)
+        if backend is None:
+            return False
+        record_ids = [
+            chunk_vector_record_id(
+                ctx.account_id, file_uri, f"{chunk_id}:generation:{generation}"
+            )
+            for chunk_id, _revision in chunks
+        ]
+        try:
+            found = await backend.get(record_ids, ctx=ctx)
+        except Exception:  # noqa: BLE001
+            return False
+        return len(found) == len(record_ids)
 
     @draft_source_job
     @text_publication_batch
@@ -1662,23 +2116,19 @@ class ReindexExecutor:
                 summary_dict: dict | None = (image_summaries or {}).get(file_uri)
                 if is_image and summary_dict is None:
                     # Captions are generated by the citation-normalization stage
-                    # BEFORE reindex; a published occurrence cache may be reused.
-                    try:
-                        from openviking.indexing.image_cache import load_image_semantics
-
-                        summary_dict = await load_image_semantics(
-                            get_viking_fs(), file_uri, ctx
-                        )
-                    except Exception as exc:
-                        # An image whose semantics cache is unavailable (deleted
-                        # asset, stale cache key, no published occurrence) has
-                        # nothing to index: skip it without an error path.
-                        logger.info(
-                            "Skipping undescribed image (semantics unavailable): %s (%s)",
-                            file_uri,
-                            exc,
-                        )
+                    # BEFORE reindex and a published occurrence cache may be
+                    # reused; when that cache is missing or stale the summary is
+                    # rebuilt from the chapters that cite the image. Skipping is
+                    # only for an image no citing chapter describes, and it is
+                    # reported instead of being swallowed.
+                    summary_dict, reason = await self._image_summary_for_reindex(
+                        file_uri, ctx=ctx
+                    )
+                    if summary_dict is None:
                         file_counters.unsupported_records += 1
+                        message = f"Skipped undescribed image {file_uri}: {reason}"
+                        logger.warning(message)
+                        file_counters.warnings.append(message)
                         return file_counters
                 if summary_dict is None and not is_image:
                     summary_dict = _static_image_summary()
@@ -1688,6 +2138,15 @@ class ReindexExecutor:
                     file_counters.warnings.append(
                         f"Skipped undescribed image {file_uri}: no figcaption content"
                     )
+                    return file_counters
+                if not is_image and await self._published_content_unchanged(
+                    file_uri, ctx=ctx
+                ):
+                    # The live generation already holds this exact content and its
+                    # records are verified present: another embedding call would
+                    # only produce a duplicate generation for the reclaimer to
+                    # delete.
+                    file_counters.reused_records += 1
                     return file_counters
                 try:
                     chunk_options = await self._chunk_reindex_ingest_options(
@@ -1706,7 +2165,16 @@ class ReindexExecutor:
                             1  # existing counter counts sources, not children
                         )
                     else:
+                        # ``vectorize_file`` declines without raising (empty
+                        # summary, unsupported media, gate refusal). A dropped
+                        # document must never look like a clean run.
                         file_counters.unsupported_records += 1
+                        message = (
+                            f"Skipped {file_uri}: the embedding pipeline declined the "
+                            "record (no vector was enqueued)"
+                        )
+                        logger.warning(message)
+                        file_counters.warnings.append(message)
                 except Exception as exc:
                     file_counters.failed_records += 1
                     file_counters.warnings.append(f"Failed chunk reindex for {file_uri}: {exc}")

@@ -12,11 +12,21 @@ from openviking.pyagfs.exceptions import AGFSNotSupportedError
 from openviking.server.identity import RequestContext
 from openviking.storage.expr import And, PathScope, RawDSL
 from openviking.storage.viking_fs._base import logger
+from openviking_cli.utils.config.concurrency_config import concurrency_config
 from openviking_cli.utils.config.grep_config import GrepEngine
 
 
 def _pkg():
     return sys.modules[__package__]
+
+
+def grep_file_concurrency() -> int:
+    """Files scanned concurrently by one traversal.
+
+    Read from the global concurrency config so operators tune one place; a
+    traversal that reads too many files at once starves the rest of the server.
+    """
+    return concurrency_config().grep_file_concurrency
 
 
 class _GrepMixin:
@@ -680,7 +690,7 @@ class _GrepMixin:
     ) -> tuple[List[Dict[str, Any]], int]:
         results: List[Dict[str, Any]] = []
         files_scanned = 0
-        concurrency = _pkg()._DEFAULT_GREP_FILE_CONCURRENCY
+        concurrency = grep_file_concurrency()
         for start in range(0, len(file_uris), concurrency):
             batch_uris = file_uris[start : start + concurrency]
             batch_jobs = [

@@ -213,6 +213,51 @@ def prefix_piece(text: str, budget: int, count: Callable[[str], int]) -> str:
     return text[:low]
 
 
+def _split_render(text: str, budget: int, count: Callable[[str], int]) -> list[str]:
+    """Split an over-budget render into fragments that each fit ``budget``.
+
+    Content is never dropped: the fragments concatenate back to ``text``, which
+    is what lets the caller emit several children for one source span. Line
+    boundaries are preferred so a caption or a table row stays readable; a single
+    line longer than the budget is cut at the largest prefix that still fits.
+    """
+    if budget <= 0 or count(text) <= budget:
+        return [text]
+    fragments: list[str] = []
+    remaining = text
+    while remaining:
+        if count(remaining) <= budget:
+            fragments.append(remaining)
+            break
+        low, high = 1, len(remaining)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if count(remaining[:middle]) <= budget:
+                low = middle
+            else:
+                high = middle - 1
+        if low <= 0:
+            # Not even one character fits: keep the remainder whole so the
+            # caller still reports an explicit rejection instead of dropping it.
+            fragments.append(remaining)
+            break
+        cut = remaining.rfind("\n", 0, low)
+        cut = cut + 1 if cut > 0 else low
+        # A byte-level BPE tokenizer can price a prefix above the prefix it was
+        # cut from, and a line boundary cuts it shorter still, so verify the
+        # fragment instead of trusting the binary search.
+        while cut > 0 and count(remaining[:cut]) > budget:
+            cut -= 1
+        if cut <= 0:
+            # Not even one character fits: keep the remainder whole so the
+            # caller still reports an explicit rejection instead of dropping it.
+            fragments.append(remaining)
+            break
+        fragments.append(remaining[:cut])
+        remaining = remaining[cut:]
+    return fragments
+
+
 def table_pieces(block: str, budget: int, count: Callable[[str], int]):
     """Preserve source exactly once while repeating headers in derived inputs.
 
@@ -473,23 +518,49 @@ def build_plan(
             if len(text.encode()) > 50000 or len(parent_text.encode()) > 50000:
                 raise ValueError("Tokenizer partition exceeds vector scalar byte limits")
             tokens = count(text)
+            fragments = [text]
             if tokens + config.special_token_reserve > config.child_max_tokens:
-                raise ValueError("Child token budget exceeded; no truncation allowed")
-            ordinal = len(chunks)
-            chunks.append(
-                Chunk(
-                    digest(plan_id, "child", ordinal),
-                    parent_id,
-                    ordinal,
-                    own,
-                    text,
-                    parent_text,
-                    tokens,
-                    continuation,
+                # One rendered block can exceed the child budget on its own: a
+                # PDF-derived figure caption carries a whole VLM description, and
+                # a single table row can hold a long value. Failing here loses the
+                # entire document, so split the RENDER -- never the content -- and
+                # keep the source span on the first fragment. ``validate_coverage``
+                # concatenates spans, so the extra fragments carry an empty span
+                # and every byte still reaches the index.
+                budget = config.child_max_tokens - config.special_token_reserve
+                fragments = _split_render(text, budget, count)
+                # A byte-level BPE tokenizer can price a fragment one token above
+                # the prefix it was cut from, so verify the split and retry with a
+                # smaller budget: a conservative split still indexes every byte,
+                # while giving up loses the whole document.
+                for _ in range(4):
+                    if all(
+                        count(fragment) + config.special_token_reserve
+                        <= config.child_max_tokens
+                        for fragment in fragments
+                    ):
+                        break
+                    budget = max(1, budget // 2)
+                    fragments = _split_render(text, budget, count)
+            for fragment_index, fragment in enumerate(fragments):
+                fragment_tokens = count(fragment)
+                if fragment_tokens + config.special_token_reserve > config.child_max_tokens:
+                    raise ValueError("Child token budget exceeded; no truncation allowed")
+                ordinal = len(chunks)
+                chunks.append(
+                    Chunk(
+                        digest(plan_id, "child", ordinal),
+                        parent_id,
+                        ordinal,
+                        own if fragment_index == 0 else "",
+                        fragment,
+                        parent_text,
+                        fragment_tokens,
+                        continuation,
+                    )
                 )
-            )
             previous = own
-            previous_rendered = rendered
+            previous_rendered = fragments[-1]
             source_offset += len(own)
     plan = IndexPlan(
         uri,

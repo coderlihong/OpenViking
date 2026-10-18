@@ -46,6 +46,7 @@ from openviking.server.telemetry import run_operation
 from openviking.telemetry import TelemetryRequest
 from openviking.utils.search_filters import _resolve_levels
 from openviking_cli.exceptions import InvalidArgumentError, NotFoundError
+from openviking_cli.utils.config.concurrency_config import concurrency_config
 
 
 def _sanitize_floats(obj: Any) -> Any:
@@ -203,7 +204,7 @@ async def _inline_read_content(
         for hit in result.get(category, [])
         if isinstance(hit, dict) and isinstance(hit.get("uri"), str)
     ]
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(concurrency_config().max_request_concurrency)
 
     async def _read(hit: Dict[str, Any]) -> None:
         async with semaphore:

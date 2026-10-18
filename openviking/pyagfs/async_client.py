@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Iterator
 from typing import Any, BinaryIO, Dict, List, Union
 
@@ -13,6 +14,35 @@ from openviking.service.task_tracker_concurrency import run_to_completion
 from .protocols import AGFSSyncClientProtocol
 
 _SYSTEM_ACCOUNT_ID = "_system"
+
+_PATHLOCK_TIMEOUT_ENV = "OPENVIKING_PATHLOCK_TIMEOUT_SECS"
+_PATHLOCK_DEFAULT_TIMEOUT_SECS = 5.0
+
+
+def default_pathlock_timeout_secs() -> float:
+    """Return the default PathLock wait budget, in seconds.
+
+    Callers that do not ask for a specific budget used to pass ``0.0``, which
+    turns every transient conflict into an immediate failure and also disables
+    stale-token reaping (the manager only reaps while a timeout is armed). That
+    combination silently dropped indexing work, so the default waits briefly.
+    Override per call, or globally through ``OPENVIKING_PATHLOCK_TIMEOUT_SECS``.
+    """
+    raw = os.environ.get(_PATHLOCK_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return _PATHLOCK_DEFAULT_TIMEOUT_SECS
+    try:
+        value = float(raw)
+    except ValueError:
+        return _PATHLOCK_DEFAULT_TIMEOUT_SECS
+    return max(0.0, value)
+
+
+def _resolve_pathlock_timeout(timeout_secs: float | None) -> float:
+    """Resolve an explicit PathLock timeout, treating ``None`` as the default."""
+    if timeout_secs is None:
+        return default_pathlock_timeout_secs()
+    return timeout_secs
 
 
 def fs_ctx_from_agfs_path(path: str) -> Dict[str, str]:
@@ -363,7 +393,7 @@ class AsyncAGFSClient:
     async def pathlock_acquire_exact(
         self,
         path: str,
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -373,14 +403,14 @@ class AsyncAGFSClient:
             "pathlock_acquire_exact",
             _fs_ctx_or_default(path, fs_ctx),
             path,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 
     async def pathlock_acquire_exact_batch(
         self,
         paths: list[str],
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -390,14 +420,14 @@ class AsyncAGFSClient:
             "pathlock_acquire_exact_batch",
             _fs_ctx_or_default(paths[0] if paths else "/", fs_ctx),
             paths,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 
     async def pathlock_acquire_tree(
         self,
         path: str,
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -407,14 +437,14 @@ class AsyncAGFSClient:
             "pathlock_acquire_tree",
             _fs_ctx_or_default(path, fs_ctx),
             path,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 
     async def pathlock_acquire_tree_batch(
         self,
         paths: list[str],
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -424,7 +454,7 @@ class AsyncAGFSClient:
             "pathlock_acquire_tree_batch",
             _fs_ctx_or_default(paths[0] if paths else "/", fs_ctx),
             paths,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 
@@ -432,7 +462,7 @@ class AsyncAGFSClient:
         self,
         exact_paths: list[str],
         tree_paths: list[str],
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -444,14 +474,14 @@ class AsyncAGFSClient:
             _fs_ctx_or_default(first, fs_ctx),
             exact_paths,
             tree_paths,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 
     async def pathlock_acquire_batch(
         self,
         requests: list[Dict[str, str]],
-        timeout_secs: float = 0.0,
+        timeout_secs: float | None = None,
         owner_lease_ref: Dict[str, Any] | None = None,
         *,
         fs_ctx: Dict[str, str] | None = None,
@@ -470,7 +500,7 @@ class AsyncAGFSClient:
             "pathlock_acquire_batch",
             _fs_ctx_or_default(first, fs_ctx),
             requests,
-            timeout_secs,
+            _resolve_pathlock_timeout(timeout_secs),
             owner_lease_ref,
         )
 

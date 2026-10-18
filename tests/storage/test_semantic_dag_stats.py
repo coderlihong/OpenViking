@@ -596,3 +596,60 @@ async def test_semantic_processor_drops_not_found_message_without_requeue(monkey
     assert result.outcome.value == "failed"
     assert requeued == []
     processor._circuit_breaker.check()
+
+
+def _lock_retry_executor(monkeypatch) -> SemanticDagExecutor:
+    fake_fs = _FakeVikingFS({})
+    monkeypatch.setattr("openviking.storage.queuefs.semantic_dag.get_viking_fs", lambda: fake_fs)
+    _patch_semantic_config(monkeypatch)
+    ctx = RequestContext(user=UserIdentifier("acc1", "user1"), role=Role.USER)
+    return SemanticDagExecutor(
+        processor=_FakeProcessor(),
+        context_type="resource",
+        max_concurrent_llm=1,
+        ctx=ctx,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_dir_rides_out_transient_lock_conflict(monkeypatch):
+    """A short path-lock conflict must be retried, never silently skipped."""
+    monkeypatch.setattr(SemanticDagExecutor, "_DISPATCH_LOCK_BACKOFF_SECS", 0.0)
+    executor = _lock_retry_executor(monkeypatch)
+    calls = []
+
+    async def flaky(dir_uri, parent_uri):
+        calls.append(dir_uri)
+        if len(calls) < 3:
+            raise LockAcquisitionError("busy")
+        return True
+
+    monkeypatch.setattr(executor, "_dispatch_dir_once", flaky)
+
+    assert await executor._dispatch_dir("viking://resources/root", None) is True
+    assert len(calls) == 3
+    assert executor.get_stats().lock_skipped_nodes == 0
+
+
+@pytest.mark.asyncio
+async def test_dispatch_dir_counts_permanent_lock_skip_in_stats(monkeypatch):
+    """A permanently blocked directory is skipped, logged and counted."""
+    monkeypatch.setattr(SemanticDagExecutor, "_DISPATCH_LOCK_BACKOFF_SECS", 0.0)
+    executor = _lock_retry_executor(monkeypatch)
+    calls = []
+
+    async def always_busy(dir_uri, parent_uri):
+        calls.append(dir_uri)
+        raise LockAcquisitionError("busy")
+
+    monkeypatch.setattr(executor, "_dispatch_dir_once", always_busy)
+
+    assert await executor._dispatch_dir("viking://resources/root", None) is True
+    assert len(calls) == SemanticDagExecutor._DISPATCH_LOCK_ATTEMPTS
+    assert executor.get_stats().lock_skipped_nodes == 1
+
+    SemanticDagExecutor._active_executors.add(executor)
+    try:
+        assert SemanticDagExecutor.get_active_stats().lock_skipped_nodes == 1
+    finally:
+        SemanticDagExecutor._active_executors.discard(executor)

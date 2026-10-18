@@ -480,11 +480,20 @@ class TaskTracker:
         Durable queue work (rebuilt QueueFS messages) keeps its record alive:
         the rebooted work index still owns it and re-stamping happens when the
         rebuilt processor starts.
+
+        A CANCELLING record is the exception.  Its runner is the only process
+        that could observe the cancellation and settle it, so once that runner
+        is gone the record can never leave ``CANCELLING`` -- and because
+        ``_ACTIVE_STATUSES`` counts it as active, ``create_if_no_running`` then
+        refuses every later reindex of that URI for good (observed after the
+        01:40 restart: two cancelled manuals kept the dead runner's epoch and
+        409'd their own re-dispatch).
         """
         for loaded_task in loaded:
             if not self._is_dead_runner_record(loaded_task, time.time()):
                 continue
-            if self._work_index.has_work(loaded_task.task_id):
+            cancelled = loaded_task.status == TaskStatus.CANCELLING
+            if not cancelled and self._work_index.has_work(loaded_task.task_id):
                 continue
             await self._fail_orphaned(loaded_task)
 
@@ -1120,10 +1129,28 @@ class TaskTracker:
         if task is not None:
             if not self._matches_owner(task, account_id, user_id):
                 return None
-            return self._copy(task)
-        if account_id is None:
+        elif account_id is None:
             return None
-        return await self._dispatcher.run(lambda: self._get_on_owner(task_id, account_id, user_id))
+        else:
+            task = await self._dispatcher.run(
+                lambda: self._get_on_owner(task_id, account_id, user_id)
+            )
+        if task is None:
+            return None
+        # Settle a record whose owning process is gone. Reconciliation otherwise
+        # runs only when a task with the same business key is *created*, so after
+        # a restart every in-flight task stayed 'running' with a dead runner
+        # epoch until someone happened to re-request that exact URI: the rebuild
+        # driver waited out its full one-hour timeout on four such zombies
+        # instead of re-dispatching them. Reading is exactly when the owner of
+        # that task learns its runner is gone.
+        if self._is_dead_runner_record(task, time.time()) and not self._work_index.has_work(
+            task_id
+        ):
+            await self._dispatcher.run(lambda: self._fail_orphaned(task))
+            refreshed = self._cached_task(task_id)
+            return self._copy(refreshed) if refreshed is not None else self._copy(task)
+        return self._copy(task)
 
     async def _get_on_owner(
         self,

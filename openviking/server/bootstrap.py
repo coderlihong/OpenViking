@@ -331,6 +331,7 @@ def main():
                 port=config.port,
                 workers=workers,
                 timeout_keep_alive=config.timeout_keep_alive,
+                backlog=config.listen_backlog,
                 log_config=None,
             )
         else:
@@ -339,6 +340,7 @@ def main():
                 host=config.host,
                 port=config.port,
                 timeout_keep_alive=config.timeout_keep_alive,
+                backlog=config.listen_backlog,
                 log_config=None,
             )
     finally:

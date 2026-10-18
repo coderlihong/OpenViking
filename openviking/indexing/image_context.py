@@ -12,10 +12,12 @@ sibling/parent directory. No occurrence count is hardcoded; the context budget i
 measured with the real model tokenizer when one is configured.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import posixpath
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from html.parser import HTMLParser
@@ -91,6 +93,23 @@ def image_context_cache():
         _context_cache.reset(token)
 
 
+# The corpus is machine-generated upstream and almost every ``<img>`` tag in it
+# is emitted WITHOUT its closing ``>``: live, 151,230 of 152,603 tags end at
+# ``..."/`` and the next line opens ``<figcaption>``. HTMLParser then keeps
+# consuming that sibling as if it were still part of the img tag, so the
+# caption -- the authoritative description this whole recovery path exists to
+# read -- is silently lost and the image is reported as undescribed. Terminate
+# such a tag before parsing instead of trusting the corpus to be well-formed.
+_UNCLOSED_IMG = re.compile(r"<img\b[^<>]*?(?=<|$)", re.IGNORECASE | re.DOTALL)
+
+
+def _terminate_unclosed_img(fragment: str) -> str:
+    """Add the missing ``>`` to ``<img>`` tags that were emitted without one."""
+    if "<img" not in fragment.lower():
+        return fragment
+    return _UNCLOSED_IMG.sub(lambda match: match.group(0).rstrip() + ">", fragment)
+
+
 class _Images(HTMLParser):
     """Collect ``<img>`` references and their figcaption from an HTML fragment.
 
@@ -106,6 +125,9 @@ class _Images(HTMLParser):
         self.images = []
         self._in_caption = False
         self._caption_parts = []
+
+    def feed(self, data: str) -> None:
+        super().feed(_terminate_unclosed_img(data))
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -476,11 +498,16 @@ async def collect_image_contexts(
             from openviking.indexing.publication import configured_store
 
             registry = configured_store()
-            epoch = (
-                registry.observe_draft(ctx.account_id, source_uri)
-                if registry and getattr(ctx, "account_id", None)
-                else None
-            )
+            # ``observe_draft`` opens a write transaction. Calling it inline on
+            # the event loop made every image-source summary queue behind the
+            # single publication writer (observed live as multi-second loop
+            # stalls with this exact frame at publication.py observe_draft).
+            if registry and getattr(ctx, "account_id", None):
+                epoch = await asyncio.to_thread(
+                    registry.observe_draft, ctx.account_id, source_uri
+                )
+            else:
+                epoch = None
             text = cache.texts.get(source_uri) if cache is not None else None
             parsed = cache.parsed.get(source_uri) if cache is not None else None
             if text is None:

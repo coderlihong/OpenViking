@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Publish directory navigation vectors in the same barrier as text children."""
 
+import asyncio
 import hashlib
 import json
 
-from openviking.indexing.batch import current_batch_id
+from openviking.indexing.batch import begin_batched
 from openviking.indexing.publication import configured_store
 from openviking.storage.vector_ids import publication_member_id
 
@@ -41,7 +42,9 @@ async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs
         first, category=TEXT_CATEGORY, contents=(m.message for m in messages), source_uri=first["uri"]
     )
     document_id = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-    prepared = prepare_meta(first, registry, document_id, revision)
+    prepared = await asyncio.to_thread(
+        prepare_meta, first, registry, document_id, revision
+    )
     for message in messages[1:]:
         message.context_data.pop("_business_meta_input", None)
     config = embedding_config.model_dump(mode="json")
@@ -54,17 +57,21 @@ async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs
     ).hexdigest()
     if prepared:
         members.append("metadata:" + plan)
-    generation = registry.begin(
+    # Worker thread: resolving the batch can seal a chunk, and the begin itself
+    # is a write transaction. Either one on the event loop stalls every request
+    # behind the publisher convoy.
+    generation = await asyncio.to_thread(
+        begin_batched,
+        registry,
         identity[0],
         identity[2],
         identity[1],
         plan,
         members,
-        batch=current_batch_id(registry, identity[0], identity[2]),
         semantic_refs=semantic_refs,
     )
     try:
-        write_meta(registry, generation, prepared)
+        await asyncio.to_thread(write_meta, registry, generation, prepared)
         from openviking.utils.embedding_utils import _enqueue_embedding_message
 
         for message in messages:
@@ -78,11 +85,13 @@ async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs
                 failure_message=f"Failed directory semantic enqueue for {identity[1]}",
             ):
                 raise RuntimeError("Directory semantic enqueue was rejected")
-        registry.seal(generation)
-        state = registry.state(generation)
+        await asyncio.to_thread(registry.seal, generation)
+        state = await asyncio.to_thread(registry.state, generation)
         if state["state"] in {"failed", "superseded"}:
             raise RuntimeError(state.get("error") or "Directory generation cannot publish")
     except BaseException:
-        registry.fail(generation, "Directory producer failed before publication seal")
+        await asyncio.to_thread(
+            registry.fail, generation, "Directory producer failed before publication seal"
+        )
         raise
     return len(messages)

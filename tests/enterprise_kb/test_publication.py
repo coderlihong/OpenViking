@@ -379,14 +379,16 @@ async def test_query_view_heartbeat_keeps_a_long_read_lease_alive(tmp_path, monk
     renewals = []
     real_renew = store.renew
 
-    def counting_renew(lease, ttl=120):
+    def counting_renew(lease, ttl=120, busy_timeout_ms=None):
         renewals.append(lease)
-        return real_renew(lease, ttl=ttl)
+        return real_renew(lease, ttl=ttl, busy_timeout_ms=busy_timeout_ms)
 
     monkeypatch.setattr(store, "renew", counting_renew)
     view = QueryView(store)
     await asyncio.to_thread(view.read, "acct", store)
-    assert len(renewals) == 1  # the capture's own renew
+    # A fresh capture already holds a full TTL: the request path must not queue
+    # on the writer lock for a renewal it does not need.
+    assert renewals == []
 
     await asyncio.sleep(1.0)  # five heartbeat intervals at the patched TTL
     assert len(renewals) > 1  # the heartbeat kept renewing off-loop

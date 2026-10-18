@@ -100,6 +100,12 @@ FETCH_BY_URI_OUTPUT_FIELDS = [
     "owner_user_id",
 ]
 
+# Publication visibility is rechecked after the engine returns, so the engine
+# filter stays coarse (tenant, path scope, level). Over-fetch this many times
+# the requested window before rechecking, and never fetch more than the cap.
+VISIBILITY_OVERFETCH = 4
+VISIBILITY_MAX_FETCH = 1000
+
 VIKINGDB_CONTENT_MAX_SIZE = 1024 * 1024
 
 # The local engine persists every record as one serialized row whose ``fields``
@@ -1483,23 +1489,49 @@ class VikingVectorIndexBackend:
         *,
         ctx: RequestContext,
     ) -> List[Dict[str, Any]]:
-        from openviking.indexing.publication import visible_filter
+        from openviking.indexing.publication import recheck_visibility, visibility_snapshot
         from openviking.wiki.access import namespace_candidate_filter
         from openviking.indexing.derived_access import derived_candidate_filter, recheck_derived_candidates
 
+        # Publication visibility is rechecked below instead of being encoded as
+        # one filter clause per published URI: that DSL carries ~175k nodes for
+        # the enterprise corpus, and handing it to the engine per query made a
+        # tree-wide search take minutes while a narrow one still took seconds.
+        # The recheck is exact for every returned row, so over-fetching widens
+        # the candidate pool only, never the visible set.
+        snapshot = visibility_snapshot(ctx)
         filter = self._merge_filters(
-            filter, visible_filter(ctx), await namespace_candidate_filter(self.acl_manager, ctx),
+            filter, await namespace_candidate_filter(self.acl_manager, ctx),
             await derived_candidate_filter(self.acl_manager, ctx),
         )
-        rows = await self.query(
+
+        wanted = max(1, limit) + max(0, offset)
+        fetch = min(max(wanted * VISIBILITY_OVERFETCH, wanted + 32), VISIBILITY_MAX_FETCH)
+        raw_rows = await self.query(
             query_vector=query_vector,
             sparse_query_vector=sparse_query_vector,
             filter=filter,
-            limit=limit,
-            offset=offset,
+            limit=fetch,
+            offset=0,
             output_fields=output_fields,
             ctx=ctx,
         )
+        rows = recheck_visibility(ctx, raw_rows, snapshot)
+        # A short page only means the engine ran out of candidates; widen the
+        # fetch only when a full page lost rows to the visibility recheck.
+        if len(rows) < wanted and len(raw_rows) >= fetch and fetch < VISIBILITY_MAX_FETCH:
+            fetch = min(fetch * VISIBILITY_OVERFETCH, VISIBILITY_MAX_FETCH)
+            raw_rows = await self.query(
+                query_vector=query_vector,
+                sparse_query_vector=sparse_query_vector,
+                filter=filter,
+                limit=fetch,
+                offset=0,
+                output_fields=output_fields,
+                ctx=ctx,
+            )
+            rows = recheck_visibility(ctx, raw_rows, snapshot)
+        rows = rows[max(0, offset):max(0, offset) + max(1, limit)]
         return await recheck_derived_candidates(self.acl_manager, ctx, rows)
 
     async def filter(
@@ -1713,21 +1745,39 @@ class VikingVectorIndexBackend:
             raise InvalidArgumentError(
                 "A query-less lookup needs a filter or a target directory to scope by."
             )
-        from openviking.indexing.publication import visible_filter
+        from openviking.indexing.publication import recheck_visibility, visibility_snapshot
         from openviking.wiki.access import namespace_candidate_filter
         from openviking.indexing.derived_access import derived_candidate_filter, recheck_derived_candidates
 
-        rows = await self.filter(
-            filter=self._merge_filters(
-                scope_filter, visible_filter(ctx),
-                await namespace_candidate_filter(self.acl_manager, ctx),
-                await derived_candidate_filter(self.acl_manager, ctx),
-            ),
-            limit=limit,
-            offset=offset,
+        # Same contract as ``search``: publication visibility is rechecked here
+        # rather than encoded as one engine clause per published URI.
+        snapshot = visibility_snapshot(ctx)
+        wanted = max(1, limit) + max(0, offset)
+        fetch = min(max(wanted * VISIBILITY_OVERFETCH, wanted + 32), VISIBILITY_MAX_FETCH)
+        lookup_filter = self._merge_filters(
+            scope_filter,
+            await namespace_candidate_filter(self.acl_manager, ctx),
+            await derived_candidate_filter(self.acl_manager, ctx),
+        )
+        raw_rows = await self.filter(
+            filter=lookup_filter,
+            limit=fetch,
+            offset=0,
             output_fields=RETRIEVAL_OUTPUT_FIELDS,
             ctx=ctx,
         )
+        rows = recheck_visibility(ctx, raw_rows, snapshot)
+        if len(rows) < wanted and len(raw_rows) >= fetch and fetch < VISIBILITY_MAX_FETCH:
+            fetch = min(fetch * VISIBILITY_OVERFETCH, VISIBILITY_MAX_FETCH)
+            raw_rows = await self.filter(
+                filter=lookup_filter,
+                limit=fetch,
+                offset=0,
+                output_fields=RETRIEVAL_OUTPUT_FIELDS,
+                ctx=ctx,
+            )
+            rows = recheck_visibility(ctx, raw_rows, snapshot)
+        rows = rows[max(0, offset):max(0, offset) + max(1, limit)]
         return await recheck_derived_candidates(self.acl_manager, ctx, rows)
 
     async def search_children_in_tenant(

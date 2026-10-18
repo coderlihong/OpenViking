@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 
+from openviking.indexing.manifest_codec import decode_manifest
 from openviking.wiki.policies import publication_adjudication
 
 
@@ -38,7 +39,7 @@ def _snapshot_pages(registry, account, namespace, root):
         manifest = db.execute('SELECT manifest FROM snapshots WHERE id=?', (head[0],)).fetchone()
     if manifest is None:
         return {}
-    return {uri: item for uri, item in json.loads(manifest[0]).items()
+    return {uri: item for uri, item in decode_manifest(manifest[0]).items()
             if uri.startswith(root.rstrip('/') + '/')}
 
 

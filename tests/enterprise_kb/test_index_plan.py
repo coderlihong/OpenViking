@@ -417,3 +417,46 @@ def test_chunker_version_change_invalidates_collection_signature(embedding, monk
     future = _build_embedding_metadata(config)
     assert current["model"] == future["model"]
     assert current["model_identity"] != future["model_identity"]
+
+
+def test_oversized_figure_caption_splits_into_children_instead_of_failing(embedding):
+    """A caption that alone exceeds the child budget must not lose the document.
+
+    PDF-derived captions carry a whole VLM description. Before this, one such
+    caption raised ``Child token budget exceeded; no truncation allowed`` and the
+    file received no vectors at all -- four manuals in the enterprise tree were
+    left one file short of full coverage for exactly this reason.
+    """
+    from openviking.parse.image_rewrite import wrap_in_figure
+
+    figure_uri = "viking://resources/raw/images/oversize.jpg"
+    # Byte-level fixture tokenizer: ~3 tokens per CJK character, so this
+    # caption (~104 chars) overflows the 192-token child budget while still
+    # fitting inside the 768-token parent budget.
+    caption = "液压泵总成拆装与扭矩参数说明。" * 8
+    source = "# 维修\n\n" + wrap_in_figure(figure_uri, figure_uri, caption=caption) + "\n\n正文。\n"
+    plan = plan_resource(source, URI, "acct", embedding)
+    assert "".join(c.source_text for c in plan.chunks) == source
+    embedded = "\n".join(c.embedding_text for c in plan.chunks)
+    assert "液压泵总成拆装与扭矩参数说明" in embedded, embedded[:120]
+    assert all(c.token_count + 16 <= 192 for c in plan.chunks)
+    assert len([c for c in plan.chunks if "液压泵总成" in c.embedding_text]) >= 2
+
+
+def test_split_render_verifies_every_fragment_with_a_non_monotone_tokenizer():
+    """A line-boundary cut can price a fragment above the budget it came from.
+
+    Byte-level BPE does not guarantee that a shorter prefix costs fewer tokens
+    (this fake prices any newline-terminated prefix at 100), and the running
+    server hit exactly that: reindexing 11.3.1_车身线束图.md still failed with
+    "Child token budget exceeded" after the render had been split.
+    """
+    from openviking.indexing.plan import _split_render
+
+    def count(text: str) -> int:
+        return 100 if text.endswith("\n") else len(text)
+
+    text = "aaaa\n" + "a" * 30
+    fragments = _split_render(text, 20, count)
+    assert "".join(fragments) == text
+    assert all(count(fragment) <= 20 for fragment in fragments)

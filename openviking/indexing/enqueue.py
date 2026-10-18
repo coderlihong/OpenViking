@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: AGPL-3.0
 """Enqueue a single shared IndexPlan through the existing embedding worker."""
 
+import asyncio
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
 
-from openviking.indexing.batch import current_batch_id
+from openviking.indexing.batch import begin_batched
 from openviking.indexing.plan import chunk_fields, plan_resource
 from openviking.storage.queuefs.embedding_msg import EmbeddingMsg
 
@@ -42,7 +43,13 @@ async def enqueue_text_plan(base_message, content, embedding_config, enqueue) ->
 
     registry = configured_store(embedding_config)
     from openviking.indexing.metadata_integration import prepare_meta, bind_meta, write_meta
-    prepared = prepare_meta(base, registry, plan.document_id, plan.content_revision) if registry else None
+    prepared = (
+        await asyncio.to_thread(
+            prepare_meta, base, registry, plan.document_id, plan.content_revision
+        )
+        if registry
+        else None
+    )
     if prepared:
         plan = replace(plan, plan_id=hashlib.sha256((plan.plan_id + prepared["fingerprint"]).encode()).hexdigest())
     lexical = bool(getattr(embedding_config.chunking, "lexical_enabled", False))
@@ -52,16 +59,15 @@ async def enqueue_text_plan(base_message, content, embedding_config, enqueue) ->
     if prepared:
         expected.append("metadata:" + plan.plan_id)
     generation = (
-        registry.begin(
+        await asyncio.to_thread(
+            begin_batched,
+            registry,
             base["account_id"],
             base.get("namespace_id", "resources"),
             base["uri"],
             plan.plan_id,
             expected,
             source_ref=source_ref,
-            batch=current_batch_id(
-                registry, base["account_id"], base.get("namespace_id", "resources")
-            ),
         )
         if registry
         else None
@@ -69,24 +75,26 @@ async def enqueue_text_plan(base_message, content, embedding_config, enqueue) ->
     try:
         if prepared:
             base.update(bind_meta(prepared, generation))
-            write_meta(registry, generation, prepared)
+            await asyncio.to_thread(write_meta, registry, generation, prepared)
         await _enqueue_children(base_message, base, plan, enqueue, generation)
         if registry:
             if lexical:
                 scalar = {key: base[key] for key in (
                     "search_tags", "tags", "created_at", "updated_at", "type", "name", "description", "owner_user_id"
                 ) if key in base}
-                registry.lexical_write(generation, [
+                await asyncio.to_thread(registry.lexical_write, generation, [
                     {**scalar, **chunk_fields(plan, chunk), "uri": base["uri"], "chunk_text": chunk.embedding_text}
                     for chunk in plan.chunks
                 ])
-            registry.seal(generation)
-            state = registry.state(generation)
+            await asyncio.to_thread(registry.seal, generation)
+            state = await asyncio.to_thread(registry.state, generation)
             if state["state"] in {"failed", "superseded"}:
                 raise RuntimeError(state.get("error") or "Generation cannot publish")
     except BaseException:
         if registry:
-            registry.fail(generation, "Producer failed before publication seal")
+            await asyncio.to_thread(
+                registry.fail, generation, "Producer failed before publication seal"
+            )
         raise
     return len(plan.chunks)
 

@@ -307,3 +307,62 @@ async def test_async_cp_falls_back_to_complete_write_when_binding_cannot_stream(
         ("/local/acct/data/source.bin", False),
     ]
     assert client.written == b"complete payload"
+
+
+class _RecordingLockClient:
+    """Record pathlock acquisitions and the wait budget they were armed with."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def pathlock_acquire_exact_batch(
+        self,
+        ctx: dict[str, str],
+        paths: list[str],
+        timeout_secs: float = 0.0,
+        owner_lease_ref: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append(
+            {
+                "ctx": ctx,
+                "paths": list(paths),
+                "timeout_secs": timeout_secs,
+                "owner_lease_ref": owner_lease_ref,
+            }
+        )
+        return {"lease_ref": "lease"}
+
+
+def test_pathlock_default_timeout_is_bounded_and_env_overridable(monkeypatch) -> None:
+    from openviking.pyagfs import async_client as ac
+
+    monkeypatch.delenv(ac._PATHLOCK_TIMEOUT_ENV, raising=False)
+    assert ac._PATHLOCK_DEFAULT_TIMEOUT_SECS > 0
+    assert ac.default_pathlock_timeout_secs() == ac._PATHLOCK_DEFAULT_TIMEOUT_SECS
+
+    monkeypatch.setenv(ac._PATHLOCK_TIMEOUT_ENV, "12.5")
+    assert ac.default_pathlock_timeout_secs() == 12.5
+
+    monkeypatch.setenv(ac._PATHLOCK_TIMEOUT_ENV, "not-a-number")
+    assert ac.default_pathlock_timeout_secs() == ac._PATHLOCK_DEFAULT_TIMEOUT_SECS
+
+    # A negative budget still means "do not wait", never an unbounded wait.
+    monkeypatch.setenv(ac._PATHLOCK_TIMEOUT_ENV, "-3")
+    assert ac.default_pathlock_timeout_secs() == 0.0
+
+
+@pytest.mark.asyncio
+async def test_pathlock_wrapper_arms_the_default_budget_unless_overridden(monkeypatch) -> None:
+    from openviking.pyagfs import async_client as ac
+
+    monkeypatch.delenv(ac._PATHLOCK_TIMEOUT_ENV, raising=False)
+    client = _RecordingLockClient()
+    agfs = AsyncAGFSClient(client)
+
+    await agfs.pathlock_acquire_exact_batch(["/local/acct/data/.abstract.md"])
+    await agfs.pathlock_acquire_exact_batch(["/local/acct/data/.abstract.md"], timeout_secs=0.0)
+
+    assert [call["timeout_secs"] for call in client.calls] == [
+        ac._PATHLOCK_DEFAULT_TIMEOUT_SECS,
+        0.0,
+    ]

@@ -302,7 +302,10 @@ def test_quarantine_without_source_writes_resolves_but_pending_write_never_does(
     second = store.job_claim('second-crashed')
     assert store.job_parse_acquire(quarantined['job_id'], 'second-crashed', second['fence'])
     with sqlite3.connect(db_path) as raw:
-        raw.execute("INSERT INTO source_writes VALUES ('token-live', 'a', 'viking://resources/raw/y.md', 'active', 2)")
+        raw.execute(
+            "INSERT INTO source_writes(id, account, uri, state, created) "
+            "VALUES ('token-live', 'a', 'viking://resources/raw/y.md', 'active', 2)"
+        )
         raw.execute("INSERT INTO source_write_refs VALUES ('token-live', 'local-file', 'op-2', '{}')")
         raw.execute("UPDATE kb_parse_slot SET state='uncertain' WHERE slot=1")
         raw.execute("UPDATE kb_jobs SET state='write_recovery_required',owner=NULL,lease_until=0 WHERE job_id=?",

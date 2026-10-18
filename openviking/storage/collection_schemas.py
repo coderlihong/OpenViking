@@ -1015,6 +1015,30 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                             generation,
                             inserted_data.get("uri", ""),
                         )
+                    # A sqlite write-lock convoy ("database is locked") says nothing
+                    # about this chunk's content; acking the message away would drop
+                    # its vector row permanently. Re-enqueue for a later attempt.
+                    if "database is locked" in str(db_err) and self._vikingdb.has_queue_manager:
+                        try:
+                            await self._vikingdb.enqueue_embedding_msg(embedding_msg)
+                            self._merge_request_stats(
+                                embedding_msg.telemetry_id, requeue_count=1
+                            )
+                            get_request_wait_tracker().record_embedding_requeue(
+                                embedding_msg.telemetry_id
+                            )
+                            logger.info(
+                                "Re-enqueued embedding message after transient store lock "
+                                f"({self._embedding_msg_log_context(embedding_msg)})"
+                            )
+                            return ProcessResult.requeued()
+                        except Exception as requeue_err:
+                            logger.error(
+                                self._embedding_error_msg(
+                                    embedding_msg,
+                                    f"Failed to re-enqueue message: {requeue_err}",
+                                )
+                            )
                     error_msg = self._embedding_error_msg(
                         embedding_msg,
                         f"Failed to write to vector database: {db_err}",
@@ -1029,8 +1053,28 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                         raise RuntimeError("Chunk write returned no ID; generation cannot publish")
                     from openviking.storage.vector_ids import publication_member_id
 
-                    publication_store.acknowledge(generation, publication_member_id(inserted_data))
-                    state = publication_store.state(generation)
+                    # Off-loop: the receipt and the resulting state open write
+                    # transactions on the single-writer store, and the chunk
+                    # write path runs on the queue worker's event loop. They
+                    # share one transaction (and one thread hop): doing them
+                    # inline put a per-chunk ``BEGIN IMMEDIATE`` in front of
+                    # every request while a bulk publication held the lock.
+                    member_id = publication_member_id(inserted_data)
+                    acknowledge_and_state = getattr(
+                        publication_store, "acknowledge_and_state", None
+                    )
+                    if acknowledge_and_state is not None:
+                        state = await asyncio.to_thread(
+                            acknowledge_and_state, generation, member_id
+                        )
+                    else:
+                        # Authority workers expose the older command pair.
+                        await asyncio.to_thread(
+                            publication_store.acknowledge, generation, member_id
+                        )
+                        state = await asyncio.to_thread(
+                            publication_store.state, generation
+                        )
                     if state["state"] == "superseded":
                         # The row is in the store; a newer attempt for the same source
                         # owns publication and its own write lands the current revision.
@@ -1066,7 +1110,9 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             return ProcessResult.failed(error_msg)
         finally:
             if publication_store is not None and generation and request_failed_message is not None:
-                publication_store.fail(generation, request_failed_message)
+                await asyncio.to_thread(
+                    publication_store.fail, generation, request_failed_message
+                )
             if embedding_msg is not None and request_failed_message is not None:
                 self._record_request_failure(embedding_msg, request_failed_message)
 

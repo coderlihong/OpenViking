@@ -166,8 +166,8 @@ async def test_parse_quarantine_resolve_http_releases_only_without_pending_write
         db_path = setup[1]
         with sqlite3.connect(db_path) as raw:
             raw.execute("UPDATE kb_parse_slot SET state='uncertain' WHERE slot=1")
-            raw.execute("INSERT INTO source_writes VALUES ('token-live', 'acct', "
-                        "'viking://resources/raw/x.md', 'active', 2)")
+            raw.execute("INSERT INTO source_writes(id, account, uri, state, created) "
+                        "VALUES ('token-live', 'acct', 'viking://resources/raw/x.md', 'active', 2)")
             raw.execute("INSERT INTO source_write_refs VALUES ('token-live', 'local-file', 'op-1', '{}')")
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as raw_http:
             response = await raw_http.post(f'/api/v1/kb/jobs/{job["job_id"]}/parse-quarantine/resolve')

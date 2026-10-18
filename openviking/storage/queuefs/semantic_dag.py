@@ -47,6 +47,56 @@ from openviking_cli.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Marker written by the pre-fix overview path when the model returned nothing.
+# Sidecars that contain it carry no content, so they must be replaced (when the
+# model answers) or removed - never kept as if they were real L0/L1 text.
+_PLACEHOLDER_OVERVIEW_MARKER = "[Directory overview is not generated]"
+
+# ``remove_files`` takes its path lock without waiting, and a sidecar delete
+# regularly lands while a sibling node still holds the directory lock; retry a
+# few times so a lost race does not leave the placeholder behind for good.
+_STALE_SIDECAR_REMOVE_ATTEMPTS = 4
+
+
+def placeholder_sidecar_names(
+    existing_overview: Optional[str], existing_abstract: Optional[str]
+) -> list[str]:
+    """Return the sidecar file names whose body is only the placeholder marker.
+
+    ``semantic_dag`` skips directories whose overview generation returned no
+    content, but a directory that already carries a placeholder sidecar from the
+    pre-fix path still has files "on disk" - they must be removed, not kept.
+    """
+
+    return [
+        name
+        for name, body in (
+            (".overview.md", existing_overview),
+            (".abstract.md", existing_abstract),
+        )
+        if body is not None and _PLACEHOLDER_OVERVIEW_MARKER in body
+    ]
+
+
+def strip_placeholder_sidecars(
+    overview: Optional[str], abstract: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """Treat placeholder sidecars as missing so the directory is refreshed.
+
+    The incremental path skips a directory whose ``.overview.md`` and
+    ``.abstract.md`` both exist, so a placeholder written by the pre-fix path
+    would never be revisited - and never replaced.  Reporting it as absent
+    forces the directory through generation again, where a real answer
+    overwrites it and a failed answer removes it.
+    """
+
+    stale = set(placeholder_sidecar_names(overview, abstract))
+    return (
+        None if ".overview.md" in stale else overview,
+        None if ".abstract.md" in stale else abstract,
+    )
+
+
 # Session-internal files that should never be summarized by the semantic pipeline.
 # These are canonical archives (e.g. session transcripts) whose content provides
 # no additional retrieval value and would only waste tokens and add latency.
@@ -82,6 +132,11 @@ class DagStats:
     pending_nodes: int = 0
     in_progress_nodes: int = 0
     done_nodes: int = 0
+    lock_skipped_nodes: int = 0
+    overview_skipped_nodes: int = 0
+    # Directories whose stale placeholder sidecars could not be deleted while the
+    # walk held their lock; the caller removes them once the walk is over.
+    placeholder_sidecar_dirs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -384,6 +439,9 @@ class SemanticDagExecutor:
             stats.pending_nodes += current.pending_nodes
             stats.in_progress_nodes += current.in_progress_nodes
             stats.done_nodes += current.done_nodes
+            stats.lock_skipped_nodes += current.lock_skipped_nodes
+            stats.overview_skipped_nodes += current.overview_skipped_nodes
+            stats.placeholder_sidecar_dirs.extend(current.placeholder_sidecar_dirs)
         return stats
 
     async def _run_work(self, work: DagWork) -> None:
@@ -432,7 +490,55 @@ class SemanticDagExecutor:
         self._mark_node_done()
         logger.warning("Unknown semantic DAG work kind: %s", work.kind)
 
+    #: PathLock conflicts on a directory dispatch are transient (another writer
+    #: holds the sidecar lease for a moment), so ride them out instead of
+    #: dropping the whole subtree's semantic work on the first attempt.
+    _DISPATCH_LOCK_ATTEMPTS: ClassVar[int] = 3
+    _DISPATCH_LOCK_BACKOFF_SECS: ClassVar[float] = 1.0
+
     async def _dispatch_dir(self, dir_uri: str, parent_uri: Optional[str]) -> bool:
+        """Dispatch a directory, retrying transient path-lock conflicts.
+
+        The legacy behaviour on a permanently blocked directory is preserved:
+        the child is reported done so the parent aggregation can finish, but the
+        skip is logged at ERROR level and counted in :attr:`DagStats`.
+        """
+        backoff = self._DISPATCH_LOCK_BACKOFF_SECS
+        last_error: Optional[LockAcquisitionError] = None
+        for attempt in range(1, self._DISPATCH_LOCK_ATTEMPTS + 1):
+            try:
+                return await self._dispatch_dir_once(dir_uri, parent_uri)
+            except LockAcquisitionError as error:
+                last_error = error
+                if attempt >= self._DISPATCH_LOCK_ATTEMPTS:
+                    break
+                logger.warning(
+                    "Semantic dispatch for %s is lock-blocked (attempt %d/%d): %s; retrying in %.1fs",
+                    dir_uri,
+                    attempt,
+                    self._DISPATCH_LOCK_ATTEMPTS,
+                    error,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                backoff *= 2
+
+        self._stats.lock_skipped_nodes += 1
+        logger.error(
+            "Giving up on semantic dispatch for %s after %d lock attempts: %s; "
+            "the subtree is skipped and its content will be missing until re-indexed",
+            dir_uri,
+            self._DISPATCH_LOCK_ATTEMPTS,
+            last_error,
+            exc_info=True,
+        )
+        if parent_uri:
+            await self._on_child_done(parent_uri, dir_uri, "")
+        elif self._root_done:
+            self._root_done.set()
+        return True
+
+    async def _dispatch_dir_once(self, dir_uri: str, parent_uri: Optional[str]) -> bool:
         """Lazy-dispatch tasks for a directory when it is triggered."""
         if dir_uri in self._nodes:
             return True
@@ -529,6 +635,9 @@ class SemanticDagExecutor:
                         self._schedule_dir(child_uri, dir_uri)
             return False
         except Exception as e:
+            if isinstance(e, LockAcquisitionError):
+                # Transient: let _dispatch_dir retry it instead of swallowing it.
+                raise
             logger.error(f"Failed to dispatch directory {dir_uri}: {e}", exc_info=True)
             if self._generation_trigger == "content_copy":
                 raise
@@ -809,18 +918,58 @@ class SemanticDagExecutor:
         except Exception:
             return True
 
+    def _sidecar_dir_path(self, dir_uri: str) -> str:
+        """Directory that holds this directory's L0/L1 sidecars.
+
+        ``_get_target_file_path`` only resolves for an incremental update whose
+        target is the root; a full reindex therefore used to read no sidecars at
+        all. That made a placeholder left by the pre-fix overview path invisible
+        (and unremovable), and it also disabled the keep-the-old-sidecar policy
+        on every full run. Falling back to the directory URI itself is what the
+        write path does too.
+        """
+
+        return self._get_target_file_path(dir_uri) or dir_uri
+
+    async def _remove_stale_sidecar(self, path: str, dir_uri: str) -> bool:
+        """Delete a placeholder sidecar, retrying while the path is locked."""
+
+        delay = 0.25
+        last_error: Optional[BaseException] = None
+        for _ in range(_STALE_SIDECAR_REMOVE_ATTEMPTS):
+            try:
+                await self._viking_fs.remove_files(path, ctx=self._ctx)
+                return True
+            except Exception as exc:
+                last_error = exc
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 2.0)
+        logger.warning(
+            f"[SemanticDag] {dir_uri}: could not remove the stale placeholder "
+            f"sidecar {path.rsplit('/', 1)[-1]} after "
+            f"{_STALE_SIDECAR_REMOVE_ATTEMPTS} attempt(s): {last_error}"
+        )
+        return False
+
     async def _read_existing_overview_abstract(
         self, dir_uri: str
     ) -> tuple[Optional[str], Optional[str]]:
-        target_path = self._get_target_file_path(dir_uri)
-        if not target_path:
-            return None, None
+        sidecar_dir = self._sidecar_dir_path(dir_uri)
+        overview: Optional[str] = None
+        abstract: Optional[str] = None
         try:
-            overview = await self._viking_fs.read_file(f"{target_path}/.overview.md", ctx=self._ctx)
-            abstract = await self._viking_fs.read_file(f"{target_path}/.abstract.md", ctx=self._ctx)
-            return body_for_preview(overview), body_for_preview(abstract)
+            overview = body_for_preview(
+                await self._viking_fs.read_file(f"{sidecar_dir}/.overview.md", ctx=self._ctx)
+            )
         except Exception:
-            return None, None
+            overview = None
+        try:
+            abstract = body_for_preview(
+                await self._viking_fs.read_file(f"{sidecar_dir}/.abstract.md", ctx=self._ctx)
+            )
+        except Exception:
+            abstract = None
+        return overview, abstract
 
     async def _file_summary_task(self, parent_uri: str, file_path: str) -> None:
         """Generate file summary and notify parent completion."""
@@ -1455,6 +1604,9 @@ class SemanticDagExecutor:
 
                 if not children_changed:
                     overview, abstract = await self._read_existing_overview_abstract(dir_uri)
+                    # A placeholder sidecar is not content: treat it as missing so
+                    # the directory is regenerated instead of skipped forever.
+                    overview, abstract = strip_placeholder_sidecars(overview, abstract)
                     should_write = overview is None or abstract is None
                     # Rebuilt sidecars must also replace their stale vectors.
                     need_vectorize = should_write
@@ -1486,7 +1638,69 @@ class SemanticDagExecutor:
                             total_files=len(node.file_paths),
                             total_children=len(node.children_dirs),
                         )
-                overview, abstract = self._processor._normalize_overview_generation(overview)
+                if overview is None:
+                    # The model produced nothing for this directory. Writing a
+                    # placeholder would overwrite a good .abstract.md /
+                    # .overview.md with "not generated" text. When the sidecars
+                    # are already on disk, keeping them is the whole fix: a
+                    # transient model hiccup must not fail the reindex, so the
+                    # directory is left untouched and counted as skipped.
+                    existing_overview, existing_abstract = await self._read_existing_overview_abstract(dir_uri)
+                    stale = placeholder_sidecar_names(existing_overview, existing_abstract)
+                    # Always hand this directory to the post-walk sweep: the walk's
+                    # own read can miss sidecars the published view still serves
+                    # (live: "no sidecars exist on disk" while the content API read
+                    # the placeholder back), and a delete attempted here races the
+                    # lock the walk itself holds. The sweep runs once the walk is
+                    # over, re-reads every listed directory and deletes only files
+                    # whose body is still the marker, so listing an extra
+                    # directory costs one read and can never remove live content.
+                    self._stats.placeholder_sidecar_dirs.append(dir_uri)
+                    if stale:
+                        # Sidecars written before the no-placeholder rule carry
+                        # only the "not generated" marker. There is nothing worth
+                        # keeping in them, so drop the stale files and leave the
+                        # directory without L0/L1 - the same end state as the
+                        # no-sidecar branch below.
+                        sidecar_dir = self._sidecar_dir_path(dir_uri)
+                        removed = 0
+                        for name in stale:
+                            if await self._remove_stale_sidecar(f"{sidecar_dir}/{name}", dir_uri):
+                                removed += 1
+                        if removed:
+                            logger.warning(
+                                f"[SemanticDag] {dir_uri}: removed {removed} placeholder "
+                                "sidecar(s) left by the pre-fix overview path"
+                            )
+                    if (
+                        existing_overview is not None
+                        and existing_abstract is not None
+                        and not stale
+                    ):
+                        self._stats.overview_skipped_nodes += 1
+                        logger.warning(
+                            f"[SemanticDag] {dir_uri}: overview generation returned no "
+                            "content; keeping the existing sidecars and continuing"
+                        )
+                        should_write = False
+                        need_vectorize = False
+                    else:
+                        # Nothing to keep and nothing to write: the directory is
+                        # left without L0/L1 rather than carrying a placeholder or
+                        # failing the run. Raising here is what re-enqueued the
+                        # same directory forever (image-only directories have no
+                        # text for the model to summarise), so the reindex never
+                        # finished.
+                        self._stats.overview_skipped_nodes += 1
+                        logger.warning(
+                            f"[SemanticDag] {dir_uri}: overview generation returned no "
+                            "content and no sidecars exist on disk; leaving the "
+                            "directory without L0/L1 instead of writing a placeholder"
+                        )
+                        should_write = False
+                        need_vectorize = False
+                else:
+                    overview, abstract = self._processor._normalize_overview_generation(overview)
 
             if self._closed:
                 return
@@ -1566,6 +1780,9 @@ class SemanticDagExecutor:
             pending_nodes=self._stats.pending_nodes,
             in_progress_nodes=self._stats.in_progress_nodes,
             done_nodes=self._stats.done_nodes,
+            lock_skipped_nodes=self._stats.lock_skipped_nodes,
+            overview_skipped_nodes=self._stats.overview_skipped_nodes,
+            placeholder_sidecar_dirs=list(self._stats.placeholder_sidecar_dirs),
         )
 
     @property

@@ -184,7 +184,6 @@ def _get_abstract_worker_count() -> int:
 
 
 _ABSTRACT_WORKER_COUNT = _get_abstract_worker_count()
-_DEFAULT_GREP_FILE_CONCURRENCY = 32
 
 
 # ========== Singleton Pattern ==========

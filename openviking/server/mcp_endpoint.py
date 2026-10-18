@@ -87,6 +87,7 @@ from openviking_cli.exceptions import (
     UnauthenticatedError,
 )
 from openviking_cli.utils import get_logger
+from openviking_cli.utils.config.concurrency_config import concurrency_config
 
 logger = get_logger(__name__)
 
@@ -466,7 +467,7 @@ async def _format_search_result(
     if read_content:
         import asyncio
 
-        semaphore = asyncio.Semaphore(10)
+        semaphore = asyncio.Semaphore(concurrency_config().max_request_concurrency)
 
         async def _read(uri: str) -> None:
             async with semaphore:
@@ -596,7 +597,7 @@ async def read(
     service = get_service()
     ctx = _get_ctx()
     uri_list = uris if isinstance(uris, list) else [uris]
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(concurrency_config().max_request_concurrency)
 
     async def _preflight_one(uri: str) -> tuple[str, Optional[int], Optional[str]]:
         """Resolve a URI and stat media before any binary bytes are loaded."""
@@ -1438,7 +1439,7 @@ async def grep(
         _resolve_mcp_workspace_uri(exclude_uri, ctx) if exclude_uri else None
     )
     patterns = [pattern] if isinstance(pattern, str) else pattern
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(concurrency_config().max_request_concurrency)
 
     async def _grep_one(p: str) -> tuple[str, list[dict]]:
         async with semaphore:

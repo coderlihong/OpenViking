@@ -7,7 +7,7 @@ from test_wiki_namespaces import domains as domains, RAW, ONE
 from test_wiki_namespaces import prepared as prepared, environment as environment, embedding as embedding
 
 from openviking.storage.acl import AclAction, AclMode
-from openviking.storage.expr import PathScope, RawDSL
+from openviking.storage.expr import And, PathScope, RawDSL
 from openviking.storage.vectordb.index.cuvs_index import matches_filter
 from openviking.storage.vectordb_adapters.qdrant_adapter import QdrantCollectionAdapter
 from openviking.storage.viking_vector_index_backend import VikingVectorIndexBackend
@@ -80,8 +80,11 @@ async def test_dense_and_filter_candidates_exclude_denied_subtrees_before_query(
     facade.query = AsyncMock(return_value=[])
     await facade.search(query_vector=[1.0], ctx=e.ctx)
     dense_filter = facade.query.call_args.kwargs['filter']
+    # Namespace denial stays an engine-side must_not; publication visibility is
+    # rechecked after ranking, so the merged filter can be a single clause.
+    clauses = dense_filter.conds if isinstance(dense_filter, And) else [dense_filter]
     assert any(isinstance(c, RawDSL) and c.payload.get('para') == '-d=-1'
-               for c in dense_filter.conds)
+               for c in clauses)
     await facade.filter_in_tenant(e.ctx, target_directories=[RAW], extra_filter={'op': 'must', 'field': 'level', 'conds': [2]})
     assert facade.query.await_count == 2
 

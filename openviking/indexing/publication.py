@@ -11,6 +11,7 @@ Images, directory layout and BM25 are not yet part of this barrier.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import os
@@ -18,18 +19,27 @@ import os
 if os.name == "posix":
     import fcntl
 import json
+import math
 import sqlite3
 import threading
 import time
+import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import lru_cache, wraps
 from pathlib import Path
 from uuid import uuid4
 
+from openviking.indexing.manifest_codec import decode_manifest, encode_manifest
 from openviking.indexing.registry_lexical import RegistryLexicalMixin
 from openviking.indexing.registry_metadata import RegistryMetadataMixin
-from openviking.indexing.registry_gc import RegistryGCMixin, _seconds
+from openviking.indexing.registry_gc import (
+    RegistryGCMixin,
+    _seconds,
+    _snapshot_manifest,
+    _tombstone_covers,
+    record_snapshot_manifest,
+)
 from openviking.indexing.registry_domains import RegistryDomains
 from openviking.indexing.jobs import DurableJobsMixin
 from openviking.indexing.write_recovery import WriteRecoveryMixin
@@ -50,6 +60,12 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             raise FailedPreconditionError('RESTORE_PENDING: joint restore validation must finish before registry startup')
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._authority_owned = authority_owned
+        # One long-lived connection per thread. Opening a connection per call
+        # forced SQLite to re-read and re-parse the entire schema on every
+        # statement prepare (sqlite3InitOne), which pinned the single event-loop
+        # thread at 100% CPU under the reindex load and stretched write-lock
+        # hold times until publication query leases lapsed.
+        self._local = threading.local()
         with self.db() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS snapshots (
@@ -61,9 +77,19 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 CREATE TABLE IF NOT EXISTS builds (
                   generation TEXT PRIMARY KEY, account TEXT, namespace TEXT, uri TEXT,
                   plan TEXT, expected TEXT, state TEXT, created REAL, error TEXT);
+                -- "Newest generation for this URI" is the acceptance gate, the
+                -- interrupted-generation scan and the retention prune; without
+                -- this index each of them sorts the whole append-only history
+                -- (653,922 rows live) on every call.
+                CREATE INDEX IF NOT EXISTS builds_uri_created ON builds(uri, created);
                 CREATE TABLE IF NOT EXISTS desired (
                   account TEXT, namespace TEXT, uri TEXT, generation TEXT,
                   PRIMARY KEY(account,namespace,uri));
+                -- Reverse lookup by generation: GC and lexical retention ask
+                -- "is this generation still the desired one?" once per candidate
+                -- row, and the primary key cannot answer it (a full scan of
+                -- ``desired`` per row made that check take minutes).
+                CREATE INDEX IF NOT EXISTS desired_generation ON desired(generation);
                 CREATE TABLE IF NOT EXISTS drafts (
                   account TEXT, uri TEXT, epoch INTEGER NOT NULL, sha TEXT,
                   PRIMARY KEY(account,uri));
@@ -109,7 +135,8 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 CREATE TABLE IF NOT EXISTS receipts (
                   generation TEXT, child TEXT, PRIMARY KEY(generation,child));
                 CREATE TABLE IF NOT EXISTS batches (
-                  id TEXT PRIMARY KEY, account TEXT, namespace TEXT, state TEXT, error TEXT);
+                  id TEXT PRIMARY KEY, account TEXT, namespace TEXT, state TEXT, error TEXT,
+                  remaining INTEGER);
                 CREATE TABLE IF NOT EXISTS batch_members (
                   generation TEXT PRIMARY KEY, batch TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS batch_members_batch ON batch_members(batch);
@@ -130,6 +157,19 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                   reason TEXT, created REAL NOT NULL);
                 CREATE INDEX IF NOT EXISTS gc_audit_account ON gc_audit(account);
             """)
+            # ``CREATE TABLE IF NOT EXISTS`` never retrofits a column onto an
+            # existing database, so a registry built before the batch counter
+            # existed needs the column added here (same idiom as
+            # server/oauth/storage.py). NULL marks those legacy batches: they
+            # keep the original whole-batch scan.
+            existing = {row[1] for row in db.execute("PRAGMA table_info(batches)")}
+            if "remaining" not in existing:
+                db.execute("ALTER TABLE batches ADD COLUMN remaining INTEGER")
+            # Same retrofit for the fence owner: a fence stamped with another
+            # process generation belongs to a server that already exited.
+            write_columns = {row[1] for row in db.execute("PRAGMA table_info(source_writes)")}
+            if "owner" not in write_columns:
+                db.execute("ALTER TABLE source_writes ADD COLUMN owner TEXT")
 
         with self.db() as db:
             db.execute("INSERT OR IGNORE INTO wiki_collection_domains(account,collection_id,state) SELECT account,collection_id,'legacy_domain_pending' FROM wiki_collections")
@@ -140,7 +180,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         self.init_physical_gc()
 
     @contextmanager
-    def db(self):
+    def db(self, readonly: bool = False, busy_timeout_ms: int | None = None):
         lock = open(self.path + ".authority.lock", "a+b")
         if os.name == "posix" and not self._authority_owned:
             try:
@@ -149,22 +189,119 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 lock.close()
                 raise RuntimeError("Registry is owned by an authority; use its socket repository")
         try:
-            db = sqlite3.connect(self.path, timeout=30)
-        except BaseException:
-            lock.close()
-            raise
-        db.row_factory = sqlite3.Row
-        try:
+            db = self._local.conn
+        except AttributeError:
+            try:
+                # 120s: under the vector phase dozens of workers race for the
+                # single write lock and each transaction re-reads cold b-tree
+                # pages from this multi-GB database; a 30s busy timeout surfaced
+                # as spurious "database is locked" failures at the tail of the
+                # convoy. Waiting is safe -- every caller retries or re-enqueues.
+                db = sqlite3.connect(self.path, timeout=120)
+            except BaseException:
+                lock.close()
+                raise
+            db.row_factory = sqlite3.Row
+            # WAL lets readers proceed while a writer commits; the default
+            # rollback journal serialises them, which surfaced as
+            # "database is locked" once concurrent writers reached the vector
+            # phase. NORMAL is the standard WAL pairing (no fsync per commit).
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=NORMAL")
             db.execute("PRAGMA foreign_keys=ON")
-            db.execute("BEGIN IMMEDIATE")
+            # The default 2MB page cache thrashes against a multi-GB database:
+            # hot b-tree pages of the receipts/builds indexes fall out between
+            # transactions and every small lookup degenerates into pread storms,
+            # stretching write-lock hold times (see stack samples). This is a
+            # per-thread-local connection, so the budget is threads x this cap
+            # (~72 x 16MB ~= 1.1GB worst case) -- not a single shared quota.
+            db.execute("PRAGMA cache_size=-16384")  # 16MB per connection
+            self._local.conn = db
+        # A reused connection keeps its prepared-statement cache and loaded
+        # schema; only the outermost frame opens a transaction, so callers that
+        # pass `db` down (e.g. the batch walk) join the same transaction instead
+        # of trying to BEGIN inside one.
+        depth = getattr(self._local, "depth", 0)
+        self._local.depth = depth + 1
+        started = time.perf_counter()
+        acquired = started
+        try:
+            if depth == 0:
+                if busy_timeout_ms is not None:
+                    # Bounded wait for callers that run on the event loop: a query
+                    # lease renewal used to queue behind the publisher's commit
+                    # queue for 200+s, freezing the whole server (watchdog stacks:
+                    # db -> renew -> QueryView.read -> visible_filter -> search).
+                    # A short busy timeout turns that freeze into a fast retry.
+                    db.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+                if readonly:
+                    # Pure readers must not queue on the writer lock: in WAL a
+                    # deferred read transaction never blocks writers and writers
+                    # never block it. This halves the BEGIN IMMEDIATE demand of
+                    # the vector phase (can_write/state/is_superseded).
+                    db.execute("BEGIN DEFERRED")
+                else:
+                    db.execute("BEGIN IMMEDIATE")
+                acquired = time.perf_counter()
             yield db
-            db.commit()
+            if depth == 0 and not readonly:
+                db.commit()
         except BaseException:
-            db.rollback()
+            if depth == 0:
+                db.rollback()
+                # A rolled-back transaction must not publish anything.
+                self._local.pending_publications = []
             raise
         finally:
-            db.close()
+            self._local.depth = depth
+            if depth == 0 and readonly:
+                # End the read snapshot so it never pins the WAL head.
+                try:
+                    db.execute("COMMIT")
+                except sqlite3.OperationalError:
+                    pass
+            if depth == 0 and busy_timeout_ms is not None:
+                # Restore the connection default for the next transaction.
+                try:
+                    db.execute("PRAGMA busy_timeout=120000")
+                except sqlite3.OperationalError:
+                    pass
             lock.close()
+            if depth == 0:
+                total_ms = (time.perf_counter() - started) * 1000.0
+                threshold = _slow_tx_threshold_ms()
+                if threshold and total_ms >= threshold:
+                    wait_ms = (acquired - started) * 1000.0
+                    # Walk raw frames instead of traceback.extract_stack(): the
+                    # latter pulls every frame through linecache.checkcache(),
+                    # which stats every source file in the cache.  Under the
+                    # vector phase most transactions cross the threshold, and
+                    # that stat storm ran on the event loop and stalled it for
+                    # 15-56s (watchdog: MainThread -> db -> extract_stack ->
+                    # linecache.checkcache).  f_lineno needs no linecache.
+                    frames = []
+                    frame = sys._getframe(1)
+                    while frame is not None and len(frames) < 24:
+                        if "publication.py" not in frame.f_code.co_filename:
+                            frames.append(
+                                f"{Path(frame.f_code.co_filename).name}:"
+                                f"{frame.f_lineno}:{frame.f_code.co_name}"
+                            )
+                        frame = frame.f_back
+                    logger.warning(
+                        "slow publication transaction: %.0fms (lock wait %.0fms, readonly=%s) caller=%s",
+                        total_ms,
+                        wait_ms,
+                        readonly,
+                        " <- ".join(frames[:6]),
+                    )
+        if depth == 0 and not readonly:
+            # Publish only once this transaction has committed. The expensive part
+            # of a publication (walks, manifest merge, json.dumps + gzip over a
+            # ~35MB snapshot) used to run under BEGIN IMMEDIATE and held the single
+            # writer for ~0.7s, queueing every other writer behind it. It now runs
+            # in a read-only pass followed by a short write transaction.
+            self._drain_deferred_publications()
 
     def begin(
         self,
@@ -257,13 +394,18 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                     # the gate had already condemned ("Source changed during index
                     # build"), so the chapter and the figure it cites stayed invisible
                     # to retrieval forever while the ingest still reported success.
-                    db.execute(
+                    ready = self._member_ready(db, stale["generation"])
+                    changed = db.execute(
                         "UPDATE builds SET state='superseded',error=? WHERE generation=?",
                         (
                             "Superseded by a newer index attempt in the same batch",
                             stale["generation"],
                         ),
-                    )
+                    ).rowcount
+                    # A member that had already gone ready was counted down when it
+                    # did; only a still-outstanding one owes the batch a decrement.
+                    if changed and not ready:
+                        self._decrement_batch(db, batch)
             overlap = db.execute(
                 "SELECT 1 FROM desired WHERE account=? AND uri=? AND namespace!=?",
                 (account, uri, namespace),
@@ -318,6 +460,9 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             )
             if batch is not None:
                 db.execute("INSERT INTO batch_members VALUES (?,?)", (generation, batch))
+                # NULL stays NULL for batches created before the counter existed:
+                # those keep the original whole-batch scan.
+                db.execute("UPDATE batches SET remaining=remaining+1 WHERE id=?", (batch,))
             if source_ref is not None:
                 db.execute("INSERT INTO sources VALUES (?,?)", (generation, json.dumps(source_ref)))
             if semantic_refs is not None:
@@ -341,14 +486,81 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
 
     @staticmethod
     def _assert_not_writing(db, account, uri):
-        if db.execute("SELECT 1 FROM source_writes WHERE account=? AND uri=?", (account, uri)).fetchone():
-            # Point-named so queue workers settle the message permanently instead
-            # of re-enqueueing an unknown error forever (observed live: a single
-            # unbacked uncertain fence re-enqueued one sidecar write 96 times).
-            raise FailedPreconditionError(
-                "WRITE_RECOVERY_REQUIRED: source has an in-flight or uncertain write; "
-                "retry after verified recovery or operator fence clear"
-            )
+        rows = [dict(row) for row in db.execute(
+            "SELECT * FROM source_writes WHERE account=? AND uri=?", (account, uri))]
+        if not rows:
+            return
+        if PublicationStore._settle_dead_fences(db, account, uri, rows):
+            return
+        # Point-named so queue workers settle the message permanently instead
+        # of re-enqueueing an unknown error forever (observed live: a single
+        # unbacked uncertain fence re-enqueued one sidecar write 96 times).
+        raise FailedPreconditionError(
+            "WRITE_RECOVERY_REQUIRED: source has an in-flight or uncertain write; "
+            "retry after verified recovery or operator fence clear"
+        )
+
+    @staticmethod
+    def _settle_dead_fences(db, account, uri, rows):
+        """Settle unbacked uncertain fences whose writer is long gone.
+
+        ``source_write`` (openviking/indexing/content.py:167) leaves an
+        ``uncertain`` fence whenever a storage write fails or is cancelled, and
+        nothing ever expires it.  With no ``source_write_refs`` row no verifier
+        can prove terminality -- that case is exactly what the operator path
+        ``write_recovery.write_fence_clear`` exists for -- so a dead fence
+        blocked this URI's directory generation for good.  Observed live: 154
+        new fences in two minutes of fleet reindex and 74 "Failed directory
+        generation" records on an otherwise complete manual.
+
+        Once every row is unbacked and older than its state's limit
+        (``AUTO_SETTLE_FENCE_SECONDS`` for ``uncertain``,
+        ``AUTO_SETTLE_WRITING_SECONDS`` for an abandoned ``writing`` row), the
+        writer cannot still be running, so settle it with the same audited
+        bookkeeping the operator path uses and let the caller proceed.
+        """
+        now = time.time()
+        settle_after = {
+            "uncertain": AUTO_SETTLE_FENCE_SECONDS,
+            "writing": AUTO_SETTLE_WRITING_SECONDS,
+        }
+        # A fence stamped with another process generation belongs to a server
+        # that already exited, so it settles at once; legacy rows with no owner
+        # (or a mix that includes this generation) keep the time window.
+        generation = current_process_generation()
+        if not all(row.get("owner") and row.get("owner") != generation for row in rows):
+            for row in rows:
+                limit = settle_after.get(row["state"])
+                if limit is None or now - row["created"] < limit:
+                    return False
+        tokens = [row["id"] for row in rows]
+        placeholders = ",".join("?" for _ in tokens)
+        if db.execute(
+            "SELECT 1 FROM source_write_refs WHERE token IN (" + placeholders + ")", tokens
+        ).fetchone():
+            return False
+        epoch_row = db.execute("SELECT epoch FROM drafts WHERE account=? AND uri=?", (account, uri)).fetchone()
+        epoch = epoch_row["epoch"] if epoch_row else 0
+        db.execute(
+            "INSERT INTO source_fence_clears (account,uri,actor,reason,fences,old_epoch,new_epoch,confirmed) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (account, uri, AUTO_SETTLE_FENCE_ACTOR, AUTO_SETTLE_FENCE_REASON,
+             json.dumps([{"id": row["id"], "state": row["state"], "created": row["created"]} for row in rows],
+                        sort_keys=True),
+             epoch, epoch + 1, now),
+        )
+        db.execute("DELETE FROM source_writes WHERE account=? AND uri=?", (account, uri))
+        db.execute("UPDATE drafts SET epoch=epoch+1,sha=NULL WHERE account=? AND uri=?", (account, uri))
+        logger.warning(
+            "auto-settled %d dead write fence(s) for %s "
+            "(unbacked, owners=%s; a different process generation settles at once, "
+            "otherwise older than %.0fs uncertain / %.0fs writing): %s",
+            len(rows), uri,
+            ",".join(sorted({str(row.get("owner")) for row in rows})),
+            AUTO_SETTLE_FENCE_SECONDS, AUTO_SETTLE_WRITING_SECONDS,
+            ", ".join(sorted({row["state"] for row in rows})),
+        )
+        return True
 
     def begin_write(self, account, uri, backend_ref=None):
         if backend_ref is not None and (
@@ -362,7 +574,8 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         with self.db() as db:
             db.execute("INSERT OR IGNORE INTO drafts VALUES (?,?,0,NULL)", (account, uri))
             db.execute("UPDATE drafts SET epoch=epoch+1,sha=NULL WHERE account=? AND uri=?", (account, uri))
-            db.execute("INSERT INTO source_writes VALUES (?,?,?,'writing',?)", (token, account, uri, time.time()))
+            db.execute("INSERT INTO source_writes VALUES (?,?,?,'writing',?,?)",
+                       (token, account, uri, time.time(), current_process_generation()))
             if backend_ref is not None:
                 db.execute('INSERT INTO source_write_refs VALUES (?,?,?,?)',
                            (token, backend_ref['backend'], backend_ref['operation_id'], json.dumps(backend_ref, sort_keys=True)))
@@ -403,13 +616,15 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         batch = uuid4().hex
         with self.db() as db:
             db.execute(
-                "INSERT INTO batches VALUES (?,?,?,'building',NULL)", (batch, account, namespace)
+                "INSERT INTO batches (id,account,namespace,state,error,remaining) "
+                "VALUES (?,?,?,'building',NULL,0)",
+                (batch, account, namespace),
             )
         return batch
 
     def _fail_batch(self, db, batch, reason):
         db.execute(
-            "UPDATE batches SET state='failed',error=? WHERE id=? AND state!='published'",
+            "UPDATE batches SET state='failed',error=?,remaining=0 WHERE id=? AND state!='published'",
             (reason, batch),
         )
         db.execute(
@@ -424,11 +639,15 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             self._fail_batch(db, batch, reason)
 
     def seal_batch(self, batch):
+        outcome = {}
         with self.db() as db:
             db.execute(
                 "UPDATE batches SET state='queued' WHERE id=? AND state='building'", (batch,)
             )
-            return self._publish_batch_if_complete(db, batch)
+            self._settle_batch(db, batch, outcome=outcome)
+        # The publish itself runs when the transaction above commits, so the
+        # answer is only known now.
+        return bool(outcome.get("published"))
 
     def batch_state(self, batch):
         with self.db() as db:
@@ -445,6 +664,127 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             )
         }
         return row["state"] == "queued" and actual == set(json.loads(row["expected"]))
+
+    def _member_batch(self, db, generation):
+        row = db.execute(
+            "SELECT batch FROM batch_members WHERE generation=?", (generation,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def _member_ready(self, db, generation):
+        """True when a member was already counted down: sealed with every receipt.
+
+        No member may decrement the batch counter twice, so every decrement site
+        asks this first.
+        """
+        return self._has_all_receipts(db, self._build(db, generation))
+
+    def _decrement_batch(self, db, batch):
+        # ``remaining>0`` also leaves legacy NULL batches untouched (NULL>0 is not
+        # true), so a member added to a pre-counter batch stays on the original
+        # whole-batch scan.
+        db.execute(
+            "UPDATE batches SET remaining=remaining-1 WHERE id=? AND remaining>0", (batch,)
+        )
+
+    def _receipt_recorded(self, db, row, inserted, outcome=None):
+        """Advance the batch counter after a receipt or a seal lands.
+
+        Shared by every acknowledge path (vector children, the lexical marker,
+        the metadata marker) and by ``seal``, so the counter stays exact no
+        matter which child of a member arrives last.
+        """
+        batch = self._member_batch(db, row["generation"])
+        if batch is None:
+            return self._publish_if_complete(db, row, outcome)
+        ready = self._member_ready(db, row["generation"])
+        if inserted and ready:
+            self._decrement_batch(db, batch)
+        # The counter replaced the whole-batch scan a receipt used to run, so
+        # the member this receipt belongs to is validated on its own. Without
+        # it an obsolete chunk stayed 'queued' -- the chunk path reads that
+        # state to report the write as superseded or failed -- and its batch
+        # waited for a publication that could never include it.
+        self._mark_invalid_member(db, self._build(db, row["generation"]), batch)
+        return self._settle_batch(db, batch, outcome=outcome)
+
+    def _mark_invalid_member(self, db, row, batch):
+        """Retire a member the publication gate refuses, on its own receipt.
+
+        Only sealed batches are validated, exactly as the whole-batch scan
+        gated on ``state == 'queued'``: before the producer finishes, a source
+        write is still expected to be in flight. The counter is left alone --
+        the member is still counted until its receipts complete, and the
+        caller's ready check does that decrement.
+        """
+        state_row = db.execute("SELECT state FROM batches WHERE id=?", (batch,)).fetchone()
+        if state_row is None or state_row[0] != "queued":
+            return False
+        if row["state"] not in {"building", "queued"}:
+            return False
+        if not self._has_all_receipts(db, row):
+            # Still producing: ``_invalid_reason`` also reports in-flight source
+            # writes and draft mismatches, which resolve on their own. Retiring
+            # the member here published its siblings without it (observed as an
+            # order-dependent flake in the batch tests), so a member is judged
+            # only once its receipts are complete.
+            return False
+        reason = self._invalid_reason(db, row)
+        if not reason:
+            return False
+        state = "superseded" if reason.startswith("Newer") else "failed"
+        return bool(
+            db.execute(
+                "UPDATE builds SET state=?,error=? WHERE generation=? AND state IN ('building','queued')",
+                (state, reason, row["generation"]),
+            ).rowcount
+        )
+
+    def _settle_batch(self, db, batch, reason=None, outcome=None):
+        """Publish only when the counter proves nothing is outstanding.
+
+        The counter replaces a full scan of the batch -- thousands of members,
+        each costing several queries -- that every single receipt used to run
+        inside the write transaction, which is what capped concurrent batch
+        builds. ``remaining`` is NULL on batches created before the counter
+        existed and on members added to them; those keep the original scan.
+        """
+        group = db.execute(
+            "SELECT remaining,state FROM batches WHERE id=?", (batch,)
+        ).fetchone()
+        if group is None:
+            raise ValueError("Unknown publication batch")
+        if group["remaining"] is None:
+            # Legacy batch (written before the counter existed): no O(1) readiness
+            # signal, so keep the original synchronous whole-batch scan.
+            published = self._publish_legacy_batch(db, batch)
+            if outcome is not None:
+                outcome["published"] = published
+            return published
+        if group["remaining"]:
+            return False
+        if group["state"] == "queued":
+            # The counter proves nothing is outstanding; whether anything is
+            # actually publishable (an empty batch is not, a batch left with no
+            # live member fails) is decided by the deferred pass, which reports
+            # its answer through ``outcome``.
+            self._defer_publication(batch=batch, outcome=outcome)
+            return True
+        if group["state"] == "building":
+            # Nothing is outstanding, but the batch is unsealed: either every
+            # member is already ready (the producer's seal will publish them) or
+            # every member was retired. Only the second case is a dead batch --
+            # and it must be aborted on the spot, because a rejected enqueue
+            # relies on the abort to stop the remaining members from being
+            # built. Retiring the last live member used to fail the batch here.
+            live = db.execute(
+                "SELECT COUNT(*) FROM batch_members m JOIN builds b ON b.generation=m.generation "
+                "WHERE m.batch=? AND b.state NOT IN ('failed','superseded')",
+                (batch,),
+            ).fetchone()[0]
+            if not live:
+                self._fail_batch(db, batch, reason or "No batch member could be published")
+        return False
 
     def _invalid_reason(self, db, row):
         try:
@@ -507,46 +847,85 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                     return "Semantic source changed during index build"
         return self.metadata_invalid_reason(db, row)
 
-    def _publish_rows(self, db, rows):
+    def _publish_legacy_rows(self, db, rows):
+        """Publish rows from a batch created before the ``remaining`` counter.
+
+        Kept for databases whose batches predate the counter: they carry no O(1)
+        readiness signal, so they publish with the original synchronous walk
+        (all of it inside the caller's write transaction).
+        """
         first = rows[0]
         head = db.execute(
             "SELECT snapshot FROM heads WHERE account=? AND namespace=?",
             (first["account"], first["namespace"]),
         ).fetchone()
         manifest = (
-            json.loads(
-                db.execute("SELECT manifest FROM snapshots WHERE id=?", (head[0],)).fetchone()[0]
-            )
+            # Copy the memoized manifest before mutating: the cache holds the
+            # exact mapping that snapshot decodes to, and re-decoding it here
+            # cost ~154ms inside the publication write transaction.
+            dict(_snapshot_manifest(db, head[0]))
             if head
             else {}
         )
+        # A tree-scale batch publishes tens of thousands of members in one
+        # transaction; two lookups per member inside that transaction multiplied
+        # into ~90k statement prepares on a 10GB database and held the write lock
+        # for the whole walk. Prefetch both reference tables in two indexed scans,
+        # chunked under SQLite's host-parameter ceiling.
+        sources = {}
+        semantics = {}
+        generations = [row["generation"] for row in rows]
+        for chunk_start in range(0, len(generations), 900):
+            chunk = generations[chunk_start:chunk_start + 900]
+            placeholders = ",".join("?" * len(chunk))
+            sources.update(
+                (row[0], row[1])
+                for row in db.execute(
+                    f"SELECT generation,reference FROM sources WHERE generation IN ({placeholders})",
+                    chunk,
+                )
+            )
+            semantics.update(
+                (row[0], row[1])
+                for row in db.execute(
+                    f"SELECT generation,reference FROM semantic_sources WHERE generation IN ({placeholders})",
+                    chunk,
+                )
+            )
         for row in rows:
             item = {"generation": row["generation"], "plan": row["plan"]}
-            source = db.execute(
-                "SELECT reference FROM sources WHERE generation=?", (row["generation"],)
-            ).fetchone()
+            source = sources.get(row["generation"])
             if source:
-                item["content"] = json.loads(source[0])
-            semantic = db.execute(
-                "SELECT reference FROM semantic_sources WHERE generation=?", (row["generation"],)
-            ).fetchone()
+                item["content"] = json.loads(source)
+            semantic = semantics.get(row["generation"])
             if semantic:
-                item["semantic_contents"] = json.loads(semantic[0])
+                item["semantic_contents"] = json.loads(semantic)
             manifest[row["uri"]] = item
+        # One UPDATE per member multiplied into a statement per published row
+        # while the write lock was held; chunk them under SQLite's parameter
+        # ceiling instead (generations are already deduplicated above).
+        for chunk_start in range(0, len(generations), 900):
+            chunk = generations[chunk_start:chunk_start + 900]
+            placeholders = ",".join("?" * len(chunk))
             db.execute(
-                "UPDATE builds SET state='published' WHERE generation=?", (row["generation"],)
+                f"UPDATE builds SET state='published' WHERE generation IN ({placeholders})",
+                chunk,
             )
         snapshot = uuid4().hex
         db.execute(
             "INSERT INTO snapshots VALUES (?,?,?,?,?)",
-            (snapshot, first["account"], first["namespace"], json.dumps(manifest), time.time()),
+            (snapshot, first["account"], first["namespace"], encode_manifest(manifest), time.time()),
         )
         db.execute(
             "INSERT OR REPLACE INTO heads VALUES (?,?,?)",
             (first["account"], first["namespace"], snapshot),
         )
-
-    def _publish_batch_if_complete(self, db, batch):
+        # Hand the mapping we just stored to the read caches: every publish mints
+        # a new snapshot id, so readers would otherwise re-gunzip this ~13MB blob
+        # (~154ms of CPU each, once per file during reindex).
+        record_snapshot_manifest(snapshot, manifest)
+    def _publish_legacy_batch(self, db, batch):
+        """Synchronous publication for a batch with ``remaining IS NULL``."""
         group = db.execute("SELECT state FROM batches WHERE id=?", (batch,)).fetchone()
         if group is None:
             raise ValueError("Unknown publication batch")
@@ -579,18 +958,17 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         if not healthy:
             self._fail_batch(db, batch, "No batch member could be published")
             return False
-        self._publish_rows(db, healthy)
+        self._publish_legacy_rows(db, healthy)
         db.execute("UPDATE batches SET state='published' WHERE id=?", (batch,))
         return True
-
-    def _publish_if_complete(self, db, row):
+    def _publish_if_complete(self, db, row, outcome=None):
         member = db.execute(
             "SELECT batch FROM batch_members WHERE generation=?", (row["generation"],)
         ).fetchone()
         if member:
             # Delegate to the batch even when this member is not ready: a member
             # that turned invalid is dropped there, letting healthy members publish.
-            return self._publish_batch_if_complete(db, member[0])
+            return self._settle_batch(db, member[0], outcome=outcome)
         if not self._has_all_receipts(db, row):
             return False
         reason = self._invalid_reason(db, row)
@@ -601,11 +979,254 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 (state, reason, row["generation"]),
             )
             return False
-        self._publish_rows(db, [row])
+        self._defer_publication(generation=row["generation"], outcome=outcome)
+        return True
+
+    def _defer_publication(self, batch=None, generation=None, outcome=None):
+        """Publish after the current write transaction commits.
+
+        Everything expensive about publishing -- the member walk, the manifest
+        merge and the json/gzip encode of a ~35MB snapshot -- used to happen inside
+        BEGIN IMMEDIATE, so one publish held the single writer for ~0.7s and every
+        other writer queued behind it. The work is deferred to a read-only pass
+        plus a short commit; a later receipt (or the periodic sweep) retries if
+        this process dies in between.
+        """
+        pending = getattr(self._local, "pending_publications", None)
+        if pending is None:
+            pending = []
+            self._local.pending_publications = pending
+        pending.append((batch, generation, outcome))
+        return True
+
+    def _drain_deferred_publications(self):
+        pending = getattr(self._local, "pending_publications", None)
+        if not pending:
+            return
+        self._local.pending_publications = []
+        for batch, generation, outcome in pending:
+            try:
+                if batch is not None:
+                    published = self._publish_ready_batch(batch)
+                elif generation is not None:
+                    published = self._publish_ready_build(generation)
+                else:
+                    published = False
+            except Exception:
+                # Never fail the write that triggered this: the next receipt, the
+                # next seal or the sweep publishes the batch instead.
+                logger.exception(
+                    "deferred publication failed (batch=%s generation=%s)",
+                    batch,
+                    generation,
+                )
+                published = False
+            if outcome is not None:
+                outcome["published"] = published
+
+    def _prepare_publication(self, batch=None, generation=None):
+        try:
+            with self.db(readonly=True) as db:
+                return self._collect_publication(db, batch=batch, generation=generation)
+        except sqlite3.OperationalError as exc:
+            if "readonly" not in str(exc).lower():
+                raise
+            # The read-only pass tried to write (settling a dead write fence).
+            # Rare; redo the preparation inside a write transaction.
+            with self.db() as db:
+                return self._collect_publication(db, batch=batch, generation=generation)
+
+    def _publish_ready_batch(self, batch):
+        """Publish a ready batch, rebuilding the plan if the head moved.
+
+        The plan is collected outside the writer lock (that is what keeps the
+        lock hold short in the common case); if another publish landed in
+        between, the plan is *rebuilt inside the lock* rather than dropped, so a
+        ready publication is never lost to the read/write gap. Once the lock is
+        held no other writer can move the head, so a second round always settles.
+        """
+        plan = self._prepare_publication(batch=batch)
+        if plan is None:
+            return False
+        with self.db() as db:
+            if self._apply_publication(db, plan):
+                return True
+            refreshed = self._collect_publication(db, batch=batch)
+            if refreshed is None:
+                return False
+            if self._apply_publication(db, refreshed):
+                return True
+        logger.warning("Publication of batch %s kept losing the head race; deferring to the sweep", batch)
+        return False
+
+    def _publish_ready_build(self, generation):
+        plan = self._prepare_publication(generation=generation)
+        if plan is None:
+            return False
+        with self.db() as db:
+            if self._apply_publication(db, plan):
+                return True
+            refreshed = self._collect_publication(db, generation=generation)
+            if refreshed is None:
+                return False
+            if self._apply_publication(db, refreshed):
+                return True
+        logger.warning("Publication of generation %s kept losing the head race", generation)
+        return False
+
+    def _collect_publication(self, db, batch=None, generation=None):
+        """Read-only: decide what a batch (or one build) would publish.
+
+        Returns ``None`` when there is nothing to publish yet, or a plan carrying
+        everything the short commit needs: the members to mark published the
+        members that turned invalid, the new snapshot id and its encoded blob.
+        """
+        invalid = []
+        if batch is not None:
+            group = db.execute("SELECT state FROM batches WHERE id=?", (batch,)).fetchone()
+            if group is None or group[0] != "queued":
+                return None
+            rows = db.execute(
+                "SELECT b.* FROM builds b JOIN batch_members m ON m.generation=b.generation "
+                "WHERE m.batch=?",
+                (batch,),
+            ).fetchall()
+            if not rows:
+                return None
+            healthy = []
+            for row in rows:
+                if row["state"] in {"failed", "superseded"}:
+                    continue
+                if not self._has_all_receipts(db, row):
+                    # Still producing: judging it now would let a transient
+                    # ``_invalid_reason`` drop a member that is simply not done
+                    # yet, and the batch would publish without it.
+                    return None
+                reason = self._invalid_reason(db, row)
+                if reason:
+                    state = "superseded" if reason.startswith("Newer") else "failed"
+                    invalid.append((row["generation"], state, reason))
+                    continue
+                healthy.append(row)
+            if not healthy:
+                # Only a batch with no publishable member fails as a whole; the
+                # commit pass applies the abort so nothing else was published.
+                return {"batch": batch, "fail": "No batch member could be published"}
+            if not all(self._has_all_receipts(db, row) for row in healthy):
+                return None
+            account = healthy[0]["account"]
+            namespace = healthy[0]["namespace"]
+        else:
+            row = self._build(db, generation)
+            if row is None or not self._has_all_receipts(db, row):
+                return None
+            reason = self._invalid_reason(db, row)
+            if reason:
+                state = "superseded" if reason.startswith("Newer") else "failed"
+                return {"batch": None, "invalid": [(generation, state, reason)]}
+            healthy = [row]
+            account = row["account"]
+            namespace = row["namespace"]
+
+        head = db.execute(
+            "SELECT snapshot FROM heads WHERE account=? AND namespace=?", (account, namespace)
+        ).fetchone()
+        base = head[0] if head else None
+        manifest = dict(_snapshot_manifest(db, base)) if base else {}
+
+        sources = {}
+        semantics = {}
+        generations = [row["generation"] for row in healthy]
+        for chunk_start in range(0, len(generations), 900):
+            chunk = generations[chunk_start:chunk_start + 900]
+            placeholders = ",".join("?" * len(chunk))
+            sources.update(
+                (row[0], row[1])
+                for row in db.execute(
+                    f"SELECT generation,reference FROM sources WHERE generation IN ({placeholders})",
+                    chunk,
+                )
+            )
+            semantics.update(
+                (row[0], row[1])
+                for row in db.execute(
+                    f"SELECT generation,reference FROM semantic_sources WHERE generation IN ({placeholders})",
+                    chunk,
+                )
+            )
+        for row in healthy:
+            item = {"generation": row["generation"], "plan": row["plan"]}
+            source = sources.get(row["generation"])
+            if source:
+                item["content"] = json.loads(source)
+            semantic = semantics.get(row["generation"])
+            if semantic:
+                item["semantic_contents"] = json.loads(semantic)
+            manifest[row["uri"]] = item
+        return {
+            "batch": batch,
+            "account": account,
+            "namespace": namespace,
+            "base": base,
+            "snapshot": uuid4().hex,
+            "manifest": manifest,
+            "blob": encode_manifest(manifest),
+            "published": generations,
+            "invalid": invalid,
+        }
+
+    def _apply_publication(self, db, plan):
+        """Short write transaction: apply a plan prepared outside the write lock."""
+        batch = plan.get("batch")
+        if plan.get("fail"):
+            self._fail_batch(db, batch, plan["fail"])
+            return False
+        account = plan["account"]
+        namespace = plan["namespace"]
+        if batch is not None:
+            group = db.execute("SELECT state FROM batches WHERE id=?", (batch,)).fetchone()
+            if group is None or group[0] != "queued":
+                return False
+        head = db.execute(
+            "SELECT snapshot FROM heads WHERE account=? AND namespace=?", (account, namespace)
+        ).fetchone()
+        if (head[0] if head else None) != plan.get("base"):
+            # Another publisher moved the head while this plan was prepared; the
+            # stale manifest cannot be committed. A retry re-prepares against it.
+            return False
+        for generation, state, reason in plan.get("invalid") or []:
+            db.execute(
+                "UPDATE builds SET state=?,error=? WHERE generation=?",
+                (state, reason, generation),
+            )
+        snapshot = plan.get("snapshot")
+        if snapshot is None:
+            return False
+        generations = plan["published"]
+        for chunk_start in range(0, len(generations), 900):
+            chunk = generations[chunk_start:chunk_start + 900]
+            placeholders = ",".join("?" * len(chunk))
+            db.execute(
+                f"UPDATE builds SET state='published' WHERE generation IN ({placeholders})",
+                chunk,
+            )
+        db.execute(
+            "INSERT INTO snapshots VALUES (?,?,?,?,?)",
+            (snapshot, account, namespace, plan["blob"], time.time()),
+        )
+        db.execute(
+            "INSERT OR REPLACE INTO heads VALUES (?,?,?)",
+            (account, namespace, snapshot),
+        )
+        if batch is not None:
+            db.execute("UPDATE batches SET state='published' WHERE id=?", (batch,))
+        # Hand the mapping we just stored to the read caches: every publish mints
+        # a new snapshot id, so readers would otherwise re-gunzip this blob.
+        record_snapshot_manifest(snapshot, plan["manifest"])
         return True
 
     def can_write(self, generation, fields):
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             row = self._build(db, generation)
             if (
                 row["account"] != fields.get("account_id")
@@ -622,21 +1243,365 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             return row["state"] in {"building", "queued"} and desired and desired[0] == generation
 
     def seal(self, generation):
+        outcome = {}
         with self.db() as db:
             row = self._build(db, generation)
+            sealed = 0
             if row["state"] == "building":
-                db.execute("UPDATE builds SET state='queued' WHERE generation=?", (generation,))
-            return self._publish_if_complete(db, self._build(db, generation))
+                sealed = db.execute(
+                    "UPDATE builds SET state='queued' WHERE generation=? AND state='building'",
+                    (generation,),
+                ).rowcount
+            self._receipt_recorded(db, self._build(db, generation), sealed, outcome)
+        return bool(outcome.get("published"))
 
     def acknowledge(self, generation, child):
+        outcome = {}
         with self.db() as db:
             row = self._build(db, generation)
             if child not in json.loads(row["expected"]):
                 raise ValueError("Unexpected child cannot satisfy publication")
             if row["state"] not in {"building", "queued"}:
                 return False
-            db.execute("INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, child))
-            return self._publish_if_complete(db, row)
+            inserted = db.execute(
+                "INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, child)
+            ).rowcount
+            self._receipt_recorded(db, self._build(db, generation), inserted, outcome)
+        return bool(outcome.get("published"))
+
+    def acknowledge_and_state(self, generation, child):
+        """``acknowledge`` followed by ``state`` inside one transaction.
+
+        The chunk write path calls both back to back for every indexed chunk,
+        and each ``db()`` block is its own ``BEGIN IMMEDIATE`` on the single
+        writer, so the pair paid two lock acquisitions per chunk while a bulk
+        publication held the writer.  Folding them halves that on the hottest
+        path; the returned mapping is what a following ``state`` call returned.
+        """
+        outcome = {}
+        with self.db() as db:
+            row = self._build(db, generation)
+            if child not in json.loads(row["expected"]):
+                raise ValueError("Unexpected child cannot satisfy publication")
+            if row["state"] in {"building", "queued"}:
+                inserted = db.execute(
+                    "INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, child)
+                ).rowcount
+                self._receipt_recorded(db, self._build(db, generation), inserted, outcome)
+            return dict(self._build(db, generation))
+
+    def prune_snapshots(self, older_than_seconds=3600.0, limit=64):
+        """Delete manifest snapshots nothing can reach any more.
+
+        Every publication writes a *complete* gzipped manifest, so the table
+        grows by roughly ten megabytes per publish while only one snapshot per
+        account is reachable from ``heads``.  The live store reached 1,497
+        snapshots holding 30GB of manifest text, of which 1,494 were unreachable
+        history (``heads`` has one row per account, ``leases`` was empty).
+
+        A snapshot is droppable only when no head points at it, no unexpired
+        lease pins it, and it is older than ``older_than_seconds`` -- well past
+        the query-lease TTL -- so a reader that captured it cannot lose its view
+        mid-query.  Deletion is bounded per call: the sweep must never hold the
+        single writer for long.
+        """
+        now = time.time()
+        cutoff = now - max(0.0, float(older_than_seconds))
+        with self.db() as db:
+            keep = {row["snapshot"] for row in db.execute("SELECT snapshot FROM heads")}
+            if not keep:
+                # An empty registry is a bug, not a licence to delete history.
+                return 0
+            for table in ("leases", "gc_leases"):
+                for row in db.execute(f"SELECT snapshots, expires FROM {table}"):
+                    expires = row["expires"]
+                    if expires is None or float(expires) <= now:
+                        continue
+                    pinned = row["snapshots"]
+                    if not pinned:
+                        continue
+                    try:
+                        keep.update(json.loads(pinned))
+                    except (TypeError, ValueError):
+                        keep.add(pinned)
+            # A recovery record names the snapshot the rollback must restore, so
+            # it pins its manifest until the recovery itself is settled.
+            keep.update(
+                row["snapshot"]
+                for row in db.execute("SELECT snapshot FROM source_recoveries")
+            )
+            victims = [
+                row["id"]
+                for row in db.execute(
+                    "SELECT id FROM snapshots WHERE created < ? ORDER BY created LIMIT ?",
+                    (cutoff, max(1, int(limit))),
+                )
+                if row["id"] not in keep
+            ]
+            if not victims:
+                return 0
+            marks = ",".join("?" for _ in victims)
+            db.execute(f"DELETE FROM snapshots WHERE id IN ({marks})", victims)
+        return len(victims)
+
+    def _reap_stale_batch_members(self, db, max_age_seconds: float) -> int:
+        """Fail batch members whose producer never finished their chunk set.
+
+        A member stuck in ``building`` means the process writing its chunks
+        exited without confirming them (restart, killed job), so
+        ``remaining`` never reaches zero and the batch can never settle: every
+        *other* member of that batch - often hundreds - stays unpublished for
+        good.  Only members older than ``max_age_seconds`` whose batch has seen
+        no new member for that same window are failed: a live producer keeps
+        adding members, and an embedding backlog can legitimately delay a young
+        member for tens of minutes.
+        """
+
+        cutoff = time.time() - max(0.0, float(max_age_seconds))
+        rows = db.execute(
+            """
+            SELECT m.batch AS batch, m.generation AS generation
+            FROM batch_members m
+            JOIN builds b ON b.generation = m.generation
+            JOIN batches bt ON bt.id = m.batch
+            WHERE b.state = 'building'
+              AND b.created < ?
+              AND bt.state = 'building'
+              AND COALESCE((
+                  SELECT MAX(b2.created) FROM batch_members m2
+                    JOIN builds b2 ON b2.generation = m2.generation
+                   WHERE m2.batch = m.batch), 0) < ?
+            """,
+            (cutoff, cutoff),
+        ).fetchall()
+        for row in rows:
+            reaped = db.execute(
+                "UPDATE builds SET state='failed', error=? "
+                "WHERE generation=? AND state='building'",
+                (
+                    "stale build: the producer exited before its batch could settle",
+                    row["generation"],
+                ),
+            ).rowcount
+            if not reaped:
+                continue
+            db.execute(
+                "UPDATE batches SET remaining=remaining-1 WHERE id=? AND remaining>0",
+                (row["batch"],),
+            )
+        return len(rows)
+
+    # Errors a producer leaves behind when it is killed rather than failing.
+    INTERRUPTED_GENERATION_ERRORS = (
+        "producer interrupted",
+        "server restart",
+        "stale build",
+        "orphaned",
+        "owning server process exited",
+    )
+
+    def interrupted_uris(self, limit=2000):
+        """URIs whose newest generation died with its producer.
+
+        A restart orphans whatever was in flight: those generations stay
+        ``failed`` and nothing retries them, so a tree can sit half-indexed until
+        an operator notices.  Live: one interrupted run left 14,688 URIs for
+        40 hours, and the acceptance run needed a hand-written re-fire script.
+        Returns ``(account, uri, error, created)`` newest-first so a repair pass
+        can be bounded and reported.
+        """
+        clauses = " OR ".join("b.error LIKE ?" for _ in self.INTERRUPTED_GENERATION_ERRORS)
+        params = [f"%{marker}%" for marker in self.INTERRUPTED_GENERATION_ERRORS]
+        params.append(int(limit))
+        with self.db(readonly=True) as db:
+            rows = db.execute(
+                f"""
+                SELECT b.account, b.uri, b.error, b.created
+                FROM builds b
+                JOIN (SELECT uri, MAX(created) AS newest FROM builds GROUP BY uri) m
+                  ON m.uri = b.uri AND m.newest = b.created
+                WHERE b.state = 'failed' AND ({clauses})
+                ORDER BY b.created DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def published_chunks(self, account, uri):
+        """``(generation, [(chunk_id, content_revision)])`` for a URI's live generation.
+
+        ``content_revision`` is the sha256 of the source text a generation was
+        built from, so comparing it with the file's current hash answers "has this
+        content changed?" without spending an embedding call. Returns ``None``
+        when the URI has no live generation or no published chunks.
+        """
+        with self.db(readonly=True) as db:
+            row = db.execute(
+                "SELECT generation FROM desired WHERE account=? AND uri=? LIMIT 1",
+                (account, uri),
+            ).fetchone()
+            if row is None:
+                return None
+            generation = row["generation"]
+            rows = db.execute(
+                "SELECT child, json_extract(payload,'$.content_revision') AS revision "
+                "FROM publication_lexical WHERE generation=? AND uri=?",
+                (generation, uri),
+            ).fetchall()
+        if not rows:
+            return None
+        return generation, [(row["child"], row["revision"]) for row in rows]
+
+    def retired_generations(self, older_than_seconds=86400.0, limit=2000):
+        """Generations whose vectors and rows nothing can reach any more.
+
+        A generation is retired once it is no longer the desired generation of
+        its URI, no snapshot a live lease pins still references it, and its build
+        settled longer ago than the grace period.
+
+        Live measurement on the enterprise tree: 530,826 of 714,532 generations
+        were retired, and their 957,757 vectors were 73.5% of a 78 GB store --
+        and because retrieval never filters by generation they were also still
+        *searchable*, so stale copies of a URI competed with the current one.
+        """
+        if (
+            isinstance(older_than_seconds, bool)
+            or not isinstance(older_than_seconds, (int, float))
+            or not math.isfinite(older_than_seconds)
+            or older_than_seconds < 0
+        ):
+            raise ValueError('Generation grace period must be finite and nonnegative')
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError('Generation scan must be a positive integer')
+        cutoff = time.time() - float(older_than_seconds)
+        with self.db(readonly=True) as db:
+            protected = self._protected_generations(db)
+            rows = db.execute(
+                "SELECT b.generation, b.account, b.uri FROM builds b "
+                "WHERE b.created < ? AND b.state IN ('published','superseded','failed') "
+                "  AND NOT EXISTS (SELECT 1 FROM desired d WHERE d.generation=b.generation) "
+                "ORDER BY b.created LIMIT ?",
+                (cutoff, limit),
+            ).fetchall()
+        return [dict(row) for row in rows if row['generation'] not in protected]
+
+    def prune_settled_builds(self, older_than_seconds=604800.0, limit=20000):
+        """Drop failed/superseded build rows that only history can still want.
+
+        ``builds`` is append-only: live, 653,922 rows / 337 MB, and every pass
+        over a tree adds a superseded row per record on top. What the acceptance
+        gate, the interrupted-generation scan and the resume pass read is the
+        *newest* row per URI, so a settled row is droppable once a newer row
+        exists for its URI and it is past the retention window.
+
+        ``failed`` rows are kept while they are the newest for their URI: that is
+        exactly the state the resume pass retries.
+        """
+        if (
+            isinstance(older_than_seconds, bool)
+            or not isinstance(older_than_seconds, (int, float))
+            or not math.isfinite(older_than_seconds)
+            or older_than_seconds < 0
+        ):
+            raise ValueError('Build retention must be finite and nonnegative')
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError('Build prune batch must be a positive integer')
+        cutoff = time.time() - float(older_than_seconds)
+        with self.db() as db:
+            removed = db.execute(
+                "DELETE FROM builds WHERE generation IN ("
+                "  SELECT generation FROM builds "
+                "  WHERE state IN ('failed','superseded') AND created < ? "
+                "    AND EXISTS (SELECT 1 FROM builds newer "
+                "                WHERE newer.uri = builds.uri AND newer.created > builds.created) "
+                "  ORDER BY created LIMIT ?)",
+                (cutoff, limit),
+            ).rowcount
+        return removed or 0
+
+    def recover_stranded_batches(self, limit=200, idle_seconds=0.0):
+        """Seal batches a lost producer left 'building' with every receipt in.
+
+        ``seal_batch`` is the producer's last act, so a producer that dies first
+        (server restart, cancelled job, killed client) leaves a batch nothing
+        ever seals again: its members hold their receipts and look ready, but
+        ``_apply_publication`` only publishes a 'queued' batch, so every
+        chapter in it stays invisible to retrieval for good.  Only batches whose
+        receipts are complete (``remaining`` 0) and whose members have all left
+        'building' are sealed, which is exactly the work the dead producer had
+        already finished -- a partially indexed chapter cannot become visible.
+
+        ``idle_seconds`` guards the periodic sweep against a live producer that
+        is between its last receipt and ``seal_batch``: a batch still growing
+        (newest member younger than the idle window) is left for its producer.
+
+        It also republishes batches that are 'queued' with every receipt in --
+        the counter proves nothing is outstanding, so a publish that was lost
+        between its commit and its deferred run is simply run again.
+        """
+        cutoff = time.time() - max(0.0, float(idle_seconds))
+        with self.db() as db:
+            reaped = self._reap_stale_batch_members(db, STALE_BUILD_SECONDS)
+            if reaped:
+                logger.warning(
+                    "reaped %d stale batch member(s) whose producer exited before "
+                    "the batch could settle",
+                    reaped,
+                )
+            stranded = [
+                row[0]
+                for row in db.execute(
+                    """
+                    SELECT b.id FROM batches b
+                    WHERE b.state='building' AND b.remaining=0
+                      AND EXISTS (
+                          SELECT 1 FROM batch_members m JOIN builds x
+                            ON x.generation = m.generation
+                          WHERE m.batch = b.id AND x.state = 'queued')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM batch_members m JOIN builds x
+                            ON x.generation = m.generation
+                          WHERE m.batch = b.id AND x.state = 'building')
+                      AND COALESCE((
+                          SELECT MAX(x.created) FROM batch_members m JOIN builds x
+                            ON x.generation = m.generation
+                          WHERE m.batch = b.id), 0) <= ?
+                    LIMIT ?
+                    """,
+                    (cutoff, limit),
+                )
+            ]
+            unapplied = [
+                row[0]
+                for row in db.execute(
+                    "SELECT id FROM batches WHERE state='queued' AND remaining=0 LIMIT ?",
+                    (limit,),
+                )
+            ]
+            sealed_count = 0
+            for batch in stranded:
+                sealed = db.execute(
+                    "UPDATE batches SET state='queued' WHERE id=? AND state='building'",
+                    (batch,),
+                ).rowcount
+                if sealed:
+                    # The publish itself runs after this transaction commits.
+                    self._defer_publication(batch=batch)
+                    sealed_count += 1
+            for batch in unapplied:
+                self._defer_publication(batch=batch)
+        if sealed_count:
+            logger.info(
+                "Sealed %d stranded publication batch(es) whose producer never returned",
+                sealed_count,
+            )
+        if unapplied:
+            logger.info(
+                "Retried %d queued publication batch(es) whose publish never landed",
+                len(unapplied),
+            )
+        return sealed_count
 
     def fail(self, generation, reason):
         self._retire(generation, "failed", reason)
@@ -654,29 +1619,24 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
     def _retire(self, generation, state, reason):
         with self.db() as db:
             self._build(db, generation)
-            member = db.execute(
-                "SELECT batch FROM batch_members WHERE generation=?", (generation,)
-            ).fetchone()
-            db.execute(
+            batch = self._member_batch(db, generation)
+            # Readiness is judged before the state change: afterwards the member
+            # never looks ready, which would double-count its decrement.
+            ready = batch is not None and self._member_ready(db, generation)
+            changed = db.execute(
                 "UPDATE builds SET state=?,error=? WHERE generation=? AND state IN ('building','queued')",
                 (state, reason, generation),
-            )
-            if not member:
+            ).rowcount
+            if batch is None:
                 return
-            remaining = db.execute(
-                "SELECT COUNT(*) FROM batch_members m JOIN builds b ON b.generation=m.generation "
-                "WHERE m.batch=? AND b.state IN ('building','queued','published')",
-                (member[0],),
-            ).fetchone()[0]
-            if remaining:
-                # Retire only this member; the rest of the batch keeps publishing.
-                self._publish_batch_if_complete(db, member[0])
-            else:
-                # The last live member is gone: the whole batch is now dead.
-                self._fail_batch(db, member[0], reason)
+            if changed and not ready:
+                self._decrement_batch(db, batch)
+            # Retire only this member; the rest of the batch keeps publishing,
+            # and the batch fails as a whole when no live member is left.
+            self._settle_batch(db, batch, reason)
 
     def state(self, generation):
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             return dict(self._build(db, generation))
 
     def is_superseded(self, generation):
@@ -688,7 +1648,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         therefore turned replaced work into a failed request -- an ingestion that
         reported failure while the newer attempt published the same chapter.
         """
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             row = self._build(db, generation)
             if row["state"] in {"superseded", "published", "failed"}:
                 return row["state"] == "superseded"
@@ -706,7 +1666,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         only read the manifest would mistake a jointly-intended image for one
         that was never published as joint.
         """
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             row = db.execute(
                 "SELECT b.expected FROM desired d JOIN builds b ON b.generation=d.generation "
                 "WHERE d.account=? AND d.uri=?",
@@ -714,44 +1674,62 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             ).fetchone()
         return bool(row) and any(child.startswith("image:") for child in json.loads(row[0]))
 
-    def capture(self, account, ttl=120):
+    def capture(self, account, ttl=120, busy_timeout_ms: int | None = None):
         now = time.time()
-        with self.db() as db:
+        with self.db(busy_timeout_ms=busy_timeout_ms) as db:
             # A worker killed mid-query leaves its lease row behind. Every reader
             # already ignores rows past ``expires`` and ``renew`` refuses them, so
             # dropping them here is the same as never holding them -- and it keeps
             # the table from growing for the life of the registry.
             db.execute("DELETE FROM leases WHERE expires<?", (now,))
             db.execute("DELETE FROM gc_leases WHERE expires<?", (now,))
-            rows = db.execute(
-                "SELECT s.id,s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
+            manifest = self._head_manifest(db, account)
+            snapshot_ids = sorted({row[0] for row in db.execute(
+                "SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
                 (account,),
-            ).fetchall()
-            manifest = {}
-            for row in rows:
-                for uri, value in json.loads(row["manifest"]).items():
-                    if uri in manifest:
-                        raise RuntimeError("Overlapping publication namespaces")
-                    manifest[uri] = value
+            )})
             lease = uuid4().hex
             db.execute(
                 "INSERT INTO leases VALUES (?,?,?)",
-                (lease, json.dumps([r["id"] for r in rows]), now + ttl),
+                (lease, json.dumps(snapshot_ids), now + ttl),
             )
         return lease, manifest
+
+    def _head_manifest(self, db, account):
+        """Materialise the published manifest of every namespace of ``account``.
+
+        Read-only on purpose: callers on the event loop (a file read projecting
+        its published bytes) must not open a write transaction, because the
+        single writer turns that into a busy-timeout wait -- measured as 12-33s
+        event-loop stalls in ``source_reference``.
+        """
+        manifest = {}
+        for row in db.execute(
+            "SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
+            (account,),
+        ):
+            # decode once per snapshot per process: re-decoding an ~11MB gzip
+            # blob inside a write transaction held the single writer lock for
+            # ~116ms per call (capture runs once per file in the vector phase,
+            # which is what stretched lock waits to seconds).
+            for uri, value in _snapshot_manifest(db, row["id"]).items():
+                if uri in manifest:
+                    raise RuntimeError("Overlapping publication namespaces")
+                manifest[uri] = value
+        return manifest
 
     def release(self, lease):
         with self.db() as db:
             db.execute("DELETE FROM leases WHERE id=?", (lease,))
 
-    def renew(self, lease, ttl=120):
-        with self.db() as db:
+    def renew(self, lease, ttl=120, busy_timeout_ms: int | None = None):
+        with self.db(busy_timeout_ms=busy_timeout_ms) as db:
             changed = db.execute(
                 "UPDATE leases SET expires=? WHERE id=? AND expires>?",
                 (time.time() + ttl, lease, time.time()),
             ).rowcount
             if not changed:
-                raise RuntimeError("Publication query lease expired; retry query")
+                raise QueryLeaseExpired("Publication query lease expired; retry query")
 
     # ── Tombstones ──
 
@@ -790,18 +1768,33 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         return len(dead)
 
     def tombstones(self, account):
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             return [row[0] for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))]
 
+    def tombstone_uris(self, account) -> set:
+        """Tombstoned URIs as a set, for post-ranking rechecks.
+
+        Reading the same rows as :meth:`tombstones` but as a set lets the search
+        path test ancestors in O(depth) without handing the engine one clause per
+        tombstone.
+        """
+        return set(self.tombstones(account))
+
     def is_tombstoned(self, account, uri):
-        """True when uri or any ancestor directory has an active tombstone."""
-        with self.db() as db:
-            rows = [row[0] for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))]
-        return any(uri == dead or uri.startswith(dead.rstrip("/") + "/") for dead in rows)
+        """True when uri or any ancestor directory has an active tombstone.
+
+        Pure read: this is called on every source read (including from the event
+        loop via ``_OpsMixin._ensure_not_tombstoned``), so taking the writer lock
+        here serialized all readers behind bulk publications and showed up as
+        multi-second lock waits inside ``read_file_bytes``. WAL readers do not
+        block writers, so the readonly transaction removes that convoy.
+        """
+        with self.db(readonly=True) as db:
+            return _tombstone_covers(db, account, uri)
 
     def sources(self, account):
         """Published source URIs for an account, across all namespaces."""
-        with self.db() as db:
+        with self.db(readonly=True) as db:
             return [
                 row[0]
                 for row in db.execute(
@@ -843,8 +1836,13 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         view = _view.get()
         owned = view is None
         if owned:
-            lease, manifest = self.capture(account)
-            self.renew(lease)
+            lease = None
+            # Read-only: this runs on the event loop while projecting a file read,
+            # and taking a lease here opened a write transaction that waited out
+            # the busy timeout behind the single writer (12-33s loop stalls).
+            # The manifest is materialised below, so the result is just as stable.
+            with self.db(readonly=True) as db:
+                manifest = self._head_manifest(db, account)
         else:
             lease = None
             # read() already renewed the shared lease for this query.
@@ -871,12 +1869,11 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                             raise NotFoundError(uri, "published semantic source")
                     break
             yield reference
-            if owned:
+            if owned and lease is not None:
                 self.renew(lease)
         finally:
-            if owned:
+            if owned and lease is not None:
                 self.release(lease)
-
     def protected_content_revisions(self, db=None):
         """Derived-body roots protected by active/read/in-flight generations.
 
@@ -914,7 +1911,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             row = db.execute(
                 "SELECT account,manifest FROM snapshots WHERE id=?", (snapshot,)
             ).fetchone()
-            for item in json.loads(row["manifest"]).values():
+            for item in decode_manifest(row["manifest"]).values():
                 if item.get("content"):
                     protected.add((row["account"], item["content"]["sha256"]))
                     cache = item["content"].get("image_semantics")
@@ -994,7 +1991,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 protected.update(json.loads(row[0]))
             generations = set()
             for snapshot in protected:
-                manifest = json.loads(
+                manifest = decode_manifest(
                     db.execute("SELECT manifest FROM snapshots WHERE id=?", (snapshot,)).fetchone()[
                         0
                     ]
@@ -1054,7 +2051,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             row = db.execute("SELECT account,manifest FROM snapshots WHERE id=?", (snapshot,)).fetchone()
             if row is None:
                 continue
-            for item in json.loads(row["manifest"]).values():
+            for item in decode_manifest(row["manifest"]).values():
                 if item.get("content"):
                     protected.add((row["account"], item["content"]["sha256"]))
                     cache = item["content"].get("image_semantics")
@@ -1067,7 +2064,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         dead_uris = [(row[0], row[1]) for row in db.execute("SELECT account,uri FROM tombstones")]
         if dead_uris:
             for row in db.execute("SELECT account,manifest FROM snapshots"):
-                for uri, item in json.loads(row["manifest"]).items():
+                for uri, item in decode_manifest(row["manifest"]).items():
                     if any(row["account"] == owner and (uri == d or uri.startswith(d.rstrip("/") + "/")) for owner, d in dead_uris):
                         if item.get("content"):
                             protected.add((row["account"], item["content"]["sha256"]))
@@ -1226,17 +2223,169 @@ def visible_filter(ctx):
     if view is not None:
         _, manifest = view.read(ctx.account_id, registry)
         return registry.visibility(manifest, ctx.account_id)
-    # Non-public low-level readers capture only this operation's view.
-    lease, manifest = registry.capture(ctx.account_id)
+    # Non-public low-level readers capture only this operation's view. Bounded:
+    # this runs on the event loop when no query view is pinned.
+    lease, manifest = registry.capture(
+        ctx.account_id, busy_timeout_ms=QUERY_RENEW_BUSY_TIMEOUT_MS
+    )
     try:
         return registry.visibility(manifest, ctx.account_id)
     finally:
         registry.release(lease)
 
 
+def visibility_snapshot(ctx):
+    """Return ``(manifest, dead_uris)`` for post-ranking visibility rechecks.
+
+    ``visible_filter`` enumerates every published URI as its own filter clause,
+    which is one node per published document (174k for the enterprise corpus).
+    Shipping that DSL to the vector engine costs seconds on a narrow scope and
+    minutes on a tree-wide one, so the hot search path instead asks the engine
+    for the coarse scope only and rechecks publication visibility here. The
+    recheck is exact for every row that is returned.
+    """
+    registry = configured_store()
+    if registry is None:
+        return None
+    view = _view.get()
+    if view is not None:
+        _, manifest = view.read(ctx.account_id, registry)
+        return manifest, registry.tombstone_uris(ctx.account_id)
+    lease, manifest = registry.capture(
+        ctx.account_id, busy_timeout_ms=QUERY_RENEW_BUSY_TIMEOUT_MS
+    )
+    try:
+        return manifest, registry.tombstone_uris(ctx.account_id)
+    finally:
+        registry.release(lease)
+
+
+def tombstoned_uri(uri: str, dead) -> bool:
+    """True when ``uri`` or any of its ancestors is tombstoned."""
+    if not dead:
+        return False
+    parts = uri.split("/")
+    for end in range(len(parts), 0, -1):
+        if "/".join(parts[:end]) in dead:
+            return True
+    return False
+
+
+def recheck_visibility(ctx, rows, snapshot=None):
+    """Drop rows whose published generation is not the visible one.
+
+    Mirrors ``PublicationStore.visibility``: a row is visible when its account
+    manifest holds the same ``index_generation`` for its URI, or when it is a
+    legacy row (empty generation) that the manifest does not know about. Rows
+    under a tombstone are always dropped.
+    """
+    if not rows:
+        return list(rows or [])
+    snap = snapshot if snapshot is not None else visibility_snapshot(ctx)
+    if snap is None:
+        return list(rows)
+    manifest, dead = snap
+    kept = []
+    for row in rows:
+        uri = row.get("uri")
+        if isinstance(uri, str) and uri:
+            if tombstoned_uri(uri, dead):
+                continue
+            item = manifest.get(uri)
+            generation = row.get("index_generation")
+            if item is None:
+                if generation not in (None, ""):
+                    continue
+            elif item.get("generation") != generation:
+                continue
+        kept.append(row)
+    return kept
+
+
 # A query's publication view lease. Kept in sync with ``capture``/``renew``'s
 # own default so the heartbeat renews well inside the window.
+_SLOW_TX_MS_ENV = "OPENVIKING_SLOW_TX_MS"
+_SLOW_TX_MS_DEFAULT = 500.0
+
+
+def _slow_tx_threshold_ms() -> float:
+    """Transactions slower than this get logged with their caller stack.
+
+    The publication write lock serializes every writer in the process, so one
+    transaction holding it for seconds stalls the whole pipeline behind it.
+    Set OPENVIKING_SLOW_TX_MS=0 to disable.
+    """
+    raw = os.environ.get(_SLOW_TX_MS_ENV)
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            pass
+    return _SLOW_TX_MS_DEFAULT
+
+
 QUERY_LEASE_TTL_SECONDS = 120
+
+# Lease renewals issued from the request path run on the event loop, so they may
+# wait only briefly on the publication write lock: an unbounded wait queued
+# behind the publisher froze the server for 204-244s (watchdog stacks showed
+# db -> renew -> QueryView.read -> visible_filter -> vector search). The
+# off-loop heartbeat thread keeps the lease alive across the deferred renewal.
+QUERY_RENEW_BUSY_TIMEOUT_MS = 1000
+# End-of-query verification may afford a longer bounded wait: refusing a result
+# costs the client a full re-run of the query (tens of seconds), so give the
+# writer queue five seconds before declaring the lease lapsed.
+QUERY_RENEW_VERIFY_BUSY_TIMEOUT_MS = 5000
+
+# Dead unbacked write fences (no source_write_refs row) can never be settled by
+# verification, so ones older than this are auto-settled instead of blocking a
+# URI's directory generation forever.  See PublicationStore._settle_dead_fences.
+AUTO_SETTLE_FENCE_SECONDS = 600.0
+# An abandoned ``writing`` row is the normal outcome of a crash: ``source_write``
+# (openviking/indexing/content.py:167) only clears the fence on its success path.
+# Live evidence: 165 unbacked ``writing`` rows aged ~6h, each of them blocking its
+# directory's L0/L1 generation for good (7 failed records on an otherwise complete
+# manual).  A genuine long write deserves much more room than an ``uncertain``
+# fence, but it must not be immortal.
+AUTO_SETTLE_WRITING_SECONDS = 1800.0
+
+# pid + import time: unique per server start, stable for the process lifetime.
+_PROCESS_GENERATION = f"{os.getpid()}:{int(time.time() * 1000)}"
+
+
+def current_process_generation() -> str:
+    """Identity of this process generation for write-fence ownership.
+
+    One server writes a given data directory at a time, so a fence stamped with
+    a different generation belongs to a process that has already exited: nothing
+    can still be running under it, and it can be settled immediately instead of
+    waiting out ``AUTO_SETTLE_FENCE_SECONDS`` (live: a restart left 26 fences and
+    the 600 s window was far too slow for the run that hit them).
+    """
+    return _PROCESS_GENERATION
+# A batch member left in 'building' by a producer that exited without finishing
+# its chunk set keeps ``remaining`` above zero forever, so the batch never
+# settles and every sibling member stays unpublished.  Live evidence: 15 batches
+# with members 5.7-24.5h old, trapping 3,000+ queued members.  Well above the
+# worst legitimate delay (an embedding backlog of ~35k messages at ~9/s is about
+# an hour), so a slow-but-live producer is never reaped.
+STALE_BUILD_SECONDS = 7200.0
+AUTO_SETTLE_FENCE_ACTOR = "system:auto-fence-settle"
+AUTO_SETTLE_FENCE_REASON = (
+    "writer left an unbacked uncertain fence older than 600s; the backend holds no "
+    "operation that any verifier could prove terminal"
+)
+
+
+class QueryLeaseExpired(RuntimeError):
+    """The query's publication view lease lapsed before the result was returned.
+
+    Under a bulk reindex the publication write lock is held for long stretches:
+    the heartbeat's tiny renewal ``UPDATE`` waits out its busy timeout behind
+    the publisher, the lease expires, and refusing the result is correct (it
+    would be served from a view the store no longer guarantees). The read-only
+    query entry points retry on this instead of failing the request.
+    """
 
 
 class QueryView:
@@ -1258,6 +2407,7 @@ class QueryView:
         self._lease = None
         self._manifest = None
         self._heartbeat = None
+        self._renewed_at = 0.0
 
     def _same_store(self, registry):
         return registry is self._registry or registry.path == self._registry.path
@@ -1274,11 +2424,45 @@ class QueryView:
             if self._account is not None and self._account != account:
                 raise RuntimeError("Index query view belongs to a different account/store")
             self._account = account
-            self._lease, self._manifest = registry.capture(account, ttl=QUERY_LEASE_TTL_SECONDS)
+            try:
+                self._lease, self._manifest = registry.capture(
+                    account,
+                    ttl=QUERY_LEASE_TTL_SECONDS,
+                    busy_timeout_ms=QUERY_RENEW_BUSY_TIMEOUT_MS,
+                )
+            except sqlite3.OperationalError as exc:
+                # Could not pin a view without waiting out the publisher convoy.
+                # The query is read-only, so let the caller retry on a fresh
+                # snapshot instead of freezing the event loop (this call runs on
+                # it) or serving a result without a view.
+                raise QueryLeaseExpired(
+                    f"Publication store busy while pinning the query view: {exc}"
+                ) from exc
+            self._renewed_at = time.monotonic()
             self._start_heartbeat()
         elif self._account != account:
             raise RuntimeError("Index query view belongs to a different account/store")
-        registry.renew(self._lease, ttl=QUERY_LEASE_TTL_SECONDS)
+        # The heartbeat thread renews off-loop. Only top the lease up from the
+        # request path once it is getting old, and never wait unboundedly for
+        # the writer lock here: this call sits on the event loop (the watchdog
+        # caught it parked in ``BEGIN IMMEDIATE`` for 204-283s). A bounded wait
+        # that loses the race is retryable, and the heartbeat still renews.
+        if time.monotonic() - self._renewed_at > QUERY_LEASE_TTL_SECONDS / 3:
+            try:
+                registry.renew(
+                    self._lease,
+                    ttl=QUERY_LEASE_TTL_SECONDS,
+                    busy_timeout_ms=QUERY_RENEW_BUSY_TIMEOUT_MS,
+                )
+                self._renewed_at = time.monotonic()
+            except QueryLeaseExpired:
+                raise
+            except sqlite3.OperationalError:
+                # The publisher holds the write lock. Serving the already-pinned
+                # snapshot is correct; the heartbeat (or the next read) renews.
+                logger.warning(
+                    "Query lease renewal deferred: publication store is busy", exc_info=True
+                )
         return self._lease, self._manifest
 
     def _start_heartbeat(self):
@@ -1303,6 +2487,7 @@ class QueryView:
             while not stop.wait(QUERY_LEASE_TTL_SECONDS / 3):
                 try:
                     self._registry.renew(lease, ttl=QUERY_LEASE_TTL_SECONDS)
+                    self._renewed_at = time.monotonic()
                 except RuntimeError:
                     # The lease genuinely lapsed (or was released); the
                     # end-of-query renew refuses the result either way.
@@ -1317,8 +2502,14 @@ class QueryView:
 
     def renew(self):
         if self._lease is not None:
-            # Never return a result after its view lease expired.
-            self._registry.renew(self._lease, ttl=QUERY_LEASE_TTL_SECONDS)
+            # Never return a result after its view lease expired. Bounded, so a
+            # publisher convoy cannot freeze the loop while this is verified.
+            self._registry.renew(
+                self._lease,
+                ttl=QUERY_LEASE_TTL_SECONDS,
+                busy_timeout_ms=QUERY_RENEW_VERIFY_BUSY_TIMEOUT_MS,
+            )
+            self._renewed_at = time.monotonic()
 
     def release(self):
         if self._heartbeat is not None:
@@ -1343,6 +2534,12 @@ def pin_query_snapshot(ctx):
     return view
 
 
+# Serving a result from a lapsed view is refused, but the query itself is
+# read-only: re-running it on a fresh snapshot is better than a 500 while a
+# bulk reindex saturates the publication store.
+_QUERY_SNAPSHOT_ATTEMPTS = 3
+
+
 def query_snapshot(function):
     @wraps(function)
     async def wrapped(*args, **kwargs):
@@ -1350,14 +2547,28 @@ def query_snapshot(function):
         if registry is None or _view.get() is not None:
             return await function(*args, **kwargs)
         ctx = inspect.signature(function).bind_partial(*args, **kwargs).arguments.get("ctx")
-        view = QueryView(registry, getattr(ctx, "account_id", None))
-        token = _view.set(view)
-        try:
-            result = await function(*args, **kwargs)
-            view.renew()
-            return result
-        finally:
-            _view.reset(token)
-            view.release()
+        for attempt in range(_QUERY_SNAPSHOT_ATTEMPTS):
+            view = QueryView(registry, getattr(ctx, "account_id", None))
+            token = _view.set(view)
+            try:
+                result = await function(*args, **kwargs)
+                # Off-loop: the validating body has already pinned and read the
+                # view (``to_thread(pin_query_snapshot, ...)`` at the public
+                # entry points), and this last renewal is a write transaction.
+                await asyncio.to_thread(view.renew)
+                return result
+            except QueryLeaseExpired:
+                if attempt + 1 >= _QUERY_SNAPSHOT_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "Query view lease lapsed under publication write load; "
+                    "retrying on a fresh snapshot (attempt %d/%d)",
+                    attempt + 2,
+                    _QUERY_SNAPSHOT_ATTEMPTS,
+                )
+                await asyncio.sleep(0.5 * (attempt + 1))
+            finally:
+                _view.reset(token)
+                view.release()
 
     return wrapped

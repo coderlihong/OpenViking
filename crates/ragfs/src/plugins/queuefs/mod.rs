@@ -102,6 +102,8 @@ struct ParsedBackendConfig {
 struct ParsedPath {
     queue_name: Option<String>,
     operation: Option<String>,
+    /// Optional "@N" suffix on dequeue_batch (batch size).
+    extra: Option<String>,
     is_dir: bool,
 }
 
@@ -165,6 +167,25 @@ impl QueueStorage {
             Self::Local(backend) => backend.lock().await.dequeue(queue_name),
             #[cfg(feature = "cache")]
             Self::Cache(storage) => storage.dequeue(queue_name).await,
+        }
+    }
+
+    /// Remove and return up to `max` messages atomically.
+    async fn dequeue_batch(&self, queue_name: &str, max: usize) -> Result<Vec<Message>> {
+        match self {
+            Self::Local(backend) => backend.lock().await.dequeue_batch(queue_name, max),
+            #[cfg(feature = "cache")]
+            Self::Cache(storage) => {
+                // Cache backend keeps per-message semantics; drain in a loop.
+                let mut out = Vec::with_capacity(max);
+                for _ in 0..max {
+                    match storage.dequeue(queue_name).await? {
+                        Some(msg) => out.push(msg),
+                        None => break,
+                    }
+                }
+                Ok(out)
+            }
         }
     }
 
@@ -298,6 +319,7 @@ impl QueueFileSystem {
             return Ok(ParsedPath {
                 queue_name: None,
                 operation: None,
+                extra: None,
                 is_dir: true,
             });
         }
@@ -305,8 +327,14 @@ impl QueueFileSystem {
         let parts: Vec<&str> = path.split('/').collect();
         let last = parts[parts.len() - 1];
 
+        // "dequeue_batch@16" style operation with an inline size hint.
+        let (op_name, op_extra) = match last.split_once('@') {
+            Some((name, tail)) if !tail.is_empty() => (name, Some(tail.to_string())),
+            _ => (last, None),
+        };
+
         // Check if last part is a control operation
-        if Self::is_control_operation(last) {
+        if Self::is_control_operation(op_name) {
             if parts.len() == 1 {
                 return Err(Error::InvalidOperation(
                     "operation without queue name".to_string(),
@@ -315,7 +343,8 @@ impl QueueFileSystem {
             let queue_name = parts[..parts.len() - 1].join("/");
             return Ok(ParsedPath {
                 queue_name: Some(queue_name),
-                operation: Some(last.to_string()),
+                operation: Some(op_name.to_string()),
+                extra: op_extra,
                 is_dir: false,
             });
         }
@@ -324,6 +353,7 @@ impl QueueFileSystem {
         Ok(ParsedPath {
             queue_name: Some(parts.join("/")),
             operation: None,
+            extra: None,
             is_dir: true,
         })
     }
@@ -379,6 +409,27 @@ impl FileSystem for QueueFileSystem {
                     data: data_str,
                 };
                 Ok(serde_json::to_vec(&response)?)
+            }
+            "dequeue_batch" => {
+                // Optional trailing count: /dequeue_batch/16 ; default 16.
+                let max = parsed
+                    .extra
+                    .as_deref()
+                    .and_then(|extra| extra.parse::<usize>().ok())
+                    .unwrap_or(16)
+                    .clamp(1, 256);
+                let msgs = self.storage.dequeue_batch(&queue_name, max).await?;
+                let responses: Vec<QueueMessage> = msgs
+                    .into_iter()
+                    .map(|msg| QueueMessage {
+                        id: msg.id,
+                        data: String::from_utf8_lossy(&msg.data).to_string(),
+                    })
+                    .collect();
+                if responses.is_empty() {
+                    return Ok(b"[]".to_vec());
+                }
+                Ok(serde_json::to_vec(&responses)?)
             }
             "peek" => {
                 let Some(msg) = self.storage.peek(&queue_name).await? else {

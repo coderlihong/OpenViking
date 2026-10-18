@@ -258,6 +258,45 @@ class NamedQueue:
             logger.debug(f"[NamedQueue] Dequeue raw failed for {self.name}: {e}")
             return None
 
+    async def dequeue_batch_raw(self, max_messages: int = 16) -> List[Dict[str, Any]]:
+        """Get and remove up to `max_messages` messages in one backend step.
+
+        Falls back to single-message dequeues when the backend does not expose
+        the batch operation (older ragfs builds) or returns a single object.
+        """
+        await self._ensure_initialized()
+        batch_path = f"{self.path}/dequeue_batch@{int(max_messages)}"
+        try:
+            content = await self._async_agfs.read(batch_path)
+        except Exception as e:
+            logger.debug(f"[NamedQueue] Batch dequeue unavailable, falling back: {e}")
+            out = []
+            for _ in range(max_messages):
+                msg = await self.dequeue_raw()
+                if msg is None:
+                    break
+                out.append(msg)
+            return out
+        if not content or content in (b"[]", "{}", b"{}"):
+            return []
+        if isinstance(content, bytes):
+            raw = content.decode("utf-8", "replace")
+        elif isinstance(content, str):
+            raw = content
+        else:
+            raw = json.dumps(content)
+        parsed = json.loads(raw)
+        items = parsed if isinstance(parsed, list) else [parsed]
+        out: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            # Keep `data` as the raw JSON string exactly like dequeue_raw:
+            # handlers call EmbeddingMsg.from_json(data["data"]), which parses
+            # the inner payload itself.
+            out.append({"id": item.get("id", ""), "data": item.get("data")})
+        return out
+
     async def process_dequeued(self, data: Dict[str, Any]) -> ProcessResult:
         """Process one fetched delivery and settle local status exactly once."""
         handler = self._dequeue_handler

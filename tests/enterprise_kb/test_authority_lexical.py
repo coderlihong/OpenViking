@@ -8,6 +8,7 @@ from test_content_publication import environment as environment
 from test_index_plan import embedding as embedding, Database
 
 from openviking.indexing.publication import PublicationStore
+from openviking.indexing.registry_lexical import lexical_vocab_table
 from openviking.indexing.registry_authority import AuthorityRepository
 from test_wiki_build_plan import prepared as prepared
 from test_wiki_namespaces import domains as domains, ONE, RAW, WIKI
@@ -111,6 +112,40 @@ def test_lexical_filter_is_applied_before_topk_and_statistics(tmp_path):
             repository.lexical_search('acct', lease, [URI,other], 'pump', 1, metadata_filter=bad)
     assert repository.lexical_search('acct', lease, [URI,other], 'pump', 1,
         metadata_filter={'op':'must','field':'uri','conds':['viking://resources/missing.md']}) == []
+
+
+def test_mirror_rebuild_fills_a_pre_migration_account_and_flips_the_marker(tmp_path):
+    from openviking.indexing.registry_lexical import lexical_fts_table
+    repository = PublicationStore(str(tmp_path/'registry.db'))
+    other = 'viking://resources/other.md'
+    publish(repository, plan='p1')
+    publish(repository, uri=other, text='pump pump other', plan='p2')
+    # A database written before the mirror existed: rows are there, index is not.
+    with repository.db() as db:
+        db.execute('DELETE FROM publication_lexical_index')
+        db.execute(f'DROP TABLE IF EXISTS {lexical_fts_table("acct")}')
+    assert repository.lexical_index_status() == []
+    built = repository.rebuild_lexical_index()
+    # count(*) on an external-content FTS5 table reports the content table, so a
+    # complete mirror used to be unprovable and the marker stayed incomplete.
+    assert built['acct'] == {'account': 'acct', 'rows': 2, 'expected': 2, 'complete': True}
+    assert [row['rows'] for row in repository.lexical_index_status()] == [2]
+    lease, _ = repository.capture('acct')
+    hits = query(repository, lease, uris=(URI, other))
+    assert {row['uri'] for row in hits} == {URI, other}
+    assert all(row['lexical_provider'] == 'authority_fts5' for row in hits)
+
+
+def test_a_dropped_mirror_is_detected_and_rebuilt(tmp_path):
+    from openviking.indexing.registry_lexical import lexical_fts_table
+    repository = PublicationStore(str(tmp_path/'registry.db'))
+    publish(repository)
+    assert [row['rows'] for row in repository.lexical_index_status()] == [1]
+    with repository.db() as db:
+        db.execute(f'DROP TABLE {lexical_fts_table("acct")}')
+    # The marker claims a mirror that is gone; the sweep must notice.
+    assert repository._lexical_accounts_due(None) == ['acct']
+    assert repository.rebuild_lexical_index()['acct']['complete'] is True
 
 
 async def test_existing_text_producer_writes_lexical_before_vector_publication(environment, embedding):
@@ -238,3 +273,185 @@ async def test_real_authority_bm25_reaches_existing_retrieval_without_dense(envi
     assert hit.uri == URI and hit.abstract == 'pump pump pressure'
     assert hit.matches[0]['chunk_id']=='c' and hit.matches[0]['text']=='pump pump pressure'
     assert hit.score > 0
+
+
+def test_scope_index_resolves_the_authorized_scope_by_primary_key(tmp_path):
+    repository = PublicationStore(str(tmp_path/'registry.db'))
+    nested = 'viking://resources/manual/1_chapter.md'
+    first = publish(repository, plan='p1')
+    second = publish(repository, uri=nested, text='pump pump pump nested', plan='p2')
+    with repository.db(readonly=True) as db:
+        scope = {(row['uri'], row['generation']): row['doc_len'] for row in db.execute(
+            'SELECT uri, generation, doc_len FROM publication_lexical_scope')}
+        lengths = dict(db.execute('SELECT uri, length(tokens) FROM publication_lexical'))
+    assert set(scope) == {(URI, first), (nested, second)}
+    # The write path and the rebuild must agree on the ranking inputs, otherwise a
+    # score would depend on which one filled the scope index.
+    assert scope == {key: lengths[key[0]] for key in scope}
+    lease, _ = repository.capture('acct')
+    assert {row['uri'] for row in query(repository, lease, uris=(URI, nested))} == {URI, nested}
+    # A scope index that has not been rebuilt yet must never answer with an empty
+    # result: searching falls back to the whole-scope scan instead.
+    with repository.db() as db:
+        db.execute('DELETE FROM publication_lexical_scope')
+    hits = query(repository, lease, uris=(URI, nested))
+    assert {row['uri'] for row in hits} == {URI, nested}
+    # The fallback is correct but takes minutes on a tree-scoped corpus, so it
+    # announces itself: this result must not be mistaken for the indexed path.
+    assert all(row['lexical_provider'] == 'authority_fts5_scan' for row in hits)
+
+
+def test_scope_index_keeps_every_chunk_of_one_uri(tmp_path):
+    """One URI owns one scope row per published chunk, not one row total.
+
+    Keying the scope index by (account, uri, generation) alone collapses a
+    document's chunks into a single row (``INSERT OR REPLACE``), so a scope join
+    would hand the ranker only the last chunk of every file -- silently
+    truncated results. Measured on the live corpus: 318,573 lexical rows became
+    76,094 scope rows.
+    """
+    repository = PublicationStore(str(tmp_path/'registry.db'))
+    generation = repository.begin('acct', 'manuals', URI, 'p1', ['c1', 'c2', 'c3', 'lexical:p1'])
+    for child in ('c1', 'c2', 'c3'):
+        repository.acknowledge(generation, child)
+    repository.seal(generation)
+    repository.lexical_write(generation, [
+        {'uri': URI, 'chunk_id': 'c1', 'chunk_text': 'pump inlet pressure'},
+        {'uri': URI, 'chunk_id': 'c2', 'chunk_text': 'pump outlet pressure'},
+        {'uri': URI, 'chunk_id': 'c3', 'chunk_text': 'pump relief valve'},
+    ])
+    with repository.db(readonly=True) as db:
+        scope = [row[0] for row in db.execute(
+            'SELECT rowid FROM publication_lexical_scope WHERE account=? AND uri=?', ('acct', URI))]
+        lexical = db.execute(
+            "SELECT COUNT(*) FROM publication_lexical WHERE json_extract(payload,'$.uri')=?",
+            (URI,)).fetchone()[0]
+    assert lexical == 3
+    assert len(scope) == 3 and len(set(scope)) == 3
+    lease, _ = repository.capture('acct')
+    for term in ('inlet', 'outlet', 'relief'):
+        hits = repository.lexical_search('acct', lease, [URI], term, 10)
+        assert hits, f'the {term} chunk is missing from the scope index'
+
+
+def test_scoped_search_uses_the_mirror_not_the_fallback_scan(tmp_path):
+    """A rebuilt account must rank through the persistent index, not the scan.
+
+    The whole-scope scan materialises and re-tokenizes the corpus on every
+    query (minutes for a tree scope), so a silent downgrade is a production
+    outage rather than a slow path: the vocabulary view has to exist next to the
+    mirror and be readable without a write transaction. Observed as a 627s
+    tree-scoped ``find`` while narrow queries stayed fast.
+    """
+    repository = PublicationStore(str(tmp_path/'registry.db'))
+    publish(repository, plan='p1')
+    vocab = lexical_vocab_table('acct')
+    with repository.db(readonly=True) as db:
+        assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                          (vocab,)).fetchone() is not None
+    lease, _ = repository.capture('acct')
+    assert [row['lexical_provider'] for row in query(repository, lease)] == ['authority_fts5']
+    # A database upgraded from before the view existed has the mirror only: the
+    # query must still answer, and must say that it answered the slow way.
+    with repository.db() as db:
+        db.execute(f'DROP TABLE {vocab}')
+    assert [row['lexical_provider'] for row in query(repository, lease)] == ['authority_fts5_scan']
+    # init_lexical recreates the view for an existing mirror, restoring the fast
+    # path without a full rebuild.
+    repository.init_lexical()
+    assert [row['lexical_provider'] for row in query(repository, lease)] == ['authority_fts5']
+
+
+def test_scope_filter_treats_a_denied_root_as_covering_its_subtree():
+    """A tombstoned directory hides its subtree, not its name-siblings."""
+    from openviking.indexing.registry_lexical import _under_denied_root
+
+    denied = {"viking://resources/raw/menus/dead"}
+    assert _under_denied_root("viking://resources/raw/menus/dead", denied)
+    assert _under_denied_root("viking://resources/raw/menus/dead/a/b.md", denied)
+    assert not _under_denied_root("viking://resources/raw/menus/deadline/a.md", denied)
+    assert not _under_denied_root("viking://resources/raw/menus", denied)
+    assert not _under_denied_root("viking://resources/raw/menus/a.md", set())
+
+
+def test_scope_filter_stays_linear_in_the_number_of_roots():
+    """131k authorized URIs against 59k tombstones must not cost minutes.
+
+    The previous nested scan was O(authorized x denied): 8e9 string compares on
+    the enterprise corpus, i.e. the 318-second read transaction measured on a
+    tree-scoped search while every SQL statement inside it ran in under a second.
+    """
+    import time
+
+    from openviking.indexing.registry_lexical import _under_denied_root
+
+    denied = {f"viking://resources/raw/g{i}" for i in range(10_000)}
+    authorized = [f"viking://resources/raw/g{i % 20_000}/a/b/c/doc{i}.md" for i in range(20_000)]
+    started = time.perf_counter()
+    hit = [uri for uri in authorized if _under_denied_root(uri, denied)]
+    elapsed = time.perf_counter() - started
+    assert len(hit) == 10_000
+    assert elapsed < 5.0, f"scope filter took {elapsed:.1f}s; the ancestor-set path regressed"
+
+
+def test_superseded_lexical_rows_are_pruned_with_their_index_entries(tmp_path):
+    """A reindex writes a whole new lexical copy; the old copy must not be forever.
+
+    Live: ``publication_lexical`` reached 717,810 rows / 9.1 GB inside a 13.6 GB
+    store because nothing ever removed the copy belonging to a superseded
+    generation, so every pass over a tree grew the store again.
+    """
+    import time
+
+    from openviking.indexing.registry_lexical import lexical_fts_table
+
+    repository = PublicationStore(str(tmp_path / 'registry.db'))
+    first = publish(repository, plan='p1', text='pump pump pressure')
+    second = publish(repository, plan='p2', text='valve valve torque')
+
+    with repository.db() as db:
+        # The newer publish moved ``desired`` on; age the old build past the floor.
+        db.execute('UPDATE builds SET created=? WHERE generation=?',
+                   (time.time() - 2 * 86400.0, first))
+        assert db.execute('SELECT generation FROM desired').fetchone()[0] == second
+        assert db.execute('SELECT COUNT(*) FROM publication_lexical').fetchone()[0] == 2
+
+    assert repository.prune_superseded_lexical(86400.0, 100) == 1
+
+    mirror = lexical_fts_table('acct')
+    with repository.db(readonly=True) as db:
+        survivors = [row[0] for row in db.execute('SELECT generation FROM publication_lexical')]
+        scoped = db.execute('SELECT COUNT(*) FROM publication_lexical_scope').fetchone()[0]
+        marked = db.execute(
+            "SELECT rows FROM publication_lexical_index WHERE account='acct'").fetchone()[0]
+        postings = db.execute(f'SELECT COUNT(*) FROM {mirror}').fetchone()[0]
+    assert survivors == [second]
+    assert (scoped, marked) == (1, 1)
+    # The mirror is external-content and has no bulk delete, so its posting for
+    # the pruned row survives until the next rebuild -- inert, because search
+    # resolves candidates from the scope index first.
+    assert postings >= 1
+
+    lease, _ = repository.capture('acct')
+    rows = repository.lexical_search('acct', lease, [URI], 'valve', 10)
+    assert [row['index_generation'] for row in rows] == [second]
+    # The pruned generation is unreachable even by its own term.
+    assert repository.lexical_search('acct', lease, [URI], 'pump', 10) == []
+    repository.release(lease)
+
+
+def test_lexical_prune_keeps_a_generation_an_active_lease_can_still_read(tmp_path):
+    """A captured snapshot pins its lexical rows until the lease expires."""
+    import time
+
+    repository = PublicationStore(str(tmp_path / 'registry.db'))
+    first = publish(repository, plan='p1')
+    publish(repository, plan='p2')
+    lease, _ = repository.capture('acct')  # a reader is mid-query on the old head
+    with repository.db() as db:
+        db.execute('UPDATE builds SET created=? WHERE generation=?',
+                   (time.time() - 2 * 86400.0, first))
+    assert repository.prune_superseded_lexical(86400.0, 100) == 0
+    with repository.db(readonly=True) as db:
+        assert db.execute('SELECT COUNT(*) FROM publication_lexical').fetchone()[0] == 2
+    repository.release(lease)

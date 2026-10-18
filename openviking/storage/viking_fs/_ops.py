@@ -49,6 +49,52 @@ from openviking_cli.exceptions import (
 from openviking_cli.utils.uri import VikingURI
 
 
+def _lease_covers_write(lease: Any, path: str) -> bool:
+    """True when *lease* authorises an exact write on *path*.
+
+    Mirrors the native coverage rule (``request_is_covered_by``): a tree lease
+    covers the path itself and everything below it, an exact lease covers only
+    the identical path. A lease shape we cannot inspect (None, a bare lease-ref
+    string, or one without ``covered_paths``) is treated as covering, so callers
+    that pass an opaque reference keep their current behaviour.
+    """
+    if not lease or isinstance(lease, str) or not isinstance(lease, dict):
+        return True
+    covered = lease.get("covered_paths")
+    if not isinstance(covered, (list, tuple)) or not covered:
+        return True
+    target = (path or "").rstrip("/") or "/"
+    for entry in covered:
+        if not isinstance(entry, dict):
+            continue
+        held = str(entry.get("path") or "").rstrip("/") or "/"
+        if entry.get("kind") == "tree":
+            if target == held or target.startswith(held.rstrip("/") + "/"):
+                return True
+        elif target == held:
+            return True
+    return False
+
+
+def _require_covered_write_lease(lease_ref: Any, path: str, uri: str) -> Any:
+    """Reject a lease that cannot cover this write, before any fence is opened.
+
+    ``source_write`` turns *any* failure inside the write into a permanent
+    ``uncertain`` fence, and that fence then blocks the URI's generation with
+    WRITE_RECOVERY_REQUIRED until an operator clears it. A lease that does not
+    cover the target is caller-side bookkeeping -- most often an ancestor write
+    reusing the target's lease -- and must never poison the URI, so it fails
+    here, outside ``source_write``, where the caller can still handle it.
+    """
+    if _lease_covers_write(lease_ref, path):
+        return lease_ref
+    raise FailedPreconditionError(
+        "PATHLOCK_LEASE_UNCOVERED: the supplied pathlock lease does not cover "
+        f"{uri}; acquire a lease for this path (or pass none and let the "
+        "filesystem take one) instead of reusing a lease for another subtree"
+    )
+
+
 def _glob_match_uri(entry_uri: str, is_dir: Optional[bool]) -> str:
     """Mark directory matches with a trailing slash.
 
@@ -158,12 +204,17 @@ class _OpsMixin:
         if registry is not None:
             registry.tombstone(self._ctx_or_default(ctx).account_id, uri)
 
-    def _revive_tombstoned_uri(self, uri: str, ctx: Optional[RequestContext]) -> None:
+    async def _revive_tombstoned_uri(self, uri: str, ctx: Optional[RequestContext]) -> None:
         """Re-creating a source as current content clears its deletion tombstone.
 
         The tombstone matched the URI or an ancestor directory; every ancestor
         tombstone between the URI and the root must fall for the write to be
         readable again.
+
+        Clearing is a sqlite write transaction per level.  It ran on the event
+        loop and the loop watchdog caught the main thread parked in
+        ``clear_tombstone`` -> ``db`` (BEGIN IMMEDIATE) while every concurrent
+        request waited, so the whole walk runs in a worker thread.
         """
         registry = self._tombstone_registry()
         if registry is None:
@@ -171,14 +222,20 @@ class _OpsMixin:
         account = self._ctx_or_default(ctx).account_id
         normalized = uri.rstrip("/") or "viking://"
         prefix = "" if normalized == "viking://" else normalized[len("viking://") :]
-        while True:
-            registry.clear_tombstone(account, normalized)
-            if not prefix:
-                break
-            prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
-            normalized = "viking://" + prefix
 
-    def _revive_tombstoned_subtree(self, uri: str, ctx: Optional[RequestContext]) -> None:
+        def _clear_all() -> None:
+            current = normalized
+            remaining = prefix
+            while True:
+                registry.clear_tombstone(account, current)
+                if not remaining:
+                    break
+                remaining = remaining.rsplit("/", 1)[0] if "/" in remaining else ""
+                current = "viking://" + remaining
+
+        await asyncio.to_thread(_clear_all)
+
+    async def _revive_tombstoned_subtree(self, uri: str, ctx: Optional[RequestContext]) -> None:
         """Re-creating a whole subtree clears its tombstones, ancestors included.
 
         A directory that arrives through one copy of the assembled tree never
@@ -192,8 +249,10 @@ class _OpsMixin:
         registry = self._tombstone_registry()
         if registry is None:
             return
-        self._revive_tombstoned_uri(uri, ctx)
-        registry.clear_tombstone_subtree(self._ctx_or_default(ctx).account_id, uri)
+        await self._revive_tombstoned_uri(uri, ctx)
+        await asyncio.to_thread(
+            registry.clear_tombstone_subtree, self._ctx_or_default(ctx).account_id, uri
+        )
 
     # ========== AGFS Basic Commands ==========
 
@@ -250,13 +309,13 @@ class _OpsMixin:
     ) -> str:
         """Write file"""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
-        self._revive_tombstoned_uri(uri, ctx)
+        await self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         if isinstance(data, str):
             data = data.encode("utf-8")
 
         # Encryption (when configured) happens inside the ragfs layer keyed by account_id.
-        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+        async with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
             return await self._async_agfs.write(path, data)
 
     async def mkdir(
@@ -269,7 +328,7 @@ class _OpsMixin:
     ) -> None:
         """Create directory."""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
-        self._revive_tombstoned_uri(uri, ctx)
+        await self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
         # Always ensure parent directories exist before creating this directory
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
@@ -804,7 +863,7 @@ class _OpsMixin:
         # a deletion tombstone left on the destination by an earlier rm. Without this,
         # a move onto a URI that was deleted first lands bytes that every read then
         # refuses as gone.
-        self._revive_tombstoned_subtree(new_uri, ctx)
+        await self._revive_tombstoned_subtree(new_uri, ctx)
 
         if not is_dir:
             if new_uri.rstrip("/") != new_uri:
@@ -2057,14 +2116,15 @@ class _OpsMixin:
         # Re-writing a deleted URI makes it current content again; without this
         # the file lands on disk but stays permanently unreadable behind its
         # tombstone (the content API writes through here, not ``write``).
-        self._revive_tombstoned_uri(uri, ctx)
+        await self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
+        lease_ref = _require_covered_write_lease(lease_ref, path, uri)
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
 
         if isinstance(content, str):
             content = content.encode("utf-8")
 
-        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+        async with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
             await self._async_agfs.write(
                 path,
                 content,
@@ -2195,11 +2255,12 @@ class _OpsMixin:
         """
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
         # See write_file: re-creating content must clear any deletion tombstone.
-        self._revive_tombstoned_uri(uri, ctx)
+        await self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
+        lease_ref = _require_covered_write_lease(lease_ref, path, uri)
         await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
 
-        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+        async with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
             await self._async_agfs.write(
                 path,
                 content,
@@ -2217,9 +2278,10 @@ class _OpsMixin:
         """Append content to file while holding one exact pathlock lease."""
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
         # See write_file: re-creating content must clear any deletion tombstone.
-        self._revive_tombstoned_uri(uri, ctx)
+        await self._revive_tombstoned_uri(uri, ctx)
         path = self._uri_to_path(uri, ctx=ctx)
-        with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
+        lease_ref = _require_covered_write_lease(lease_ref, path, uri)
+        async with source_write(uri, self._ctx_or_default(ctx), backend=self._async_agfs):
             owned_lease = None
             try:
                 await self._ensure_parent_dirs(path, ctx=ctx, lease_ref=lease_ref)
@@ -2636,7 +2698,7 @@ class _OpsMixin:
         await self._ensure_access(target_uri, ctx, action=AclAction.WRITE)
         # The copy below writes through the storage layer directly, so no per-file
         # write gets a chance to clear a deletion tombstone on the destination.
-        self._revive_tombstoned_subtree(target_uri, ctx)
+        await self._revive_tombstoned_subtree(target_uri, ctx)
         src_path = self._uri_to_path(temp_uri, ctx=ctx)
         dst_path = self._uri_to_path(target_uri, ctx=ctx)
         fs_ctx = self._pathlock_fs_ctx(ctx, lease_ref)
