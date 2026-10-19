@@ -36,4 +36,13 @@ WEBDAV_RESERVED_FILENAMES = frozenset(
 # ``toc.md`` is the parser's human-readable navigation index (a flat list of
 # every chapter title and path); indexing it would let the table of contents
 # outrank the chapters it points at.
-CHAPTER_METADATA_FILENAMES = frozenset({"toc.md", "_toc.json", "_manifest.json"})
+#
+# ``index.json`` is the same record in machine-readable form -- the importer
+# writes one per corpus root as document_id -> files[{chapter_uri, path, pages}].
+# Live, the export refused a whole tree because that one file was expected to
+# carry an L2 row while the ingestion path never gave it one: asking for it
+# directly walks it as a directory and dies with AGFSNotADirectoryError. Keeping
+# it here holds ingestion, the pack contents and the export expectation in sync.
+CHAPTER_METADATA_FILENAMES = frozenset(
+    {"toc.md", "_toc.json", "_manifest.json", "index.json"}
+)
