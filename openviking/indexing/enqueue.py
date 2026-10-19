@@ -27,7 +27,16 @@ async def enqueue_text_plan(base_message, content, embedding_config, enqueue) ->
     # chapter's own provenance block, so a hit can be filtered by modality and
     # cited back to document/chapter/page.
     stamp_record_meta(base, category=TEXT_CATEGORY, contents=(content,), source_uri=base.get("uri"))
-    plan = plan_resource(content, base["uri"], base["account_id"], embedding_config)
+    # plan_resource tokenizes the whole document with the HF tokenizer (binary
+    # search over token budgets): minutes of CPU for a large file. It used to
+    # run inline on the event loop and froze the whole server -- /health, finds,
+    # everything -- until the encode returned (watchdog stacks: MainThread ->
+    # uvicorn -> process_file -> plan_resource -> prefix_piece -> tokenizers).
+    # It is pure CPU with no loop state, so run it in a worker thread like every
+    # other blocking step in this function.
+    plan = await asyncio.to_thread(
+        plan_resource, content, base["uri"], base["account_id"], embedding_config
+    )
     if embedding_config.chunking.publish_content:
         if source_ref is None:
             raise ValueError(

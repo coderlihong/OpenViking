@@ -238,6 +238,10 @@ class RegistryLexicalMixin:
             for table in ('leases', 'gc_leases'):
                 if db.execute(f'SELECT 1 FROM {table} WHERE expires>? LIMIT 1', (now,)).fetchone():
                     return 0
+            # Query-view leases live in the dedicated store; an active lease
+            # must freeze the prune exactly like a legacy row does.
+            if self._query_leases.live_snapshot_ids():
+                return 0
             protected = self._protected_generations(db)
             candidates = [
                 dict(row)
@@ -480,7 +484,10 @@ class RegistryLexicalMixin:
             validate_lexical_filter(metadata_filter)
             from openviking.storage.vectordb.index.cuvs_index import matches_filter
         with self.db(readonly=True) as db:
-            held = db.execute('SELECT snapshots FROM leases WHERE id=? AND expires>?', (lease, time.time())).fetchone()
+            # The lease lives in the dedicated query-lease store, not in this
+            # database: coverage is one tiny row away and must never queue on
+            # the publication writer.
+            held = self._query_leases.held(lease)
             if not held:
                 raise ValueError('Lexical query lease expired')
             manifest = {}

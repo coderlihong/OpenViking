@@ -256,8 +256,8 @@ async def test_public_query_pins_view_through_concurrent_publication(runtime):
 
 
 def _open_leases(store):
-    with store.db() as db:
-        return db.execute("SELECT count(*) FROM leases").fetchone()[0]
+    """Query-view leases live in the dedicated store, not in publication.db."""
+    return store._query_leases._conn().execute("SELECT count(*) FROM leases").fetchone()[0]
 
 
 def _open_gc_leases(store):
@@ -334,8 +334,9 @@ def test_expired_leases_are_pruned_by_the_next_capture(tmp_path):
 
     ``renew`` refuses an expired row and every protection query filters on
     ``expires``, so a leaked row protects nothing; the only thing it still costs
-    is registry growth.  Capturing a new view sweeps both lease tables while the
-    lease a running query holds stays put.
+    is registry growth.  Capturing a new view sweeps the query-lease store while
+    the lease a running query holds stays put, and the publication-side capture
+    still sweeps expired ``gc_leases`` rows.
     """
     store = PublicationStore(str(tmp_path / "publication.db"))
     old = publish(store, URI)
@@ -349,12 +350,17 @@ def test_expired_leases_are_pruned_by_the_next_capture(tmp_path):
     try:
         assert held[URI]["generation"] == old
         assert manifest[URI]["generation"] != old
-        assert (_open_leases(store), _open_gc_leases(store)) == (2, 0)
+        # capture sweeps the query-lease store; it no longer takes a
+        # publication write transaction, so gc_leases housekeeping moved to
+        # the next gc_lease/gc_release and the periodic snapshot prune.
+        assert (_open_leases(store), _open_gc_leases(store)) == (2, 1)
         store.renew(held_lease)
     finally:
         store.release(lease)
         store.release(held_lease)
-    assert (_open_leases(store), _open_gc_leases(store)) == (0, 0)
+    assert (_open_leases(store), _open_gc_leases(store)) == (0, 1)
+    store.gc_lease("acct", ttl=120)
+    assert _open_gc_leases(store) == 1, "the next gc_lease sweeps the leaked expired row"
 
 
 @pytest.mark.asyncio

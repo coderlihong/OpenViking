@@ -549,7 +549,8 @@ class HierarchicalRetriever:
             degrade_reason = str(fusion_result.trace.get("rerank_reason") or "reranker unavailable")
             logger.warning(
                 "[HybridRetrieval] Rerank degraded, serving rank-only fused order: %s. "
-                "Fused scores carry no relevance magnitude until the reranker is reachable.",
+                "Scores are normalized rank-fusion values in (0,1] (order-preserving, "
+                "not query relevance).",
                 degrade_reason,
             )
             telemetry.record_error("hybrid.rerank", "RERANK_DEGRADED", degrade_reason)

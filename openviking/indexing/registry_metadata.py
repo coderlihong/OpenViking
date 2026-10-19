@@ -114,7 +114,9 @@ class RegistryMetadataMixin:
         # every writer in the process (measured: thousands of >400ms lock waits
         # from metadata_read during the vector phase).
         with self.db(readonly=True) as db:
-            held = db.execute("SELECT snapshots FROM leases WHERE id=? AND expires>?", (lease, time.time())).fetchone()
+            # The lease lives in the dedicated query-lease store; the coverage
+            # check must never queue on the publication writer.
+            held = self._query_leases.held(lease)
             if held is None:
                 raise ValueError("Metadata query lease expired")
             selected = set(authorized_uris)

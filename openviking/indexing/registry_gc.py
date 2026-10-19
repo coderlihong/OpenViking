@@ -187,12 +187,14 @@ class RegistryGCMixin:
                 UNIQUE(account,idempotency_key));
             ''')
 
-    @staticmethod
-    def _protected_generations(db):
+    def _protected_generations(self, db):
         snapshots = {row[0] for row in db.execute('SELECT snapshot FROM heads')}
         for table in ('leases', 'gc_leases'):
             for row in db.execute(f'SELECT snapshots FROM {table} WHERE expires>?', (time.time(),)):
                 snapshots.update(json.loads(row[0]))
+        # Query-view leases live in the dedicated store, not in this database;
+        # a leased old head must stay writable exactly like before the move.
+        snapshots.update(self._query_leases.live_snapshot_ids())
         protected = set()
         for snapshot in snapshots:
             protected.update(_snapshot_generation_index(db, snapshot).values())

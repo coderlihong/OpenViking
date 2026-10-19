@@ -492,3 +492,73 @@ def test_candidate_roundtrip_keeps_provenance_fields():
     assert restored["namespace_id"] == "ns1"
     assert restored["_final_score"] == 0.42
     assert "score_components" in restored
+
+def test_normalize_fused_scores_maps_ceiling_and_preserves_raw():
+    """Rank-only scores must be bounded and thresholdable, not RRF dust."""
+    from openviking.retrieve.fusion import normalize_fused_scores
+
+    paths = {
+        "dense": [_c("viking://a", "c1"), _c("viking://b", "c2")],
+        "lexical": [_c("viking://a", "c1"), _c("viking://c", "c3")],
+    }
+    fused = reciprocal_rank_fusion(paths, k=60)
+    scaled = normalize_fused_scores(fused, path_count=2, k=60)
+    by_id = {c.chunk_id: c for c in scaled}
+
+    # a tops both paths -> exactly the ceiling -> 1.0; raw order preserved.
+    assert [c.chunk_id for c in scaled] == [c.chunk_id for c in fused]
+    assert by_id["c1"].score == pytest.approx(1.0)
+    # b is rank-2 in dense and absent from lexical: (1/62) / (2/61) = 61/124.
+    assert by_id["c2"].score == pytest.approx(61 / 124)
+    # The raw sum survives in the components for debugging.
+    assert by_id["c1"].score_components["rrf"] == pytest.approx(1 / 61 + 1 / 61)
+    assert by_id["c2"].score_components["rrf"] == pytest.approx(1 / 62)
+
+
+def test_normalize_fused_scores_ignores_empty_paths_and_bad_input():
+    from openviking.retrieve.fusion import normalize_fused_scores
+
+    fused = reciprocal_rank_fusion({"dense": [_c("viking://a", "c1")]}, k=60)
+    # An empty path must not deflate the ceiling.
+    assert normalize_fused_scores(fused, path_count=2, k=60)[0].score == pytest.approx(0.5)
+    assert normalize_fused_scores(fused, path_count=1, k=60)[0].score == pytest.approx(1.0)
+    # Degenerate inputs come back untouched.
+    assert normalize_fused_scores([], path_count=2) == []
+    assert normalize_fused_scores(fused, path_count=0)[0].score == pytest.approx(1 / 61)
+
+
+def test_run_fusion_serves_bounded_scores_when_rerank_is_not_requested():
+    """The configured no-rerank path must not serve raw RRF dust."""
+    paths = {
+        "dense": [_c("viking://a", "c1", text="x"), _c("viking://b", "c2", text="y")],
+        "lexical": [_c("viking://a", "c1", text="x")],
+    }
+    result = run_fusion(paths, profile=profile_for("hybrid"), rerank=None)
+    assert result.trace["score_domain"] == "normalized_rrf"
+    top = result.selected[0]
+    assert 0 < top.score <= 1
+    assert top.score == pytest.approx(1.0)  # tops both paths
+
+
+def test_run_fusion_serves_bounded_scores_when_rerank_degrades():
+    result = run_fusion(
+        {"dense": [_c("viking://a", "c1", text="x")]},
+        profile=profile_for("hybrid", mmr_top=1),
+        rerank=lambda window: (_ for _ in ()).throw(RuntimeError("provider down")),
+    )
+    assert result.trace["degraded"] is True
+    assert result.trace["score_domain"] == "normalized_rrf"
+    assert 0 < result.selected[0].score <= 1
+
+
+def test_run_fusion_rerank_scores_are_not_rescaled():
+    """When the reranker applies, its 0-1 relevance domain is served as-is."""
+    paths = {
+        "dense": [_c("viking://a", "c1", text="x"), _c("viking://b", "c2", text="y")],
+        "lexical": [_c("viking://a", "c1", text="x")],
+    }
+    result = run_fusion(paths, profile=profile_for("hybrid"), rerank=lambda w: [0.83, 0.41])
+    assert result.trace["score_domain"] == "rerank"
+    by_uri = {c.uri: c for c in result.selected}
+    assert by_uri["viking://a"].score == pytest.approx(0.83)
+    assert by_uri["viking://b"].score == pytest.approx(0.41)

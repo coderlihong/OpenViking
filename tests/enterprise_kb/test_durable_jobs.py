@@ -1,6 +1,7 @@
 """Durable scheduling and real independent workers against one authority."""
 import multiprocessing
 import time
+from contextlib import contextmanager
 
 import pytest
 from test_registry_authority import setup as setup, _start
@@ -16,6 +17,29 @@ def store(tmp_path):
 
 def submit(store, key='key', kind='D1', namespace='manuals', account='a', config=None):
     return store.job_create(account, namespace, key, kind, {'source': key}, config or {}, 'user')
+
+
+def test_idle_claim_opens_no_write_transaction(store):
+    """The ~1/min claim poll must not queue on the single writer when idle."""
+    calls = []
+    original = store.db
+
+    @contextmanager
+    def spy(*args, **kwargs):
+        calls.append(kwargs.get('readonly', False))
+        with original(*args, **kwargs) as db:
+            yield db
+
+    store.db = spy
+    assert store.job_claim('worker') is None
+    assert calls and all(calls), 'an idle poll must only open read-only transactions'
+    del store.db  # restore the real writer path for the positive control
+    submit(store)
+    calls.clear()
+    store.db = spy
+    claimed = store.job_claim('worker')
+    assert claimed is not None
+    assert not all(calls), 'a due job still claims through a write transaction'
 
 
 def test_idempotency_scope_payload_and_effective_config(store):

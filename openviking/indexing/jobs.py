@@ -307,6 +307,22 @@ class DurableJobsMixin:
         if kinds is not None and (not isinstance(kinds, list) or not kinds or any(k not in KINDS for k in kinds)):
             raise ValueError('Invalid worker job kinds')
         now = time.time()
+        # The claim loop fires around the clock even when nothing is queued, and
+        # every poll used to open a BEGIN IMMEDIATE that waited behind whoever
+        # held the single writer (measured: 16.6s of lock wait on an idle
+        # publication store). A deferred read never blocks and is never blocked,
+        # so probe first and pay the write transaction only when there is
+        # genuinely something to recover or claim. The probe mirrors the claim
+        # predicate exactly, including expired running leases, which
+        # _recover_jobs would have to rewind.
+        with self.db(readonly=True) as db:
+            due = db.execute(
+                "SELECT 1 FROM kb_jobs WHERE (state='running' AND lease_until<=?)"
+                " OR (state IN ('queued','backoff','written') AND available_at<=?) LIMIT 1",
+                (now, now),
+            ).fetchone()
+        if due is None:
+            return None
         with self.db() as db:
             self._recover_jobs(db, now)
             rows = db.execute("SELECT * FROM kb_jobs WHERE state IN ('queued','backoff','written') AND available_at<=? AND (? IS NULL OR account=?) ORDER BY created", (now, account, account)).fetchall()

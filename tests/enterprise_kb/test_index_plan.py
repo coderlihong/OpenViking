@@ -460,3 +460,40 @@ def test_split_render_verifies_every_fragment_with_a_non_monotone_tokenizer():
     fragments = _split_render(text, 20, count)
     assert "".join(fragments) == text
     assert all(count(fragment) <= 20 for fragment in fragments)
+
+
+async def test_plan_build_never_blocks_the_event_loop(embedding, monkeypatch):
+    """plan_resource tokenizes whole documents; it must run off the event loop.
+
+    Inline on the loop it froze the whole server: /health, finds, everything
+    stopped answering for minutes while one large file was chunked (watchdog
+    stacks: MainThread -> uvicorn -> process_file -> plan_resource ->
+    prefix_piece -> tokenizers encode).
+    """
+    import threading
+    import time as _time
+
+    seen = {}
+
+    def spy_plan(content, uri, account_id, config):
+        seen["thread"] = threading.current_thread()
+        seen["main"] = threading.main_thread()
+        _time.sleep(0.2)  # simulate a multi-second encode without slowing tests
+        return plan_resource(content, uri, account_id, config)
+
+    monkeypatch.setattr("openviking.indexing.enqueue.plan_resource", spy_plan)
+    queue = Queue()
+    base = EmbeddingMsg(
+        SOURCE,
+        {
+            "uri": URI,
+            "account_id": "acct",
+            "level": 2,
+            "context_type": "resource",
+            "is_leaf": True,
+            "abstract": "summary",
+        },
+    )
+    count = await enqueue_text_plan(base, SOURCE, embedding, queue)
+    assert count > 1
+    assert seen["thread"] is not seen["main"], "plan build must not run on the event loop"

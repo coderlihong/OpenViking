@@ -357,6 +357,37 @@ def reciprocal_rank_fusion(
     return results
 
 
+def normalize_fused_scores(
+    candidates: Sequence[Candidate],
+    *,
+    path_count: int,
+    k: int = DEFAULT_RRF_K,
+) -> List[Candidate]:
+    """Scale raw RRF sums into ``(0, 1]`` so rank-only scores stay usable.
+
+    Raw ``sum(1/(k+rank))`` lives in a dust domain (~0.016-0.033 for k=60) that
+    no consumer can threshold and no operator can compare across queries. Dividing
+    by the theoretical maximum -- every non-empty path ranking the candidate
+    first, ``path_count / (k + 1)`` -- keeps the fused ordering exactly (positive
+    scaling) while bounding the score: topping every path maps to 1.0, and a
+    single-source rank-1 hit with two paths maps to 0.5. The raw sum stays in
+    ``score_components["rrf"]`` for debugging.
+
+    This is a rank-position domain, not a query-relevance domain: only the
+    reranker measures relevance. Call it whenever the pipeline will serve fused
+    scores (rerank unavailable or not requested).
+    """
+    if not candidates or path_count <= 0 or k < 1:
+        return list(candidates)
+    ceiling = path_count / (k + 1)
+    if ceiling <= 0:
+        return list(candidates)
+    return [
+        candidate.copy(score=candidate.score / ceiling) if _is_finite(candidate.score) else candidate
+        for candidate in candidates
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Normalization
 # --------------------------------------------------------------------------- #
@@ -690,6 +721,14 @@ def run_fusion(
         name: list(paths)[: profile.recall_limit] for name, paths in ranked_paths.items()
     }
     fused = reciprocal_rank_fusion(per_path, k=profile.rrf_k, limit=profile.fused_limit)
+    # Without a reranker the served score would be raw RRF dust (~0.02x), which
+    # no threshold can consume; rescale it into a bounded rank-position domain.
+    # When the reranker applies it overwrites these scores with real relevance.
+    fused = normalize_fused_scores(
+        fused,
+        path_count=sum(1 for path in per_path.values() if path),
+        k=profile.rrf_k,
+    )
 
     outcome = apply_rerank(fused, rerank=rerank, profile=profile)
     ranked = list(outcome.candidates)
@@ -714,6 +753,9 @@ def run_fusion(
         "paths": {name: len(path) for name, path in sorted(per_path.items())},
         "fused_count": len(fused),
         "selected_count": len(selected),
+        # What domain the served ``score`` is in: the reranker's 0-1 relevance,
+        # or the normalized rank-fusion scale (order-preserving, not relevance).
+        "score_domain": "rerank" if outcome.applied else "normalized_rrf",
     }
     trace.update(outcome.as_trace())
 
@@ -753,6 +795,7 @@ __all__ = [
     "expand_parents",
     "jaccard_similarity",
     "mmr_select",
+    "normalize_fused_scores",
     "normalize_scores",
     "profile_for",
     "reciprocal_rank_fusion",

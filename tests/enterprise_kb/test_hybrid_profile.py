@@ -283,8 +283,13 @@ async def test_quick_mode_does_not_use_fusion_path():
 
 
 @pytest.mark.asyncio
-async def test_hybrid_rerank_false_skips_provider_and_keeps_rrf_scores(monkeypatch):
-    """rerank_enabled=False must skip the provider call and keep RRF-domain scores."""
+async def test_hybrid_rerank_false_skips_provider_and_serves_normalized_rrf_scores(monkeypatch):
+    """rerank_enabled=False must skip the provider call and serve bounded scores.
+
+    Raw RRF sums (~0.02x dust) cannot be thresholded or compared across queries,
+    so the served scores are normalized into (0,1] by the fusion ceiling while
+    the raw sums stay in ``score_components["rrf"]``.
+    """
     fake_client = FakeRerankClient([0.95, 0.05])
     monkeypatch.setattr(
         "openviking.retrieve.hierarchical_retriever.RerankClient.from_config",
@@ -308,12 +313,13 @@ async def test_hybrid_rerank_false_skips_provider_and_keeps_rrf_scores(monkeypat
     )
 
     assert fake_client.calls == []
-    # Fused order: dense ranks b first, so b leads on RRF tie-break (first-seen).
-    uris = [c.uri for c in result.matched_contexts]
-    assert set(uris) == {"viking://a", "viking://b"}
-    # Scores stay in the RRF domain (~1/(60+rank)), not the reranker's 0-1 domain.
-    for candidate in result.matched_contexts:
-        assert 0.0 < candidate.score < 0.1
+    scores = {c.uri: c.score for c in result.matched_contexts}
+    assert set(scores) == {"viking://a", "viking://b"}
+    # Bounded rank-fusion domain: a appears in both paths (dense rank 2, lexical
+    # rank 1) -> (1/62 + 1/61) / (2/61) = 123/124; b tops dense only -> 0.5.
+    assert scores["viking://a"] == pytest.approx(123 / 124)
+    assert scores["viking://b"] == pytest.approx(0.5)
+    assert all(0 < score <= 1 for score in scores.values())
 
 
 @pytest.mark.asyncio

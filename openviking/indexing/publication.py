@@ -31,6 +31,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from openviking.indexing.manifest_codec import decode_manifest, encode_manifest
+from openviking.indexing.query_leases import QueryLeaseStore
 from openviking.indexing.registry_lexical import RegistryLexicalMixin
 from openviking.indexing.registry_metadata import RegistryMetadataMixin
 from openviking.indexing.registry_gc import (
@@ -51,6 +52,9 @@ logger = logging.getLogger(__name__)
 
 _view = ContextVar("text_index_query_view", default=None)
 
+_QUERY_CAPTURE_ATTEMPTS = 3
+_QUERY_LEASE_STORE_LOCK = threading.Lock()
+
 
 class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, RegistryLexicalMixin, RegistryMetadataMixin, RegistryGCMixin):
     def __init__(self, path: str, *, authority_owned=False):
@@ -60,6 +64,9 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             raise FailedPreconditionError('RESTORE_PENDING: joint restore validation must finish before registry startup')
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._authority_owned = authority_owned
+        # Query-view leases live in their own tiny store (see _query_leases);
+        # created lazily so tests and read-only tooling pay nothing for it.
+        self._query_leases_store: QueryLeaseStore | None = None
         # One long-lived connection per thread. Opening a connection per call
         # forced SQLite to re-read and re-parse the entire schema on every
         # statement prepare (sqlite3InitOne), which pinned the single event-loop
@@ -1324,6 +1331,13 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                         keep.update(json.loads(pinned))
                     except (TypeError, ValueError):
                         keep.add(pinned)
+            # Query-view leases moved to the dedicated store; their pins must
+            # protect exactly like the legacy rows above.
+            keep.update(self._query_leases.live_snapshot_ids())
+            # capture() no longer sweeps expired gc_leases (it must not take a
+            # publication write transaction at all), so the periodic prune owns
+            # that housekeeping now.
+            db.execute("DELETE FROM gc_leases WHERE expires<?", (now,))
             # A recovery record names the snapshot the rollback must restore, so
             # it pins its manifest until the recovery itself is settled.
             keep.update(
@@ -1674,26 +1688,60 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             ).fetchone()
         return bool(row) and any(child.startswith("image:") for child in json.loads(row[0]))
 
+    @property
+    def _query_leases(self) -> QueryLeaseStore:
+        """Query-view lease store, deliberately not publication.db.
+
+        Pin/heartbeat/release used to be three writes into this store's
+        single-writer queue on every find; under any background publisher they
+        queued behind ``BEGIN IMMEDIATE`` (measured: finds stretching to 18s
+        and leases lapsing into ``QueryLeaseExpired`` behind a 16s maintenance
+        claim). The rows only need to outlive their query and stay visible to
+        the retention/GC planners, so they live in a dedicated tiny WAL
+        database next to this store's file.
+        """
+        store = self._query_leases_store
+        if store is None:
+            with _QUERY_LEASE_STORE_LOCK:
+                store = self._query_leases_store
+                if store is None:
+                    store = QueryLeaseStore(self.path + ".query_leases.sqlite3")
+                    self._query_leases_store = store
+        return store
+
     def capture(self, account, ttl=120, busy_timeout_ms: int | None = None):
-        now = time.time()
-        with self.db(busy_timeout_ms=busy_timeout_ms) as db:
-            # A worker killed mid-query leaves its lease row behind. Every reader
-            # already ignores rows past ``expires`` and ``renew`` refuses them, so
-            # dropping them here is the same as never holding them -- and it keeps
-            # the table from growing for the life of the registry.
-            db.execute("DELETE FROM leases WHERE expires<?", (now,))
-            db.execute("DELETE FROM gc_leases WHERE expires<?", (now,))
-            manifest = self._head_manifest(db, account)
-            snapshot_ids = sorted({row[0] for row in db.execute(
-                "SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
-                (account,),
-            )})
-            lease = uuid4().hex
-            db.execute(
-                "INSERT INTO leases VALUES (?,?,?)",
-                (lease, json.dumps(snapshot_ids), now + ttl),
-            )
-        return lease, manifest
+        """Pin this query's view: a lease over the current heads + their manifest.
+
+        The manifest read is a deferred read transaction (never queues on the
+        single writer) and the lease row lands in the dedicated lease store, so
+        a query pays zero publication write transactions. The lease pins
+        exactly the snapshot ids the manifest was built from; ``prune_snapshots``
+        and the GC planners merge the lease store's live rows, and the
+        re-verify below restores the pin/read atomicity the single-writer
+        design used to guarantee for free.
+        """
+        for _attempt in range(_QUERY_CAPTURE_ATTEMPTS):
+            with self.db(readonly=True, busy_timeout_ms=busy_timeout_ms) as db:
+                manifest = self._head_manifest(db, account)
+                snapshot_ids = sorted({row[0] for row in db.execute(
+                    "SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
+                    (account,),
+                )})
+            lease = self._query_leases.insert(snapshot_ids, ttl, busy_timeout_ms=busy_timeout_ms)
+            if not snapshot_ids:
+                return lease, manifest
+            with self.db(readonly=True, busy_timeout_ms=busy_timeout_ms) as db:
+                marks = ",".join("?" * len(snapshot_ids))
+                kept = {row[0] for row in db.execute(
+                    f"SELECT id FROM snapshots WHERE id IN ({marks})", snapshot_ids
+                )}
+            if set(snapshot_ids) <= kept:
+                return lease, manifest
+            # A retention sweep retired a head snapshot between the read and the
+            # pin; serving this view would silently miss published content, so
+            # drop the lease and retry on a fresh read.
+            self._query_leases.release(lease)
+        raise QueryLeaseExpired("Publication snapshots retired while pinning the query view")
 
     def _head_manifest(self, db, account):
         """Materialise the published manifest of every namespace of ``account``.
@@ -1719,17 +1767,11 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         return manifest
 
     def release(self, lease):
-        with self.db() as db:
-            db.execute("DELETE FROM leases WHERE id=?", (lease,))
+        self._query_leases.release(lease)
 
     def renew(self, lease, ttl=120, busy_timeout_ms: int | None = None):
-        with self.db(busy_timeout_ms=busy_timeout_ms) as db:
-            changed = db.execute(
-                "UPDATE leases SET expires=? WHERE id=? AND expires>?",
-                (time.time() + ttl, lease, time.time()),
-            ).rowcount
-            if not changed:
-                raise QueryLeaseExpired("Publication query lease expired; retry query")
+        if not self._query_leases.renew(lease, ttl, busy_timeout_ms=busy_timeout_ms):
+            raise QueryLeaseExpired("Publication query lease expired; retry query")
 
     # ── Tombstones ──
 
@@ -1889,6 +1931,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         snapshots = {r[0] for r in db.execute("SELECT snapshot FROM heads")}
         for row in db.execute("SELECT snapshots FROM leases WHERE expires>?", (time.time(),)):
             snapshots.update(json.loads(row[0]))
+        snapshots.update(self._query_leases.live_snapshot_ids())
         protected = {
             (row["account"], json.loads(row["reference"])["sha256"])
             for row in db.execute("SELECT account,reference FROM wiki_schemas")
@@ -1989,6 +2032,7 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 "SELECT snapshots FROM gc_leases WHERE expires>?", (time.time(),)
             ):
                 protected.update(json.loads(row[0]))
+            protected.update(self._query_leases.live_snapshot_ids())
             generations = set()
             for snapshot in protected:
                 manifest = decode_manifest(
@@ -2009,15 +2053,22 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
     # ── Physical GC (dependency reachability + retention + CAS) ──
 
     def gc_lease(self, account, ttl=120):
-        """Pin the current reachable snapshots for one reader/task, like a query lease."""
+        """Pin the current reachable snapshots for one reader/task, like a query lease.
+
+        Sweeps expired rows in the same transaction: ``capture`` no longer takes
+        a publication write transaction, so the writers of this table own its
+        housekeeping (the periodic snapshot prune also sweeps).
+        """
         lease = uuid4().hex
+        now = time.time()
         with self.db() as db:
+            db.execute("DELETE FROM gc_leases WHERE expires<?", (now,))
             snapshots = [
                 row[0] for row in db.execute("SELECT snapshot FROM heads WHERE account=?", (account,))
             ]
             db.execute(
                 "INSERT INTO gc_leases VALUES (?,?,?,?)",
-                (lease, account, json.dumps(snapshots), time.time() + ttl),
+                (lease, account, json.dumps(snapshots), now + ttl),
             )
         return lease
 
