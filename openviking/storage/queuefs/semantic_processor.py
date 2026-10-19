@@ -1374,14 +1374,20 @@ class SemanticProcessor(DequeueHandlerBase):
         total_files = len(file_summaries) if total_files is None else total_files
         total_children = len(children_abstracts) if total_children is None else total_children
         total_direct = total_files + total_children
-        provided = len(file_summaries) + len(children_abstracts)
-        if total_direct <= provided:
-            directory_coverage = (
-                f"Total direct entries: {total_direct}. "
-                "All direct entries are represented in the summaries below."
-            )
-        else:
-            directory_coverage = (
+        configured_sample_limit = max(
+            1, int(getattr(semantic, "overview_sample_limit", 32) or 32)
+        )
+        available_entries = len(file_summaries) + len(children_abstracts)
+        attempts = 3 if available_entries else 1
+
+        def _coverage_text(provided: int) -> str:
+            """Describe how many entries of the directory this prompt represents."""
+            if total_direct <= provided:
+                return (
+                    f"Total direct entries: {total_direct}. "
+                    "All direct entries are represented in the summaries below."
+                )
+            return (
                 f"Total direct entries: {total_direct} "
                 f"({total_files} files, {total_children} subdirectories).\n"
                 f"Summaries provided for this aggregation: {provided}.\n"
@@ -1390,93 +1396,142 @@ class SemanticProcessor(DequeueHandlerBase):
                 "entries; generalize cautiously and do not treat them as exhaustive."
             )
 
-        # Build link placeholder mapping and summary string.
-        # The model is fed collision-free placeholders (viking://input_sample_fN)
-        # and asked to emit Markdown links; placeholders are resolved to real
-        # URIs in post-processing. This avoids the fragility of bare [N] indices
-        # and of asking the model to reproduce long/CJK URIs verbatim.
-        link_map: Dict[str, str] = {}
-        file_summaries_lines = []
-        for idx, item in enumerate(file_summaries, 1):
-            placeholder = f"viking://input_sample_f{idx}"
-            link_map[placeholder] = self._markdown_link_target(dir_uri, item["name"])
-            file_summaries_lines.append(
-                f"- {item['name']} (link: {placeholder}): {item['summary']}"
-            )
-        file_summaries_str = "\n".join(file_summaries_lines) if file_summaries_lines else "None"
+        def _attempt_inputs(
+            attempt: int,
+        ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+            """Choose the sampled entries and per-entry character cap for one attempt.
 
-        # Build subdirectory summary string
-        children_abstracts_str = (
-            "\n".join(
-                self._child_summary_line(dir_uri, idx, item, link_map)
-                for idx, item in enumerate(children_abstracts, 1)
+            The first attempt uses the configured sample budget unchanged. Every
+            later attempt halves both the number of entries and the character
+            budget for each entry (with a small hard floor), so a prompt the VLM
+            could not finish in the client timeout actually becomes smaller.
+            """
+            entries: List[Tuple[str, Dict[str, str]]] = [
+                ("file", item) for item in file_summaries
+            ] + [("child", item) for item in children_abstracts]
+            if not entries:
+                return [], []
+            limit = min(len(entries), configured_sample_limit)
+            if attempt > 0:
+                limit = max(1, limit // (2**attempt))
+            selected = (
+                entries if limit >= len(entries) else deterministic_sample(entries, limit)
             )
-            if children_abstracts
-            else "None"
+            attempt_files = [item for kind, item in selected if kind == "file"]
+            attempt_children = [item for kind, item in selected if kind == "child"]
+            if attempt <= 0:
+                return attempt_files, attempt_children
+
+            longest = max(
+                [len(str(item.get("summary") or "")) for item in attempt_files]
+                + [len(str(item.get("abstract") or "")) for item in attempt_children]
+                + [0]
+            )
+            per_entry_cap = max(32, longest // (2**attempt))
+
+            def _clamp(item: Dict[str, str], field: str) -> Dict[str, str]:
+                value = str(item.get(field) or "")
+                if len(value) <= per_entry_cap:
+                    return item
+                return {**item, field: value[:per_entry_cap].rstrip()}
+
+            return (
+                [_clamp(item, "summary") for item in attempt_files],
+                [_clamp(item, "abstract") for item in attempt_children],
+            )
+
+        def _render_inputs(
+            attempt_files: List[Dict[str, str]],
+            attempt_children: List[Dict[str, str]],
+            attempt_link_map: Dict[str, str],
+        ) -> Tuple[str, str]:
+            """Render one attempt's summaries with collision-free link placeholders."""
+            file_lines = []
+            for idx, item in enumerate(attempt_files, 1):
+                placeholder = f"viking://input_sample_f{idx}"
+                attempt_link_map[placeholder] = self._markdown_link_target(
+                    dir_uri, item["name"]
+                )
+                file_lines.append(
+                    f"- {item['name']} (link: {placeholder}): {item['summary']}"
+                )
+            child_lines = [
+                self._child_summary_line(dir_uri, idx, item, attempt_link_map)
+                for idx, item in enumerate(attempt_children, 1)
+            ]
+            return (
+                "\n".join(file_lines) if file_lines else "None",
+                "\n".join(child_lines) if child_lines else "None",
+            )
+
+        first_files, first_children = _attempt_inputs(0)
+        first_link_map: Dict[str, str] = {}
+        first_files_str, first_children_str = _render_inputs(
+            first_files, first_children, first_link_map
         )
 
         language_source_parts = []
-        if file_summaries:
-            language_source_parts.append(file_summaries_str)
-        if children_abstracts:
-            language_source_parts.append(children_abstracts_str)
+        if first_files:
+            language_source_parts.append(first_files_str)
+        if first_children:
+            language_source_parts.append(first_children_str)
         if not language_source_parts:
             language_source_parts.append(dir_uri.split("/")[-1])
         output_language = resolve_output_language("\n".join(language_source_parts), config=config)
 
-        # Budget guard: check if prompt would be oversized
-        estimated_size = len(file_summaries_str) + len(children_abstracts_str)
-        over_budget = estimated_size > semantic.max_overview_prompt_chars
-        entry_count = len(file_summaries) + len(children_abstracts)
-        many_entries = entry_count > semantic.overview_batch_size
+        last_inputs: Tuple[List[Dict[str, str]], List[Dict[str, str]]] = (
+            first_files,
+            first_children,
+        )
 
-        def _summaries_str(items) -> str:
-            """Render file summaries with the same placeholders as the full prompt.
-
-            The placeholders are what the model links back to, so a retry that
-            truncates summaries must keep the identical mapping.
-            """
-            lines = []
-            for idx, item in enumerate(items, 1):
-                placeholder = f"viking://input_sample_f{idx}"
-                link_map[placeholder] = self._markdown_link_target(dir_uri, item["name"])
-                lines.append(f"- {item['name']} (link: {placeholder}): {item['summary']}")
-            return "\n".join(lines) if lines else "None"
-
-        async def _attempt_overview(shrink: int = 0) -> Optional[str]:
-            # A retry that resends the same prompt cannot change the outcome when
-            # the endpoint simply could not finish it inside the client timeout:
-            # live, one directory timed out twice (10 minutes of wall clock) and
-            # ended up with no L0/L1 at all. Each retry therefore halves the
-            # per-file summary budget, so the prompt the model sees actually gets
-            # smaller.
-            attempt_files = file_summaries
-            if shrink and file_summaries:
-                longest = max(
-                    (len(item.get("summary") or "") for item in file_summaries), default=0
+        async def _attempt_overview(attempt: int) -> Optional[str]:
+            nonlocal last_inputs
+            if attempt == 0:
+                attempt_files = first_files
+                attempt_children = first_children
+                attempt_files_str = first_files_str
+                attempt_children_str = first_children_str
+                attempt_link_map = first_link_map
+            else:
+                attempt_files, attempt_children = _attempt_inputs(attempt)
+                attempt_link_map = {}
+                attempt_files_str, attempt_children_str = _render_inputs(
+                    attempt_files, attempt_children, attempt_link_map
                 )
-                per_file_budget = max(200, longest // (2 ** shrink))
-                attempt_files = [
-                    {**item, "summary": (item.get("summary") or "")[:per_file_budget]}
-                    for item in file_summaries
-                ]
+                last_inputs = (attempt_files, attempt_children)
                 logger.warning(
-                    f"Overview retry for {dir_uri} with each file summary truncated "
-                    f"to {per_file_budget} chars (attempt {shrink + 1}/{attempts})"
+                    "Overview retry for %s with %d/%d file summaries and "
+                    "%d/%d child abstracts (%d payload chars, attempt %d/%d)",
+                    dir_uri,
+                    len(attempt_files),
+                    len(file_summaries),
+                    len(attempt_children),
+                    len(children_abstracts),
+                    len(attempt_files_str) + len(attempt_children_str),
+                    attempt + 1,
+                    attempts,
                 )
+
+            # Budget guard: check if this attempt's prompt would be oversized.
+            estimated_size = len(attempt_files_str) + len(attempt_children_str)
+            over_budget = estimated_size > semantic.max_overview_prompt_chars
+            entry_count = len(attempt_files) + len(attempt_children)
+            many_entries = entry_count > semantic.overview_batch_size
+            directory_coverage = _coverage_text(entry_count)
+
             if over_budget and many_entries:
                 # Many entries, oversized prompt → batch and merge
                 logger.info(
                     f"Overview prompt for {dir_uri} exceeds budget "
-                    f"({estimated_size} chars, {len(file_summaries)} files, "
-                    f"{len(children_abstracts)} subdirectories). "
+                    f"({estimated_size} chars, {len(attempt_files)} files, "
+                    f"{len(attempt_children)} subdirectories). "
                     f"Splitting into batches of {semantic.overview_batch_size}."
                 )
                 return await self._batched_generate_overview(
                     dir_uri,
                     attempt_files,
-                    children_abstracts,
-                    link_map,
+                    attempt_children,
+                    attempt_link_map,
                     llm_sem=llm_sem,
                     output_language=output_language,
                     directory_coverage=directory_coverage,
@@ -1485,11 +1540,11 @@ class SemanticProcessor(DequeueHandlerBase):
                 # Few files but long summaries → truncate summaries to fit budget
                 logger.info(
                     f"Overview prompt for {dir_uri} exceeds budget "
-                    f"({estimated_size} chars) with {len(file_summaries)} files. "
+                    f"({estimated_size} chars) with {len(attempt_files)} files. "
                     f"Truncating summaries to fit."
                 )
                 budget = semantic.max_overview_prompt_chars
-                budget -= len(children_abstracts_str)
+                budget -= len(attempt_children_str)
                 per_file = max(100, budget // max(len(attempt_files), 1))
                 truncated_lines = []
                 for idx, item in enumerate(attempt_files, 1):
@@ -1500,30 +1555,27 @@ class SemanticProcessor(DequeueHandlerBase):
                 return await self._single_generate_overview(
                     dir_uri,
                     "\n".join(truncated_lines),
-                    children_abstracts_str,
-                    link_map,
+                    attempt_children_str,
+                    attempt_link_map,
                     output_language=output_language,
                     directory_coverage=directory_coverage,
                 )
             return await self._single_generate_overview(
                 dir_uri,
-                _summaries_str(attempt_files),
-                children_abstracts_str,
-                link_map,
+                attempt_files_str,
+                attempt_children_str,
+                attempt_link_map,
                 output_language=output_language,
                 directory_coverage=directory_coverage,
             )
 
         # A dead endpoint, a timeout and a malformed reply all arrive here as
-        # ``None``, and the caller then leaves the directory without L0/L1 --
-        # live, one VLM timeout left ``fault_mechanism/中挖`` (23 chapters) with no
-        # .overview.md and the vector stage skipped the whole directory. Retry
-        # the failures that had something to summarise; a directory with no text
-        # at all cannot succeed on a retry, so it is attempted once. Three
-        # Each retry halves the per-file summary budget (see ``_attempt_overview``):
-        # a prompt the endpoint cannot finish in 240s fails the same way twice, so
-        # the retry has to send less, not merely again.
-        attempts = 3 if (file_summaries or children_abstracts) else 1
+        # ``None``. Retry only when there is something to summarise, and make
+        # each retry smaller: live, 240s timeouts arrived in waves because many
+        # directory overviews shared the same saturated VLM endpoint, and the
+        # old retry re-sent an almost identical prompt because its per-entry
+        # floor was 200 chars. The final fallback still returns real sampled
+        # summaries so image-heavy directories are not left without L0/L1.
         for attempt in range(attempts):
             overview = await _attempt_overview(attempt)
             if overview:
@@ -1534,7 +1586,78 @@ class SemanticProcessor(DequeueHandlerBase):
                     f"(attempt {attempt + 1}/{attempts}); retrying"
                 )
                 await asyncio.sleep(1.0 * (attempt + 1))
+        if available_entries:
+            fallback_files, fallback_children = last_inputs
+            logger.error(
+                "Overview generation for %s produced no content after %d attempts; "
+                "returning a deterministic overview from %d sampled file summaries "
+                "and %d child abstracts so the directory keeps L0/L1",
+                dir_uri,
+                attempts,
+                len(fallback_files),
+                len(fallback_children),
+            )
+            return self._fallback_overview_from_samples(
+                dir_uri,
+                fallback_files,
+                fallback_children,
+                total_files=total_files,
+                total_children=total_children,
+            )
         return None
+
+    def _fallback_overview_from_samples(
+        self,
+        dir_uri: str,
+        file_summaries: List[Dict[str, str]],
+        children_abstracts: List[Dict[str, str]],
+        *,
+        total_files: int,
+        total_children: int,
+    ) -> str:
+        """Compose a real L1 from sampled summaries after the model failed.
+
+        A directory without L0/L1 loses retrieval and navigation entirely. The
+        sampled summaries are already real content, so a concise deterministic
+        listing is a usable fallback instead of a placeholder.
+        """
+        dir_name = dir_uri.rstrip("/").rsplit("/", 1)[-1] or "Directory"
+        total_direct = total_files + total_children
+        sampled = len(file_summaries) + len(children_abstracts)
+        lines = [
+            f"# {dir_name}",
+            "",
+            (
+                f"This directory has {total_direct} direct entries "
+                f"({total_files} files, {total_children} subdirectories). "
+                f"The overview lists the {sampled} sampled entries captured "
+                "during indexing."
+            ),
+            "",
+            "## Contents",
+            "",
+        ]
+        for item in file_summaries:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            summary = " ".join(str(item.get("summary") or "").split())
+            target = self._markdown_link_target(dir_uri, name)
+            if summary:
+                lines.append(f"- [{name}]({target}): {summary}")
+            else:
+                lines.append(f"- [{name}]({target})")
+        for item in children_abstracts:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            abstract = " ".join(str(item.get("abstract") or "").split())
+            target = self._markdown_link_target(dir_uri, name)
+            if abstract:
+                lines.append(f"- [{name}/]({target}/): {abstract}")
+            else:
+                lines.append(f"- [{name}/]({target}/)")
+        return "\n".join(lines).strip()
 
     async def _single_generate_overview(
         self,
@@ -1560,6 +1683,7 @@ class SemanticProcessor(DequeueHandlerBase):
                     "directory_coverage": directory_coverage,
                 },
             )
+            logger.info("Overview prompt for %s: %d chars", dir_uri, len(prompt))
 
             with bind_telemetry_stage("resource_summarize"):
                 overview = await vlm.get_completion_async(prompt)

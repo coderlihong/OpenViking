@@ -211,10 +211,14 @@ class _OpsMixin:
         tombstone between the URI and the root must fall for the write to be
         readable again.
 
-        Clearing is a sqlite write transaction per level.  It ran on the event
-        loop and the loop watchdog caught the main thread parked in
-        ``clear_tombstone`` -> ``db`` (BEGIN IMMEDIATE) while every concurrent
-        request waited, so the whole walk runs in a worker thread.
+        The walk used to clear one level per call, and ``clear_tombstone`` opens
+        its own BEGIN IMMEDIATE: a bulk ingest paid tens of thousands of tiny
+        write transactions, all queued behind the single writer, which is what
+        stretched concurrent lock waits to 18-31 s. The ancestor URIs are now
+        collected first and dropped by one batched transaction. It stays off the
+        event loop for the same reason as before: the loop watchdog caught the
+        main thread parked in ``clear_tombstone`` -> ``db`` (BEGIN IMMEDIATE)
+        while every concurrent request waited.
         """
         registry = self._tombstone_registry()
         if registry is None:
@@ -223,17 +227,13 @@ class _OpsMixin:
         normalized = uri.rstrip("/") or "viking://"
         prefix = "" if normalized == "viking://" else normalized[len("viking://") :]
 
-        def _clear_all() -> None:
-            current = normalized
-            remaining = prefix
-            while True:
-                registry.clear_tombstone(account, current)
-                if not remaining:
-                    break
-                remaining = remaining.rsplit("/", 1)[0] if "/" in remaining else ""
-                current = "viking://" + remaining
+        uris = [normalized]
+        remaining = prefix
+        while remaining:
+            remaining = remaining.rsplit("/", 1)[0] if "/" in remaining else ""
+            uris.append("viking://" + remaining)
 
-        await asyncio.to_thread(_clear_all)
+        await asyncio.to_thread(registry.clear_tombstones, account, uris)
 
     async def _revive_tombstoned_subtree(self, uri: str, ctx: Optional[RequestContext]) -> None:
         """Re-creating a whole subtree clears its tombstones, ancestors included.
@@ -375,9 +375,6 @@ class _OpsMixin:
         await self._ensure_access(uri, ctx, action=AclAction.WRITE)
         path = self._uri_to_path(uri, ctx=ctx)
         target_uri = self._path_to_uri(path, ctx=ctx)
-        # Write the tombstone before touching storage so a concurrent recall or
-        # read cannot return the source between the fence and the physical delete.
-        self._tombstone_uri(target_uri, ctx)
 
         async def _estimate_deleted_count(target_path: str, real_ctx: RequestContext) -> int:
             """Estimate number of nodes to be deleted using vector index."""
@@ -404,6 +401,9 @@ class _OpsMixin:
                 raise
             if recursive:
                 await self._ensure_access(target_uri, ctx, action=AclAction.MANAGE)
+            # Write the tombstone before touching storage so a concurrent recall or
+            # read cannot return the source between the fence and the physical delete.
+            self._tombstone_uri(target_uri, ctx)
             # Path does not exist: clean up any orphan index records and return
             uris_to_delete = await self._collect_uris(path, recursive, ctx=ctx)
             uris_to_delete.append(target_uri)
@@ -412,6 +412,37 @@ class _OpsMixin:
             await self._delete_from_vector_store(uris_to_delete, ctx=ctx)
             logger.info(f"[VikingFS] rm target not found, cleaned orphan index: {uri}")
             return {"estimated_deleted_count": estimated_count}
+
+        # A generated directory catalogue (``{dir}/index.md``) is rewritten by the
+        # directory refresh that runs whenever its children change, so a delete
+        # reports success and the file is listed again immediately (measured: ok
+        # + estimated_deleted_count=0, file still present). Say so instead of a
+        # silent no-op. Authored legacy bodies that merely share the filename stay
+        # deletable; the frontmatter marker decides. The check runs before the
+        # tombstone fence below on purpose: a refused removal must not leave a
+        # deletion marker that makes reads answer NOT_FOUND.
+        if not is_dir:
+            from openviking.core.directory_index import (
+                is_directory_index_uri,
+                is_generated_directory_index,
+            )
+
+            if is_directory_index_uri(target_uri):
+                try:
+                    raw = await self._async_agfs.read(path)
+                except Exception:  # noqa: BLE001 - unreadable content keeps old behavior
+                    raw = None
+                if is_generated_directory_index(raw):
+                    raise FailedPreconditionError(
+                        f"Cannot delete the generated directory catalogue: {uri}. "
+                        "It is regenerated from the directory's children after any "
+                        "change; delete the directory or its authored content instead.",
+                        details={"resource": uri, "expected": "authored content"},
+                    )
+
+        # Write the tombstone before touching storage so a concurrent recall or
+        # read cannot return the source between the fence and the physical delete.
+        self._tombstone_uri(target_uri, ctx)
 
         if is_dir:
             await self._ensure_access(target_uri, ctx, action=AclAction.MANAGE)

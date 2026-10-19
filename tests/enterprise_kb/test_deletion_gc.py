@@ -1,6 +1,7 @@
 """Deletion propagation: instant tombstones and reference-safe physical GC (KB-007)."""
 
 import hashlib
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -77,6 +78,55 @@ def store(tmp_path, monkeypatch):
         lambda embedding=None: PublicationStore(path),
     )
     return PublicationStore(path)
+
+
+@pytest.fixture
+def cached_store(store, monkeypatch):
+    """Resolve ``configured_store`` to one instance, the way production does.
+
+    The ``store`` fixture rebuilds a PublicationStore per lookup; production
+    resolves it through the ``lru_cache``d ``store(path)``. The transaction
+    counts below only describe the production shape when every lookup (the write
+    path's fence and the tombstone registry alike) hits the same registry.
+    """
+    monkeypatch.setattr(
+        "openviking.indexing.publication.configured_store",
+        lambda embedding=None: store,
+    )
+    return store
+
+
+@pytest.fixture
+def write_transactions(monkeypatch):
+    """Every read-write transaction any PublicationStore opens inside a test.
+
+    ``db(readonly=True)`` is a WAL read that never queues on the single writer,
+    so only the read-write opens count towards the convoy these tests guard
+    against.
+    """
+    opened = []
+    original = PublicationStore.db
+
+    @contextmanager
+    def counting(self, readonly=False, busy_timeout_ms=None):
+        if not readonly:
+            opened.append(self.path)
+        with original(self, readonly=readonly, busy_timeout_ms=busy_timeout_ms) as db:
+            yield db
+
+    monkeypatch.setattr(PublicationStore, "db", counting)
+    return opened
+
+
+DEEP = "viking://resources/manual/chapter/section/notes/a.md"
+DEEP_ANCESTORS = [
+    "viking://resources/manual/chapter/section/notes",
+    "viking://resources/manual/chapter/section",
+    "viking://resources/manual/chapter",
+    "viking://resources/manual",
+    "viking://resources",
+    "viking://",
+]
 
 
 def publish(store, uri, children=("a", "b"), account="acct", namespace="resources", ref=None):
@@ -194,6 +244,85 @@ async def test_recreate_through_write_file_clears_tombstone(store, tmp_path):
     await fs.append_file(uri, " tail", ctx=ctx)
     assert not store.is_tombstoned("acct", parent)
     assert await fs.read_file(uri, ctx=ctx) == "binary tail"
+
+
+async def test_deep_write_clears_every_ancestor_tombstone_in_one_transaction(
+    cached_store, tmp_path, write_transactions
+):
+    # Re-creating a source clears the tombstone of the URI and of every ancestor
+    # directory up to the root. One writer transaction must cover the whole walk:
+    # the per-level walk issued one BEGIN IMMEDIATE per level, so a bulk ingest
+    # queued tens of thousands of tiny writers behind the single writer.
+    fs = fs_with_tombstones(tmp_path, cached_store)
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+    untouched = "viking://resources/other-branch/b.md"
+    for dead in [DEEP, *DEEP_ANCESTORS, untouched]:
+        cached_store.tombstone("acct", dead)
+    cached_store.tombstone("other", DEEP)
+
+    write_transactions.clear()
+    await fs._revive_tombstoned_uri(DEEP, ctx)
+
+    assert len(write_transactions) == 1
+    # Only this URI's chain falls; other branches and other accounts stay dead.
+    assert cached_store.tombstones("acct") == [untouched]
+    assert cached_store.tombstones("other") == [DEEP]
+
+    # The public write entry point runs the same walk: a deep source re-created
+    # after its whole chain was tombstoned reads back again.
+    for dead in [DEEP, *DEEP_ANCESTORS]:
+        cached_store.tombstone("acct", dead)
+    await fs.write(DEEP, b"fresh body", ctx=ctx)
+    assert await fs.read_file(DEEP, ctx=ctx) == "fresh body"
+    assert cached_store.tombstones("acct") == [untouched]
+
+
+async def test_write_without_tombstones_still_works_and_clears_in_one_transaction(
+    cached_store, tmp_path, write_transactions
+):
+    # A first ingest has no tombstone rows at all: the batched clear must stay a
+    # depth-independent no-op transaction and the write must land and read back.
+    fs = fs_with_tombstones(tmp_path, cached_store)
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+    uri = "viking://resources/manual/chapter/section/notes/fresh.md"
+
+    write_transactions.clear()
+    await fs._revive_tombstoned_uri(uri, ctx)
+    assert len(write_transactions) == 1
+
+    await fs.write(uri, b"fresh body", ctx=ctx)
+    assert await fs.read_file(uri, ctx=ctx) == "fresh body"
+
+
+def test_tombstone_many_rejects_a_bad_uri_before_writing(cached_store, write_transactions):
+    with pytest.raises(ValueError, match="canonical URI"):
+        cached_store.tombstone_many("acct", ["viking://resources/ok.md", "not-a-uri"])
+    assert write_transactions == []
+    assert cached_store.tombstones("acct") == []
+
+
+async def test_deletion_scope_marks_every_source_in_one_transaction(
+    cached_store, tmp_path, write_transactions
+):
+    # Account deletion marks every published source; one transaction per source
+    # queued the whole scope behind the single writer, so the scope shares
+    # bounded batches instead.
+    from openviking.service.deletion import DeletionService
+
+    fs = fs_with_tombstones(tmp_path, cached_store)
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+    uris = [f"viking://resources/bulk/{index}.md" for index in range(8)]
+    for uri in uris:
+        publish(cached_store, uri, children=("c",))
+
+    service = DeletionService.__new__(DeletionService)
+    service._service = SimpleNamespace(viking_fs=fs)
+
+    write_transactions.clear()
+    await service._tombstone_scope("acct", None, ctx=ctx)
+
+    assert len(write_transactions) == 1
+    assert all(cached_store.is_tombstoned("acct", uri) for uri in uris)
 
 
 def test_dependents_mark_child_chunks_cache_and_sidecars(store):

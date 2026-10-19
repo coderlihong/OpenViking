@@ -112,6 +112,16 @@ def test_publication_roundtrip_and_process_exclusion(setup):
         repository.acknowledge(next_generation, "child")
         repository.seal_batch(batch)
         assert repository.batch_state(batch)["state"] == "published"
+        # The batched tombstone API has to cross the authority boundary too, or
+        # workers fall back to one round trip (and one writer transaction) per
+        # URI.
+        repository.tombstone_many("a", ["viking://resources/document", "viking://resources/other"])
+        assert repository.tombstones("a") == [
+            "viking://resources/document",
+            "viking://resources/other",
+        ]
+        assert repository.clear_tombstones("a", ["viking://resources/document"]) == 1
+        assert repository.tombstones("a") == ["viking://resources/other"]
         with pytest.raises(RuntimeError, match="Direct SQL"):
             repository.db()
     finally:

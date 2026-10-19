@@ -939,8 +939,17 @@ class _SingleAccountBackend:
             limit=limit,
             offset=offset,
             output_fields=output_fields,
+            # Without an explicit order the adapter answers a filter-only query
+            # with a random-vector sample, so every page re-samples: offset
+            # pagination then repeats records on one page and drops them on
+            # another (measured: 1055 rows walked into 1001 distinct ids). ACL
+            # sweeps and backups page through this method too, so they lost
+            # rows the same way. ``updated_at`` is an indexed date-time field on
+            # every context collection and gives stable offset pages
+            # (``strict_scroll`` already relies on it).
+            order_by="updated_at",
         )
-        next_cursor = str(offset + limit) if len(records) == limit else None
+        next_cursor = str(offset + len(records)) if len(records) == limit else None
         return records, next_cursor
 
     async def count(self, filter: Optional[Dict[str, Any] | FilterExpr] = None) -> int:

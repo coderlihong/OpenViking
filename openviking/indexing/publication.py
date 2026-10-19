@@ -55,6 +55,12 @@ _view = ContextVar("text_index_query_view", default=None)
 _QUERY_CAPTURE_ATTEMPTS = 3
 _QUERY_LEASE_STORE_LOCK = threading.Lock()
 
+# Tombstone rows are tiny; one statement per this many rows keeps a batch
+# inside SQLite's host-parameter budget while the caller still pays one writer
+# transaction per call (and one authority frame, whose size bounds a bulk
+# account-scope tombstone call the same way).
+TOMBSTONE_BATCH = 500
+
 
 class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, RegistryLexicalMixin, RegistryMetadataMixin, RegistryGCMixin):
     def __init__(self, path: str, *, authority_owned=False):
@@ -1784,10 +1790,56 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 "INSERT OR REPLACE INTO tombstones VALUES (?,?,?)", (account, uri, time.time())
             )
 
+    def tombstone_many(self, account, uris):
+        """Write many deletion tombstones in one transaction.
+
+        Account deletion marks every published source of a scope and used to
+        open one tiny BEGIN IMMEDIATE per source, queueing thousands of writers
+        behind the single writer. Validation mirrors :meth:`tombstone` and runs
+        before the transaction opens, so a bad URI writes nothing.
+        """
+        wanted = list(dict.fromkeys(uris))
+        for uri in wanted:
+            if not isinstance(uri, str) or not uri.startswith("viking://"):
+                raise ValueError("Tombstone requires a canonical URI")
+        if not wanted:
+            return 0
+        created = time.time()
+        with self.db() as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO tombstones VALUES (?,?,?)",
+                [(account, uri, created) for uri in wanted],
+            )
+        return len(wanted)
+
     def clear_tombstone(self, account, uri):
         """Drop a tombstone only when the source is re-created as current content."""
         with self.db() as db:
             db.execute("DELETE FROM tombstones WHERE account=? AND uri=?", (account, uri))
+
+    def clear_tombstones(self, account, uris):
+        """Drop the tombstones of many URIs in one transaction.
+
+        Re-creating a source clears the tombstone of the URI itself and of every
+        ancestor directory; the per-level walk opened one BEGIN IMMEDIATE per
+        level, so a bulk ingest issued tens of thousands of tiny write
+        transactions and convoyed every other writer behind the single writer.
+        The list is chunked inside the one transaction: SQLite bounds the host
+        parameters of a statement, while the writer lock is taken once.
+        """
+        wanted = list(dict.fromkeys(uris))
+        if not wanted:
+            return 0
+        removed = 0
+        with self.db() as db:
+            for start in range(0, len(wanted), TOMBSTONE_BATCH):
+                chunk = wanted[start : start + TOMBSTONE_BATCH]
+                marks = ",".join("?" * len(chunk))
+                removed += db.execute(
+                    f"DELETE FROM tombstones WHERE account=? AND uri IN ({marks})",
+                    (account, *chunk),
+                ).rowcount
+        return removed
 
     def clear_tombstone_subtree(self, account, uri):
         """Drop the tombstones of *uri* and everything beneath it.
@@ -1796,18 +1848,15 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         per-file writes, so no individual write exists that would clear the
         descendants' tombstones. Matching uses the same ancestor rule as
         ``is_tombstoned`` so a cleared subtree cannot still be refused by a row
-        this call did not consider.
+        this call did not consider. One prefix statement replaces one DELETE per
+        row, which keeps the writer lock hold time flat in the subtree size.
         """
         prefix = uri.rstrip("/") + "/"
         with self.db() as db:
-            rows = [
-                row[0]
-                for row in db.execute("SELECT uri FROM tombstones WHERE account=?", (account,))
-            ]
-            dead = [row for row in rows if row == uri or row.startswith(prefix)]
-            for row in dead:
-                db.execute("DELETE FROM tombstones WHERE account=? AND uri=?", (account, row))
-        return len(dead)
+            return db.execute(
+                "DELETE FROM tombstones WHERE account=? AND (uri=? OR substr(uri,1,?)=?)",
+                (account, uri, len(prefix), prefix),
+            ).rowcount
 
     def tombstones(self, account):
         with self.db(readonly=True) as db:

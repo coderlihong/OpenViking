@@ -37,7 +37,8 @@ COMMANDS = (
     "pending_writes", "invalidate_draft", "begin_batch", "fail_batch", "seal_batch",
     "batch_state", "can_write", "seal", "acknowledge", "fail", "state", "capture",
     "release", "renew", "protected_content_revisions", "retired_candidates",
-    "tombstone", "clear_tombstone", "tombstones", "is_tombstoned", "sources",
+    "tombstone", "tombstone_many", "clear_tombstone", "clear_tombstones",
+    "tombstones", "is_tombstoned", "sources",
 ) + DOMAIN_COMMANDS + RECOVERY_COMMANDS + LEXICAL_COMMANDS + METADATA_COMMANDS + GC_COMMANDS + (
     "job_create", "job_get", "job_list", "job_claim", "job_heartbeat", "job_checkpoint",
     "job_parse_acquire", "job_parse_release", "job_parse_quarantine_resolve",

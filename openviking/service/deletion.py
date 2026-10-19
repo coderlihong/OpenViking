@@ -333,13 +333,24 @@ class DeletionService:
     async def _tombstone_scope(
         self, account_id: str, user_id: str | None, *, ctx: RequestContext
     ) -> None:
-        """Mark every published source in scope as deleted, immediately."""
+        """Mark every published source in scope as deleted, immediately.
+
+        One write transaction per source queued a whole account's sources behind
+        the single writer; bounded batches share one transaction each and a
+        bounded authority frame.
+        """
         registry = self._registry()
         if registry is None:
             return
-        for uri in registry.sources(account_id):
-            if user_id is None or self._uri_belongs_to_user(uri, user_id, ctx=ctx):
-                registry.tombstone(account_id, uri)
+        from openviking.indexing.publication import TOMBSTONE_BATCH
+
+        pending = [
+            uri
+            for uri in registry.sources(account_id)
+            if user_id is None or self._uri_belongs_to_user(uri, user_id, ctx=ctx)
+        ]
+        for start in range(0, len(pending), TOMBSTONE_BATCH):
+            registry.tombstone_many(account_id, pending[start : start + TOMBSTONE_BATCH])
 
     async def _collect_garbage(self, account_id: str, *, ctx: RequestContext) -> None:
         """Release blobs whose references and retention windows are satisfied."""
