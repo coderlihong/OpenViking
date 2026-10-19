@@ -80,6 +80,12 @@ REINDEX_TASK_TYPE = "admin_reindex"
 PRUNE_ORPHAN_CANDIDATE_LIMIT = 100000
 PRUNE_OUTPUT_FIELDS = ["id", "uri", "level", "context_type", "account_id", "owner_user_id"]
 
+# Upper bound on records examined per (uri, level) when a reuse guard falls
+# back to record-level comparison. Chunked chapters own far more rows than the
+# one or two of a directory level, so the cap must cover a realistic chunk
+# count; hitting the cap only degrades into a rebuild, never into a wrong skip.
+_RECORD_REVISION_SCAN_LIMIT = 256
+
 # The two enterprise build modes share one IndexPlan with D1 ingestion. They are
 # the only modes that may take a dry_run preview (``prune_orphans`` keeps its own
 # legacy preview). ``vectors_only`` never rewrites L0/L1; ``semantic_and_vectors``
@@ -1935,7 +1941,7 @@ class ReindexExecutor:
         )
 
     async def _published_content_unchanged(
-        self, file_uri: str, *, ctx: RequestContext
+        self, file_uri: str, *, ctx: RequestContext, manifest: dict[str, Any] | None = None
     ) -> bool:
         """True when the live generation already holds this exact content.
 
@@ -1948,40 +1954,250 @@ class ReindexExecutor:
         unchanged file needs no new generation -- but only after its published
         records are verified to still exist, because a missing record must be
         rebuilt rather than assumed present.
+
+        A URI with no published chunk rows (an imported store, or rows written
+        before generations existed) falls back to the record-level comparison:
+        any visible record that already carries this revision proves the content
+        is indexed, so retrying a failed run re-embeds nothing.
         """
         store = configured_store()
         if store is None:
             return False
-        try:
-            published = store.published_chunks(ctx.account_id, file_uri)
-        except Exception:  # noqa: BLE001 - never let the fast path break a run
-            return False
-        if not published:
-            return False
-        generation, chunks = published
         try:
             raw = await get_viking_fs().read_file(file_uri, ctx=ctx)
         except Exception:  # noqa: BLE001
             return False
         content = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
         revision = hashlib.sha256((content or "").encode()).hexdigest()
-        if any(chunk_revision != revision for _chunk_id, chunk_revision in chunks):
+        try:
+            published = store.published_chunks(ctx.account_id, file_uri)
+        except Exception:  # noqa: BLE001 - never let the fast path break a run
+            published = None
+        if published:
+            generation, chunks = published
+            if any(chunk_revision != revision for _chunk_id, chunk_revision in chunks):
+                return False
+            service = get_service()
+            backend = getattr(service, "vikingdb_manager", None)
+            if backend is None:
+                return False
+            record_ids = [
+                chunk_vector_record_id(
+                    ctx.account_id, file_uri, f"{chunk_id}:generation:{generation}"
+                )
+                for chunk_id, _revision in chunks
+            ]
+            try:
+                found = await backend.get(record_ids, ctx=ctx)
+            except Exception:  # noqa: BLE001
+                return False
+            return len(found) == len(record_ids)
+        return await self._matching_record_exists(
+            uri=file_uri,
+            level=int(ContextLevel.DETAIL),
+            content_revision=revision,
+            live_generation=self._manifest_generation(file_uri, manifest),
+            ctx=ctx,
+        )
+
+    @staticmethod
+    def _text_revision(text: str) -> str:
+        """Digest of the exact text a record embeds, stamped for later reuse checks."""
+        return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+    async def _live_manifest(self, ctx: RequestContext) -> dict[str, Any]:
+        """Account visibility manifest for reuse-guard lookups.
+
+        Captured once per run so every guard decision in one reindex sees the
+        same publication view. Empty without a managed store, where every row
+        is legacy and no generation rule applies.
+        """
+        from openviking.indexing.publication import configured_store, visibility_snapshot
+
+        if configured_store() is None:
+            return {}
+        try:
+            snapshot = await asyncio.to_thread(visibility_snapshot, ctx)
+        except Exception:  # noqa: BLE001 - a guard must never fail a run
+            return {}
+        if not snapshot:
+            return {}
+        manifest, _dead = snapshot
+        return manifest or {}
+
+    @staticmethod
+    def _manifest_generation(uri: str, manifest: dict[str, Any] | None) -> str | None:
+        """The live generation the visibility manifest publishes for the URI."""
+        item = (manifest or {}).get(uri)
+        if not item:
+            return None
+        generation = item.get("generation")
+        return str(generation) if generation else None
+
+    async def _matching_record_exists(
+        self,
+        *,
+        uri: str,
+        level: int,
+        content_revision: str,
+        live_generation: str | None,
+        ctx: RequestContext,
+        expected_texts: list[str] | None = None,
+    ) -> bool:
+        """True when a *visible* record for (uri, level) already holds this content.
+
+        Mirrors `recheck_visibility`: a row is visible when it belongs to the
+        manifest's live generation for the URI, or when it is a legacy row
+        (empty generation) and the manifest does not publish the URI at all.
+        A managed row for a URI the manifest does not publish is invisible to
+        every query, so trusting it would skip a rebuild the retrieval path
+        would never serve.
+
+        `expected_texts` additionally pins the stored chunk_text values
+        (sorted multiset) for paths that embed several records per URI: the
+        joint image plan re-captions an unchanged asset, and only identical
+        captions make the existing vectors worth reusing.
+        """
+        try:
+            service = get_service()
+            backend = getattr(service, "vikingdb_manager", None)
+        except Exception:  # noqa: BLE001 - a guard must never fail a run
             return False
-        service = get_service()
-        backend = getattr(service, "vikingdb_manager", None)
         if backend is None:
             return False
-        record_ids = [
-            chunk_vector_record_id(
-                ctx.account_id, file_uri, f"{chunk_id}:generation:{generation}"
-            )
-            for chunk_id, _revision in chunks
-        ]
         try:
-            found = await backend.get(record_ids, ctx=ctx)
+            records = await backend.filter(
+                filter=And(
+                    [
+                        Eq("account_id", ctx.account_id),
+                        Eq("uri", uri),
+                        Eq("level", int(level)),
+                    ]
+                ),
+                limit=_RECORD_REVISION_SCAN_LIMIT,
+                output_fields=["index_generation", "content_revision", "chunk_text"],
+                ctx=ctx,
+            )
+        except Exception:  # noqa: BLE001 - a guard must never fail a run
+            return False
+        visible: list[dict[str, Any]] = []
+        for record in records or []:
+            generation = record.get("index_generation")
+            if live_generation is not None:
+                if generation != live_generation:
+                    continue
+            elif generation not in (None, ""):
+                continue
+            if record.get("content_revision") != content_revision:
+                continue
+            visible.append(record)
+        if not visible:
+            return False
+        if expected_texts is None:
+            return True
+        stored = sorted(str(record.get("chunk_text") or "") for record in visible)
+        return stored == sorted(expected_texts)
+
+    async def _unchanged_directory_levels(
+        self,
+        directory_uri: str,
+        abstract: str,
+        overview: str,
+        *,
+        ctx: RequestContext,
+        manifest: dict[str, Any] | None,
+    ) -> int:
+        """How many of this directory's nonempty L0/L1 levels are already published.
+
+        The managed semantic path publishes every existing sidecar as one
+        barrier generation, so a partial match is reported as a rebuild: the
+        caller either skips the directory entirely or republishes both levels.
+        The revision is the exact digest the semantic producer stamps onto the
+        records, recomputed from the same sidecar bodies via
+        `semantic_plan_revision` -- an unchanged directory proves reusable
+        without a single embedding call, which is what makes retrying a failed
+        run cheap instead of a full second pass over the tree.
+        """
+        from openviking.indexing.semantic import semantic_plan_revision
+
+        items: list[tuple[int, str]] = []
+        if abstract:
+            items.append(
+                (
+                    int(ContextLevel.ABSTRACT),
+                    embedding_text_for_body(
+                        ContextLevel.ABSTRACT, directory_uri, body_for_preview(abstract)
+                    ),
+                )
+            )
+        if overview:
+            items.append(
+                (
+                    int(ContextLevel.OVERVIEW),
+                    embedding_text_for_body(
+                        ContextLevel.OVERVIEW, directory_uri, body_for_preview(overview)
+                    ),
+                )
+            )
+        if not items:
+            return 0
+        revision = semantic_plan_revision(items)
+        live_generation = self._manifest_generation(directory_uri, manifest)
+        verified = 0
+        for level, _text in items:
+            if await self._matching_record_exists(
+                uri=directory_uri,
+                level=level,
+                content_revision=revision,
+                live_generation=live_generation,
+                ctx=ctx,
+            ):
+                verified += 1
+        return verified
+
+    async def _image_records_unchanged(
+        self,
+        file_uri: str,
+        summary_dict: dict,
+        *,
+        ctx: RequestContext,
+        manifest: dict[str, Any] | None,
+    ) -> bool:
+        """True when the live image records already hold this asset and captions.
+
+        The joint image producer stamps `content_revision` with the archived
+        asset sha256 and each record's chunk_text with its caption, so an
+        unchanged asset with unchanged captions needs no second joint
+        embedding. Comparing captions matters: caption normalization can
+        improve the text over an unchanged image, and only identical captions
+        make the existing vectors worth reusing.
+        """
+        # The producer archives the joint plan from the raw asset bytes
+        # (`archive_source` reads with `read_file_bytes` and stamps
+        # `sha256(raw)`), so the guard must hash those same bytes. Reading the
+        # asset as text goes through the decode fallback (utf-8 -> gbk ->
+        # replacement) and cannot round-trip a PNG: live, that mismatch made
+        # every image republish its joint plan on every retry while the text
+        # and directory guards reused.
+        try:
+            raw = await get_viking_fs().read_file_bytes(file_uri, ctx=ctx)
         except Exception:  # noqa: BLE001
             return False
-        return len(found) == len(record_ids)
+        data = raw if isinstance(raw, bytes) else str(raw or "").encode("utf-8")
+        expected = [
+            str((record or {}).get("summary") or "")
+            for record in (summary_dict.get("image_occurrences") or [])
+        ]
+        if not expected:
+            expected = [str(summary_dict.get("summary") or "")]
+        return await self._matching_record_exists(
+            uri=file_uri,
+            level=int(ContextLevel.DETAIL),
+            content_revision=hashlib.sha256(data).hexdigest(),
+            live_generation=self._manifest_generation(file_uri, manifest),
+            ctx=ctx,
+            expected_texts=expected,
+        )
 
     @draft_source_job
     @text_publication_batch
@@ -2010,6 +2226,11 @@ class ReindexExecutor:
                 deduped_files.append(file_uri)
                 seen_files.add(file_uri)
 
+        # One visibility manifest for the whole run: the reuse guards below
+        # compare each URI's live generation against it instead of re-capturing
+        # a snapshot per record.
+        manifest = await self._live_manifest(ctx)
+
         for directory_uri in deduped_directories:
             if directory_uri == "viking://":
                 continue
@@ -2025,6 +2246,20 @@ class ReindexExecutor:
                 if not abstract and not overview:
                     counters.unsupported_records += 1
                     counters.warnings.append(f"No semantic source found for {directory_uri}")
+                    continue
+                expected_levels = int(bool(abstract)) + int(bool(overview))
+                reused_levels = await self._unchanged_directory_levels(
+                    directory_uri,
+                    abstract,
+                    overview,
+                    ctx=self._content_owner_ctx(directory_uri, ctx),
+                    manifest=manifest,
+                )
+                if reused_levels == expected_levels:
+                    # Every existing sidecar's text is already published under
+                    # the live generation: a fresh generation would re-embed
+                    # both levels and stage the old records for reclamation.
+                    counters.reused_records += reused_levels
                     continue
                 from openviking.utils.embedding_utils import vectorize_directory_meta
 
@@ -2052,44 +2287,68 @@ class ReindexExecutor:
                 counters.warnings.append(f"No semantic source found for {directory_uri}")
                 continue
             if abstract:
-                try:
-                    await self._upsert_context(
-                        uri=directory_uri,
-                        parent_uri=VikingURI(directory_uri).parent.uri,
-                        abstract=abstract,
-                        vector_text=embedding_text_for_body(
-                            ContextLevel.ABSTRACT, directory_uri, abstract
-                        ),
-                        is_leaf=False,
-                        context_type=context_type_for_uri(directory_uri),
-                        level=ContextLevel.ABSTRACT,
-                        ctx=ctx,
-                        ingest_options=ingest_options,
-                    )
-                    counters.rebuilt_records += 1
-                except Exception as exc:
-                    counters.failed_records += 1
-                    counters.warnings.append(f"Failed to reindex {directory_uri} L0 vector: {exc}")
+                abstract_text = embedding_text_for_body(
+                    ContextLevel.ABSTRACT, directory_uri, abstract
+                )
+                if await self._matching_record_exists(
+                    uri=directory_uri,
+                    level=int(ContextLevel.ABSTRACT),
+                    content_revision=self._text_revision(abstract_text),
+                    live_generation=self._manifest_generation(directory_uri, manifest),
+                    ctx=ctx,
+                ):
+                    counters.reused_records += 1
+                else:
+                    try:
+                        await self._upsert_context(
+                            uri=directory_uri,
+                            parent_uri=VikingURI(directory_uri).parent.uri,
+                            abstract=abstract,
+                            vector_text=abstract_text,
+                            is_leaf=False,
+                            context_type=context_type_for_uri(directory_uri),
+                            level=ContextLevel.ABSTRACT,
+                            ctx=ctx,
+                            ingest_options=ingest_options,
+                        )
+                        counters.rebuilt_records += 1
+                    except Exception as exc:
+                        counters.failed_records += 1
+                        counters.warnings.append(
+                            f"Failed to reindex {directory_uri} L0 vector: {exc}"
+                        )
             if overview:
-                try:
-                    await self._upsert_context(
-                        uri=directory_uri,
-                        parent_uri=VikingURI(directory_uri).parent.uri,
-                        # L1 abstract scalar carries the overview for Rerank.
-                        abstract=_truncate_abstract_bytes(overview),
-                        vector_text=embedding_text_for_body(
-                            ContextLevel.OVERVIEW, directory_uri, overview
-                        ),
-                        is_leaf=False,
-                        context_type=context_type_for_uri(directory_uri),
-                        level=ContextLevel.OVERVIEW,
-                        ctx=ctx,
-                        ingest_options=ingest_options,
-                    )
-                    counters.rebuilt_records += 1
-                except Exception as exc:
-                    counters.failed_records += 1
-                    counters.warnings.append(f"Failed to reindex {directory_uri} L1 vector: {exc}")
+                overview_text = embedding_text_for_body(
+                    ContextLevel.OVERVIEW, directory_uri, overview
+                )
+                if await self._matching_record_exists(
+                    uri=directory_uri,
+                    level=int(ContextLevel.OVERVIEW),
+                    content_revision=self._text_revision(overview_text),
+                    live_generation=self._manifest_generation(directory_uri, manifest),
+                    ctx=ctx,
+                ):
+                    counters.reused_records += 1
+                else:
+                    try:
+                        await self._upsert_context(
+                            uri=directory_uri,
+                            parent_uri=VikingURI(directory_uri).parent.uri,
+                            # L1 abstract scalar carries the overview for Rerank.
+                            abstract=_truncate_abstract_bytes(overview),
+                            vector_text=overview_text,
+                            is_leaf=False,
+                            context_type=context_type_for_uri(directory_uri),
+                            level=ContextLevel.OVERVIEW,
+                            ctx=ctx,
+                            ingest_options=ingest_options,
+                        )
+                        counters.rebuilt_records += 1
+                    except Exception as exc:
+                        counters.failed_records += 1
+                        counters.warnings.append(
+                            f"Failed to reindex {directory_uri} L1 vector: {exc}"
+                        )
 
         async def process_file(file_uri: str) -> _ReindexCounters:
             file_counters = _ReindexCounters(scanned_records=1)
@@ -2139,9 +2398,20 @@ class ReindexExecutor:
                         f"Skipped undescribed image {file_uri}: no figcaption content"
                     )
                     return file_counters
-                if not is_image and await self._published_content_unchanged(
-                    file_uri, ctx=ctx
-                ):
+                if is_image:
+                    # The joint image plan was previously re-enqueued on every
+                    # retry: same asset bytes and same captions still opened a
+                    # fresh generation (live, 9.9.15 held two full generations
+                    # of one file, 24 old + 21 new rows). Compare the archived
+                    # asset sha and the captions before spending an embedding.
+                    unchanged = await self._image_records_unchanged(
+                        file_uri, summary_dict, ctx=ctx, manifest=manifest
+                    )
+                else:
+                    unchanged = await self._published_content_unchanged(
+                        file_uri, ctx=ctx, manifest=manifest
+                    )
+                if unchanged:
                     # The live generation already holds this exact content and its
                     # records are verified present: another embedding call would
                     # only produce a duplicate generation for the reclaimer to
@@ -2183,6 +2453,19 @@ class ReindexExecutor:
             if not vector_text:
                 file_counters.unsupported_records += 1
                 file_counters.warnings.append(f"No vector source found for {file_uri}")
+                return file_counters
+            if await self._matching_record_exists(
+                uri=file_uri,
+                level=int(ContextLevel.DETAIL),
+                content_revision=self._text_revision(vector_text),
+                live_generation=self._manifest_generation(file_uri, manifest),
+                ctx=self._content_owner_ctx(file_uri, ctx),
+            ):
+                # The unmanaged path writes a stable per-URI record id, so the
+                # row is overwritten in place rather than duplicated -- but the
+                # embedding call itself is pure waste when the text is
+                # unchanged, which is exactly the retry case.
+                file_counters.reused_records += 1
                 return file_counters
             abstract = self._prefer_non_empty(summary, vector_text)
             try:
@@ -2932,6 +3215,11 @@ class ReindexExecutor:
             )
         wait_tracker = get_request_wait_tracker()
         wait_tracker.register_embedding_root(msg.telemetry_id, msg.id)
+        # Digest the exact embedded text onto the record: the unmanaged path has
+        # no publication registry to compare published chunk revisions against,
+        # so a later reindex proves "already indexed" from this scalar instead
+        # of spending another embedding call.
+        msg.context_data["content_revision"] = self._text_revision(vector_text)
         enqueued = await service.vikingdb_manager.enqueue_embedding_msg(msg)
         if not enqueued:
             wait_tracker.mark_embedding_failed(

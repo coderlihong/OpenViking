@@ -18,6 +18,7 @@ sibling publication tests; model/vector DB are test doubles. Full product
 acceptance remains NOT_RUN.
 """
 
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -832,3 +833,180 @@ async def test_stage_update_without_task_context_is_noop(monkeypatch):
     with twi.detach_task_context():
         await executor._update_stage("semantic:x")
     assert called == []
+
+
+# --------------------------------------------------------------------------- #
+# Reuse guards: retrying a failed reindex must not re-embed unchanged content.
+# Live, that is how one file held two full generations (24 old + 21 new rows)
+# and a tree grew dozens of stale generations per URI.
+# --------------------------------------------------------------------------- #
+
+
+def _records_manager(records):
+    """A vikingdb_manager double whose filter reads publication-written records.
+
+    The reuse guards scan with And(Eq(account_id), Eq(uri), Eq(level)) and
+    project named output fields -- the same shape the real engine serves for
+    the scan the guard issues.
+    """
+    from openviking.storage.expr import And, Eq
+
+    def _eqs(expr):
+        if isinstance(expr, Eq):
+            return {expr.field: expr.value}
+        if isinstance(expr, And):
+            merged = {}
+            for child in expr.conds:
+                merged.update(_eqs(child))
+            return merged
+        raise AssertionError(f"guard sent an unexpected filter node: {expr!r}")
+
+    async def fake_filter(*, filter, limit, output_fields, ctx, **kwargs):
+        wanted = _eqs(filter)
+        rows = []
+        for record in records.values():
+            if all(record.get(field) == value for field, value in wanted.items()):
+                rows.append({field: record.get(field) for field in output_fields})
+        return rows[:limit]
+
+    return SimpleNamespace(vikingdb_manager=SimpleNamespace(filter=fake_filter))
+
+
+def _guard_executor(e, embedding, monkeypatch, records=None):
+    monkeypatch.setattr(reindex, "get_viking_fs", lambda: e.fs)
+    monkeypatch.setattr(
+        reindex, "get_openviking_config", lambda: SimpleNamespace(embedding=embedding)
+    )
+    monkeypatch.setattr(
+        reindex,
+        "get_service",
+        lambda: _records_manager(e.handler._vikingdb.records if records is None else records),
+    )
+    executor = reindex.ReindexExecutor()
+    executor._effective_file_vectorization_concurrency = lambda: 1
+    return executor
+
+
+async def test_directory_reindex_reuses_unchanged_semantics(
+    environment, embedding, monkeypatch
+):
+    from test_semantic_publication import directory
+
+    e = environment
+    await finish(e, await directory(e, "stable"))
+    published_generation = view(e.store)[ROOT]["generation"]
+
+    executor = _guard_executor(e, embedding, monkeypatch)
+    counters = reindex._ReindexCounters()
+    e.queue.messages.clear()
+
+    await executor._reindex_resource_vectors_from_entries(
+        root_uri=ROOT, directories=[ROOT], files=[], counters=counters, ctx=e.ctx
+    )
+
+    assert counters.failed_records == 0, counters.warnings
+    assert counters.reused_records == 2
+    assert counters.rebuilt_records == 0
+    # The sidecar texts already live under the published generation: a retry
+    # opens no second generation and spends no embedding call.
+    assert e.queue.messages == []
+    assert view(e.store)[ROOT]["generation"] == published_generation
+
+
+async def test_directory_reindex_rebuilds_when_a_sidecar_changes(
+    environment, embedding, monkeypatch
+):
+    from test_semantic_publication import directory
+
+    e = environment
+    await finish(e, await directory(e, "stable"))
+    await e.fs.write(ROOT + "/.overview.md", "changed overview", ctx=e.ctx)
+
+    executor = _guard_executor(e, embedding, monkeypatch)
+    counters = reindex._ReindexCounters()
+
+    await executor._reindex_resource_vectors_from_entries(
+        root_uri=ROOT, directories=[ROOT], files=[], counters=counters, ctx=e.ctx
+    )
+
+    assert counters.failed_records == 0, counters.warnings
+    # The semantic plan is one barrier generation: a changed level republishes
+    # both, and only the fully unchanged case skips.
+    assert counters.reused_records == 0
+    assert counters.rebuilt_records == 2
+    assert {m.context_data["level"] for m in e.queue.messages} == {0, 1}
+
+
+async def test_matching_record_respects_publication_visibility(monkeypatch):
+    ctx = RequestContext(user=UserIdentifier("acct", "user"), role=Role.USER)
+    executor = reindex.ReindexExecutor()
+    row = {
+        "account_id": "acct",
+        "uri": URI,
+        "level": 0,
+        "index_generation": "gen-1",
+        "content_revision": "rev-1",
+        "chunk_text": "body",
+    }
+
+    async def run(records, *, generation, revision="rev-1", expected=None):
+        monkeypatch.setattr(reindex, "get_service", lambda: _records_manager(records))
+        return await executor._matching_record_exists(
+            uri=URI,
+            level=0,
+            content_revision=revision,
+            live_generation=generation,
+            ctx=ctx,
+            expected_texts=expected,
+        )
+
+    # The live generation's row with a matching revision is reusable.
+    assert await run({"r": dict(row)}, generation="gen-1")
+    # A row of some other generation is invisible to every query: rebuild.
+    assert not await run({"r": dict(row)}, generation="gen-2")
+    # A revision mismatch is a rebuild even under the live generation.
+    assert not await run({"r": dict(row)}, generation="gen-1", revision="rev-2")
+    # Legacy rows (no generation) are visible only where the manifest does not
+    # publish the URI at all -- the imported-store shape.
+    legacy = dict(row, index_generation=None)
+    assert await run({"r": legacy}, generation=None)
+    assert not await run({"r": legacy}, generation="gen-1")
+    # Managed rows under an unpublished URI are invisible too.
+    assert not await run({"r": dict(row)}, generation=None)
+    # Caption pinning: the stored chunk_text multiset must match exactly, so an
+    # image whose captions changed over an unchanged asset is rebuilt.
+    pair = {
+        "a": dict(row, chunk_text="A"),
+        "b": dict(row, chunk_text="B"),
+    }
+    assert await run(pair, generation="gen-1", expected=["B", "A"])
+    assert not await run(pair, generation="gen-1", expected=["A"])
+
+
+async def test_published_content_unchanged_falls_back_to_legacy_records(
+    environment, embedding, monkeypatch
+):
+    e = environment
+    source = "# 章节\n\n稳定的正文。\n" * 10
+    await e.fs.write(URI, source, ctx=e.ctx)
+    executor = _guard_executor(
+        e,
+        embedding,
+        monkeypatch,
+        records={
+            "legacy": {
+                "account_id": e.ctx.account_id,
+                "uri": URI,
+                "level": 2,
+                "index_generation": None,
+                "content_revision": hashlib.sha256(source.encode()).hexdigest(),
+            }
+        },
+    )
+    # No publication row for this URI (an imported store): the chunk-row
+    # lookup returns nothing and the guard falls back to the record scan.
+    assert e.store.published_chunks(e.ctx.account_id, URI) is None
+    assert await executor._published_content_unchanged(URI, ctx=e.ctx, manifest={})
+    # A changed file must not be mistaken for the published revision.
+    await e.fs.write(URI, "# 章节\n\n改过的正文。\n" * 10, ctx=e.ctx)
+    assert not await executor._published_content_unchanged(URI, ctx=e.ctx, manifest={})

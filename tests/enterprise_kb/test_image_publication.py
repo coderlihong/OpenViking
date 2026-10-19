@@ -14,6 +14,7 @@ from openviking.indexing.batch import TextPublicationBatch, bind_text_batch
 from openviking.indexing.content import blob_path, draft_sources
 from openviking.indexing.publication import pin_query_snapshot, query_snapshot
 from openviking.utils.embedding_utils import vectorize_directory_meta, vectorize_file
+from test_reindex_contract import _records_manager
 
 ROOT = "viking://resources/manual"
 IMAGE = ROOT + "/images/a.png"
@@ -273,10 +274,18 @@ async def test_uri_semantic_handoff_and_shared_occurrence_plan(image_env, embedd
     executor._chunk_reindex_ingest_options = AsyncMock(return_value=None)
     e.queue.messages.clear()
     counts = reindex._ReindexCounters()
+    monkeypatch.setattr(
+        reindex,
+        "get_service",
+        lambda: _records_manager(e.handler._vikingdb.records),
+    )
     await executor._reindex_resource_vectors_from_entries(root_uri=ROOT, directories=[], files=[IMAGE], counters=counts, ctx=e.ctx, image_summaries={IMAGE: details})
     assert not counts.failed_records, counts.warnings
-    assert {m.context_data["chunk_id"] for m in e.queue.messages} == {m.context_data["chunk_id"] for m in first}
-    assert e.queue.messages[0].context_data["index_generation"] != first[0].context_data["index_generation"]
+    # The joint plan is content-addressed: same asset bytes and same captions
+    # reuse the published records instead of opening a second generation whose
+    # rows the reclaimer would only have to delete again.
+    assert e.queue.messages == []
+    assert counts.reused_records == 1
     executor._run_semantic_processor = AsyncMock(return_value={"image_summaries": {IMAGE: details}})
     executor._reindex_resource_vectors = AsyncMock()
     run = SimpleNamespace(counters=counts, ctx=e.ctx, lock=None, ingest_options=None)
@@ -297,11 +306,19 @@ async def test_vectors_only_reuses_published_occurrences(image_env, embedding, m
     executor._chunk_reindex_ingest_options = AsyncMock(return_value=None)
     e.fs.ls = AsyncMock(return_value=[])
     counts = reindex._ReindexCounters()
+    monkeypatch.setattr(
+        reindex,
+        "get_service",
+        lambda: _records_manager(e.handler._vikingdb.records),
+    )
     e.queue.messages.clear()
     await executor._reindex_resource_vectors_from_entries(root_uri=ROOT, directories=[], files=[IMAGE], counters=counts, ctx=e.ctx)
     assert counts.failed_records == 0, counts.warnings
-    assert len(e.queue.messages) == 1
-    assert e.queue.messages[0].context_data["abstract"] == "old image"
+    # The published occurrence cache carries the same asset digest and caption
+    # the live records hold, so the vector stage reuses them outright instead
+    # of staging a duplicate generation for the reclaimer to delete.
+    assert e.queue.messages == []
+    assert counts.reused_records == 1
     assert manifest(e)[IMAGE]["generation"] == old
 
 

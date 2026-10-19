@@ -11,6 +11,23 @@ from openviking.indexing.publication import configured_store
 from openviking.storage.vector_ids import publication_member_id
 
 
+def semantic_plan_revision(members: list[tuple[int, str]]) -> str:
+    """Content identity of one directory semantic plan.
+
+    Hashes the (level, embedding text) pairs exactly as they enter
+    publication, and the digest is stamped onto every member record as
+    "content_revision". A reindex therefore answers "would this plan embed
+    byte-identical texts?" by recomputing the digest from the current sidecars
+    -- the same trick the chunk path does with the source sha256. Without it a
+    directory whose L0/L1 texts did not change opens a fresh generation on
+    every retry, re-embedding both levels and staging the old records for the
+    retired-vector janitor.
+    """
+    return hashlib.sha256(
+        json.dumps([(int(level), text) for level, text in members], ensure_ascii=False).encode()
+    ).hexdigest()
+
+
 async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs=None):
     registry = configured_store(embedding_config)
     if registry is None or not messages:
@@ -30,8 +47,9 @@ async def enqueue_semantic_plan(messages, embedding_config, queue, semantic_refs
         ) != identity:
             raise ValueError("Directory semantic plan must have one source identity")
     members = [publication_member_id(m.context_data) for m in messages]
-    body = json.dumps([(m.context_data["level"], m.message) for m in messages], ensure_ascii=False)
-    revision = hashlib.sha256(body.encode()).hexdigest()
+    revision = semantic_plan_revision(
+        [(m.context_data["level"], m.message) for m in messages]
+    )
     from openviking.indexing.metadata_integration import prepare_meta, bind_meta, write_meta
     from openviking.indexing.record_meta import TEXT_CATEGORY, stamp_record_meta
 
