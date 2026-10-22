@@ -40,6 +40,10 @@ from openviking.storage.ovpack.format import (
     strip_uri_trailing_slash,
 )
 from openviking.storage.ovpack.index import build_manifest, read_text_if_exists
+from openviking.storage.ovpack.publication_bundle import (
+    append_publication_bundle,
+    import_publication_bundle,
+)
 from openviking.storage.ovpack.manifest import (
     manifest_entries_by_path,
     manifest_entry_target_uri,
@@ -488,6 +492,12 @@ async def import_ovpack(
                 ctx,
             )
             logger.info(f"[ovpack] Restored vector snapshot for: {root_uri}")
+            try:
+                await import_publication_bundle(
+                    viking_fs, file_path, base_name, root_uri, ctx, entries
+                )
+            except Exception as exc:  # noqa: BLE001 - dense restore already succeeded
+                logger.warning(f"[ovpack] publication bundle import failed: {exc}")
         else:
             await _enqueue_direct_vectorization(
                 viking_fs,
@@ -751,6 +761,9 @@ async def export_ovpack(
         ctx,
     )
 
+    if include_vectors:
+        await append_publication_bundle(to, base_name, uri, entries, ctx)
+
     logger.info(f"[ovpack] Exported {uri} to {to}")
     return to
 
@@ -807,6 +820,9 @@ async def backup_ovpack(
         dense_values,
         ctx,
     )
+
+    if include_vectors:
+        await append_publication_bundle(to, base_name, "viking://", entries, ctx)
 
     logger.info(f"[ovpack] Backed up OpenViking public scopes to {to}")
     return to
@@ -925,6 +941,12 @@ async def restore_ovpack(
             ctx,
         )
         logger.info("[ovpack] Restored vector snapshot for backup")
+        try:
+            await import_publication_bundle(
+                viking_fs, file_path, base_name, root_uri, ctx, restored_entries
+            )
+        except Exception as exc:  # noqa: BLE001 - dense restore already succeeded
+            logger.warning(f"[ovpack] publication bundle import failed: {exc}")
         return root_uri
 
     vectorization_groups: dict[str, list[dict[str, Any]]] = {}
