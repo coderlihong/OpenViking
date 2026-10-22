@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
+from array import array
 from typing import Any
 
 from openviking.core.namespace import context_type_for_uri, is_session_uri, owner_fields_for_uri
 from openviking.server.identity import RequestContext
-from openviking.storage.expr import Eq
+from openviking.storage.expr import Eq, PathScope
 from openviking.storage.ovpack.format import (
     OVPACK_FORMAT_VERSION,
     OVPACK_KIND,
@@ -156,18 +157,14 @@ async def directory_vector_texts(viking_fs, uri: str, ctx: RequestContext) -> di
     return {0: abstract, 1: overview}
 
 
-async def index_records_for_uri(
-    viking_fs,
-    vector_store,
-    uri: str,
-    is_dir: bool,
-    ctx: RequestContext,
+def assemble_entry_records(
     *,
+    records: list[dict[str, Any]],
+    texts: dict[int, str],
+    is_dir: bool,
+    uri: str,
     include_vectors: bool = False,
 ) -> list[dict[str, Any]]:
-    records = await call_vector_filter(vector_store, uri, ctx, include_vectors=include_vectors)
-    texts = await directory_vector_texts(viking_fs, uri, ctx) if is_dir else {}
-
     indexed: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
     indexed_levels: set[int] = set()
     for source_record in records:
@@ -204,13 +201,205 @@ async def index_records_for_uri(
     return [item for _, item in sorted(indexed, key=lambda pair: pair[0])]
 
 
+async def index_records_for_uri(
+    viking_fs,
+    vector_store,
+    uri: str,
+    is_dir: bool,
+    ctx: RequestContext,
+    *,
+    include_vectors: bool = False,
+) -> list[dict[str, Any]]:
+    records = await call_vector_filter(vector_store, uri, ctx, include_vectors=include_vectors)
+    texts = await directory_vector_texts(viking_fs, uri, ctx) if is_dir else {}
+    return assemble_entry_records(
+        records=records,
+        texts=texts,
+        is_dir=is_dir,
+        uri=uri,
+        include_vectors=include_vectors,
+    )
+
+
+def normalize_uri_key(uri: str) -> str:
+    """Canonical map key for a record URI (trailing slashes are never meaningful)."""
+    return uri.rstrip("/") or "/"
+
+
+def _export_output_fields(include_vectors: bool) -> list[str]:
+    """Same field set the per-URI exporter fetches, timestamps included."""
+    return [
+        *(EXPORT_VECTOR_FIELDS if include_vectors else PORTABLE_VECTOR_SCALAR_FIELDS),
+        *EXPORT_TIMESTAMP_FIELDS,
+    ]
+
+
+async def _vector_filter_query(
+    vector_store,
+    filter_expr: Any,
+    ctx: RequestContext,
+    output_fields: list[str],
+    scan_limit: int,
+) -> list[dict[str, Any]] | None:
+    """One vector-store filter query, or None when the query itself failed."""
+    kwargs = {
+        "filter": filter_expr,
+        "limit": scan_limit,
+        "output_fields": output_fields,
+    }
+    try:
+        return await vector_store.filter(**kwargs, ctx=ctx)
+    except TypeError:
+        try:
+            return await vector_store.filter(**kwargs)
+        except Exception as exc:
+            logger.warning(f"[ovpack] vector filter query failed: {exc}")
+            return None
+    except Exception as exc:
+        logger.warning(f"[ovpack] vector filter query failed: {exc}")
+        return None
+
+
+async def _query_uri_records(
+    vector_store,
+    uri: str,
+    ctx: RequestContext,
+    output_fields: list[str],
+    scan_limit: int = OVPACK_VECTOR_SCAN_LIMIT,
+) -> list[dict[str, Any]]:
+    """Exact per-URI fetch with the exporter's historical failure semantics."""
+    if not vector_store or not hasattr(vector_store, "filter"):
+        return []
+    records = await _vector_filter_query(
+        vector_store, Eq("uri", uri), ctx, output_fields, scan_limit
+    )
+    return records if records is not None else []
+
+
+async def _query_subtree_records(
+    vector_store,
+    prefix_uri: str,
+    ctx: RequestContext,
+    output_fields: list[str],
+    scan_limit: int = OVPACK_VECTOR_SCAN_LIMIT,
+) -> list[dict[str, Any]] | None:
+    """Every record at prefix_uri or below, or None when the query failed."""
+    if not vector_store or not hasattr(vector_store, "filter"):
+        return []
+    return await _vector_filter_query(
+        vector_store, PathScope("uri", prefix_uri, depth=-1), ctx, output_fields, scan_limit
+    )
+
+
+def _split_entry_group(
+    prefix_uri: str, uris: list[str]
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Partition entry URIs below prefix_uri by their next path component.
+
+    Returns ``(self_bucket, groups)``: URIs that ARE the prefix (or outside it,
+    which should not happen) go to ``self_bucket`` for exact per-URI queries;
+    everything else is grouped under its child prefix. Splitting always makes
+    progress because each child prefix is at least one component deeper.
+    """
+    prefix_norm = normalize_uri_key(prefix_uri)
+    is_store_root = prefix_norm in ("/", "viking:")
+    self_bucket: list[str] = []
+    groups: dict[str, list[str]] = {}
+    for uri in uris:
+        normalized = normalize_uri_key(uri)
+        if is_store_root:
+            # viking:// has no meaningful path prefix; bucket by top scope.
+            parts = normalized.split("/")
+            key = "/".join(parts[:3]) if len(parts) >= 3 else normalized
+        elif normalized == prefix_norm:
+            self_bucket.append(uri)
+            continue
+        elif not normalized.startswith(prefix_norm + "/"):
+            self_bucket.append(uri)
+            continue
+        else:
+            rest = normalized[len(prefix_norm) + 1 :]
+            key = f"{prefix_norm}/{rest.split('/', 1)[0]}"
+        groups.setdefault(key, []).append(uri)
+    return self_bucket, groups
+
+
+async def walk_uri_record_batches(
+    vector_store,
+    root_uri: str,
+    uris: list[str],
+    ctx: RequestContext,
+    *,
+    output_fields: list[str],
+    consume,
+    scan_limit: int = OVPACK_VECTOR_SCAN_LIMIT,
+) -> None:
+    """Fetch index records for many URIs with subtree-batched filter queries.
+
+    The per-URI exporter issues one ``Eq("uri", ...)`` query per entry, which
+    dominates OVPack export time on large trees (hundreds of thousands of
+    round trips). This walker instead issues ``PathScope`` subtree queries and
+    groups the rows locally, keeping single-query semantics per subtree:
+    a subtree whose result set reaches ``scan_limit`` may be truncated, so it
+    is split by the next path component and retried; a single URI always falls
+    back to the exact per-URI query. ``consume(uris, by_uri)`` is awaited once
+    per resolved batch, with the batch's URIs in caller order and
+    ``{normalized_uri: [raw store record]}`` (URIs with no records map to []).
+    """
+    if not vector_store or not hasattr(vector_store, "filter"):
+        await consume(list(uris), {})
+        return
+    targets = {normalize_uri_key(u) for u in uris}
+
+    async def walk(prefix: str, subset: list[str]) -> None:
+        if not subset:
+            return
+        if len(subset) == 1:
+            uri = subset[0]
+            records = await _query_uri_records(vector_store, uri, ctx, output_fields, scan_limit)
+            await consume(subset, {normalize_uri_key(uri): records})
+            return
+
+        prefix_norm = normalize_uri_key(prefix)
+        raw: list[dict[str, Any]] | None = None
+        if prefix_norm != "viking:":
+            # Cheap probe first: a truncated full-field fetch of a huge subtree
+            # is expensive to throw away, while an empty ["uri"] probe is not.
+            probe = await _query_subtree_records(
+                vector_store, prefix_norm, ctx, ["uri"], scan_limit
+            )
+            if probe is not None and len(probe) < scan_limit:
+                raw = await _query_subtree_records(
+                    vector_store, prefix_norm, ctx, output_fields, scan_limit
+                )
+                if raw is not None and len(raw) < scan_limit:
+                    by_uri: dict[str, list[dict[str, Any]]] = {}
+                    for record in raw:
+                        key = normalize_uri_key(str(record.get("uri") or ""))
+                        if key in targets:
+                            by_uri.setdefault(key, []).append(record)
+                    await consume(subset, by_uri)
+                    return
+        # Truncated, failed, or the store root: partition deeper and retry.
+        split_prefix = "viking://" if prefix_norm == "viking:" else prefix
+        self_bucket, groups = _split_entry_group(split_prefix, subset)
+        for uri in self_bucket:
+            records = await _query_uri_records(vector_store, uri, ctx, output_fields, scan_limit)
+            await consume([uri], {normalize_uri_key(uri): records})
+        for child_prefix, child_uris in groups.items():
+            await walk(child_prefix, child_uris)
+
+    await walk(root_uri, list(uris))
+
+
 def append_index_records(
     index_records: list[dict[str, Any]],
-    dense_values: list[float],
+    dense_values: "list[float] | array",
     rel_path: str,
     kind: str,
     records: list[dict[str, Any]],
     user_id: str | None = None,
+    entry_seq: int | None = None,
 ) -> None:
     for record in records:
         item = {
@@ -221,6 +410,10 @@ def append_index_records(
         }
         if user_id:
             item["user_id"] = user_id
+        if entry_seq is not None:
+            # Batched exports append grouped-by-subtree, then re-sort by this
+            # sequence to reproduce the per-URI exporter's record order.
+            item["_entry_seq"] = entry_seq
         text = record.get("text")
         if isinstance(text, str) and text:
             item["text"] = text
@@ -250,14 +443,17 @@ async def build_manifest(
     package_type: str | None = None,
     scopes: list[str] | None = None,
     include_vectors: bool = False,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[float]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], "list[float] | array"]:
     root_user_id = owner_fields_for_uri(root_uri).get("owner_user_id")
     root_entry: dict[str, Any] = {"path": "", "kind": "directory"}
     if root_user_id:
         root_entry["user_id"] = root_user_id
-    manifest_entries = [root_entry]
+    manifest_entries: list[dict[str, Any]] = [root_entry]
     index_records: list[dict[str, Any]] = []
-    dense_values: list[float] = []
+    # float32 array instead of a list of Python floats: a full-tenant export
+    # with dense vectors carries ~400k x 2048 floats, which is ~3GB packed as
+    # an array but ~25GB+ as boxed Python floats (observed OOM).
+    dense_values = array("f")
 
     if root_uri != "viking://" and not is_session_uri(root_uri):
         root_records = await index_records_for_uri(
@@ -275,9 +471,14 @@ async def build_manifest(
             "directory",
             root_records,
             user_id=root_user_id,
+            entry_seq=-1,
         )
 
-    for entry in entries:
+    # Manifest entries only depend on the tree, so build them in entry order
+    # up front; index records below are appended grouped-by-subtree and
+    # re-sorted back into entry order at the end.
+    entry_plans: list[tuple[int, str, str, bool, str | None]] = []
+    for seq, entry in enumerate(entries):
         rel_path = entry["rel_path"]
         is_dir = bool(entry.get("isDir"))
         entry_uri = join_uri(root_uri, rel_path)
@@ -292,22 +493,63 @@ async def build_manifest(
         manifest_entries.append(manifest_entry)
         if is_session_uri(entry_uri):
             continue
-        records = await index_records_for_uri(
-            viking_fs,
-            vector_store,
-            entry_uri,
-            is_dir=is_dir,
-            ctx=ctx,
-            include_vectors=include_vectors,
-        )
-        append_index_records(
-            index_records,
-            dense_values,
-            rel_path,
-            "directory" if is_dir else "file",
-            records,
-            user_id=entry_user_id,
-        )
+        entry_plans.append((seq, rel_path, entry_uri, is_dir, entry_user_id))
+
+    plan_by_uri = {
+        normalize_uri_key(plan[2]): plan
+        for plan in entry_plans
+    }
+
+    async def consume(
+        uris: list[str], by_uri: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        for uri in uris:
+            plan = plan_by_uri.get(normalize_uri_key(uri))
+            if plan is None:
+                continue
+            seq, rel_path, plan_uri, is_dir, entry_user_id = plan
+            records = by_uri.get(normalize_uri_key(uri), [])
+            texts = (
+                await directory_vector_texts(viking_fs, plan_uri, ctx) if is_dir else {}
+            )
+            items = assemble_entry_records(
+                records=records,
+                texts=texts,
+                is_dir=is_dir,
+                uri=plan_uri,
+                include_vectors=include_vectors,
+            )
+            append_index_records(
+                index_records,
+                dense_values,
+                rel_path,
+                "directory" if is_dir else "file",
+                items,
+                user_id=entry_user_id,
+                entry_seq=seq,
+            )
+            # Free the fetched dense float lists as soon as they are packed;
+            # retaining every raw record's 2048-float vector until the end of
+            # the export is what OOMs large tenants.
+            for record in records:
+                record.pop("vector", None)
+
+    await walk_uri_record_batches(
+        vector_store,
+        root_uri,
+        [plan[2] for plan in entry_plans],
+        ctx,
+        output_fields=_export_output_fields(include_vectors),
+        consume=consume,
+    )
+
+    if index_records:
+        # Stable sort back into entry order (root first), then re-stamp the
+        # record ids so a batched export is byte-identical to the per-URI one.
+        index_records.sort(key=lambda item: item.get("_entry_seq", 0))
+        for position, item in enumerate(index_records):
+            item["record_id"] = f"r{position + 1:06d}"
+            item.pop("_entry_seq", None)
 
     root = {
         "name": base_name,

@@ -14,6 +14,8 @@ import json
 import os
 import re
 import struct
+import sys
+from array import array
 from typing import Any, Optional
 
 from openviking_cli.exceptions import InvalidArgumentError
@@ -214,7 +216,15 @@ def jsonl_bytes(records: list[dict[str, Any]]) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def dense_values_bytes(values: list[float]) -> bytes:
+def dense_values_bytes(values: "list[float] | array") -> bytes:
     if not values:
         return b""
+    if isinstance(values, array) and values.typecode == "f":
+        # Native float32 buffer: a full-tenant export carries hundreds of
+        # millions of floats, which struct.pack cannot take as arguments.
+        if sys.byteorder == "little":
+            return values.tobytes()
+        swapped = array("f", values)
+        swapped.byteswap()
+        return swapped.tobytes()
     return struct.pack(f"<{len(values)}f", *values)

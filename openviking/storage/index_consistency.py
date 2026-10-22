@@ -13,6 +13,7 @@ from openviking.core.namespace import is_session_uri
 from openviking.server.identity import RequestContext
 from openviking.storage.expr import Eq
 from openviking.storage.internal_names import CHAPTER_METADATA_FILENAMES
+from openviking.storage.ovpack.index import normalize_uri_key, walk_uri_record_batches
 from openviking.utils.embedding_utils import get_resource_content_type
 from openviking_cli.utils.logger import get_logger
 from openviking_cli.utils.uri import VikingURI
@@ -241,6 +242,33 @@ async def check_index_consistency(
     missing_records: list[IndexExpectation] = []
 
     records_by_uri: dict[str, dict[int, dict[str, Any]]] = {}
+    candidate_uris = sorted({expectation.uri for expectation in expectations})
+    if candidate_uris and vector_store is not None and hasattr(vector_store, "filter"):
+        # Batched fetch: one subtree query per directory group instead of one
+        # Eq query per candidate URI (the per-URI loop dominates runtime on
+        # large subtrees). Same rows, same level maps.
+        fetched: dict[str, list[dict[str, Any]]] = {}
+
+        async def consume(
+            uris: list[str], by_uri: dict[str, list[dict[str, Any]]]
+        ) -> None:
+            for uri in uris:
+                fetched[normalize_uri_key(uri)] = by_uri.get(normalize_uri_key(uri), [])
+
+        await walk_uri_record_batches(
+            vector_store,
+            root_uri,
+            candidate_uris,
+            ctx,
+            output_fields=["uri", "level"],
+            consume=consume,
+        )
+        for uri, records in fetched.items():
+            records_by_uri[uri] = {
+                level: record
+                for record in records
+                if (level := _record_level(record)) is not None
+            }
     for expectation in expectations:
         if expectation.uri not in records_by_uri:
             records = await _fetch_index_records(vector_store, expectation.uri, ctx)
