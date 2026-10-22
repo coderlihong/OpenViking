@@ -43,6 +43,7 @@ from openviking.storage.ovpack.index import build_manifest, read_text_if_exists
 from openviking.storage.ovpack.publication_bundle import (
     append_publication_bundle,
     import_publication_bundle,
+    ship_vectordb_index,
 )
 from openviking.storage.ovpack.manifest import (
     manifest_entries_by_path,
@@ -699,6 +700,7 @@ async def export_ovpack(
     ctx: RequestContext,
     vector_store=None,
     include_vectors: bool = False,
+    include_index: bool = False,
 ) -> str:
     """
     Export the specified context path as a .ovpack file.
@@ -771,6 +773,11 @@ async def export_ovpack(
 
     if include_vectors:
         await append_publication_bundle(to, base_name, uri, entries, ctx)
+    if include_index:
+        # The engine keeps one global index per collection; shipping it with a
+        # subtree pack would carry rows the pack does not contain. Only a full
+        # backup is self-contained enough to pair with the index.
+        logger.info("[ovpack] include_index ignored for subtree exports; use ov backup")
 
     logger.info(f"[ovpack] Exported {uri} to {to}")
     return to
@@ -782,6 +789,7 @@ async def backup_ovpack(
     ctx: RequestContext,
     vector_store=None,
     include_vectors: bool = False,
+    include_index: bool = False,
 ) -> str:
     """Export all public OpenViking scopes as a restore-only backup package."""
     base_name = OVPACK_BACKUP_NAME
@@ -831,6 +839,9 @@ async def backup_ovpack(
 
     if include_vectors:
         await append_publication_bundle(to, base_name, "viking://", entries, ctx)
+    if include_index:
+        with zipfile.ZipFile(to, "a", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+            ship_vectordb_index(zf, base_name)
 
     logger.info(f"[ovpack] Backed up OpenViking public scopes to {to}")
     return to

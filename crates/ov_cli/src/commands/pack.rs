@@ -26,10 +26,11 @@ pub async fn backup(
     client: &HttpClient,
     to: &str,
     include_vectors: bool,
+    include_index: bool,
     format: OutputFormat,
     compact: bool,
 ) -> Result<()> {
-    let file_path = client.backup_ovpack(to, include_vectors).await?;
+    let file_path = client.backup_ovpack(to, include_vectors, include_index).await?;
 
     let result = serde_json::json!({
         "file": file_path,

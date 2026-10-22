@@ -34,6 +34,7 @@ class ExportRequest(BaseModel):
 
     uri: str
     include_vectors: bool = False
+    include_index: bool = False
 
 
 class BackupRequest(BaseModel):
@@ -42,6 +43,7 @@ class BackupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     include_vectors: bool = False
+    include_index: bool = False
 
 
 class ImportRequest(BaseModel):
@@ -95,6 +97,7 @@ async def export_ovpack(
             temp_file,
             ctx=ctx,
             include_vectors=body.include_vectors,
+            include_index=body.include_index,
         )
 
         # Determine filename from URI
@@ -142,6 +145,7 @@ async def backup_ovpack(
             temp_file,
             ctx=ctx,
             include_vectors=bool(body.include_vectors) if body is not None else False,
+            include_index=bool(body.include_index) if body is not None else False,
         )
 
         def cleanup():

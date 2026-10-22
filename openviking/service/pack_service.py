@@ -59,6 +59,7 @@ class PackService:
         to: str,
         ctx: RequestContext,
         include_vectors: bool = False,
+        include_index: bool = False,
     ) -> str:
         """Export specified context path as .ovpack file.
 
@@ -77,6 +78,7 @@ class PackService:
             ctx=ctx,
             vector_store=self._vector_store,
             include_vectors=include_vectors,
+            include_index=include_index,
         )
 
     async def backup_ovpack(
@@ -84,6 +86,7 @@ class PackService:
         to: str,
         ctx: RequestContext,
         include_vectors: bool = False,
+        include_index: bool = False,
     ) -> str:
         """Back up all public OpenViking scopes as a restore-only .ovpack file."""
         viking_fs = self._ensure_initialized()
@@ -94,6 +97,7 @@ class PackService:
             ctx=maintenance_ctx,
             vector_store=self._vector_store,
             include_vectors=include_vectors,
+            include_index=include_index,
         )
 
     async def import_ovpack(

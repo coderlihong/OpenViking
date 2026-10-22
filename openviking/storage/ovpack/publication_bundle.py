@@ -534,3 +534,98 @@ async def append_publication_bundle(
     except Exception as exc:  # noqa: BLE001 - never break a plain export
         logger.warning(f"[ovpack] publication bundle append failed: {exc}")
         return None
+
+
+# ── vector index snapshot (offline migration) ──
+
+_INDEX_LEAF = f"{_PUBLICATION_DIR}/vectordb_index.json"
+
+
+def _vectordb_index_dir() -> Optional[str]:
+    """Resolve the live vector-index directory of the local engine."""
+    try:
+        from openviking_cli.utils.config import get_openviking_config
+
+        config = get_openviking_config()
+        root = getattr(config.storage.vectordb, "path", None) or getattr(
+            config.storage, "workspace", None
+        )
+    except Exception:  # noqa: BLE001 - index shipping is optional
+        return None
+    if not root:
+        return None
+    candidate = os.path.join(str(root), "vectordb", "context", "index", "default")
+    return candidate if os.path.isdir(candidate) else None
+
+
+def ship_vectordb_index(zf: zipfile.ZipFile, base_name: str) -> Optional[dict[str, Any]]:
+    """Pack the engine's persisted vector index into the pack.
+
+    The local engine keeps the searchable vector index in ``index/default``
+    (``index_meta.json`` + ``versions/*``). Restore writes records through the
+    payload layer only, so a target instance rebuilt from a pack would answer
+    scans while its search index lacks the restored rows until a full index
+    rebuild. Shipping the source index file makes the pack self-contained for
+    an offline target that rebuilds the same payload (same records, same
+    deterministic ids, therefore the same index labels).
+    """
+    index_dir = _vectordb_index_dir()
+    if index_dir is None:
+        return None
+    files = []
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(index_dir):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, index_dir).replace(os.sep, "/")
+            size = os.path.getsize(full)
+            files.append((full, rel, size))
+            total += size
+    if not files:
+        return None
+    manifest = {
+        "files": [{"path": rel, "size": size} for _full, rel, size in files],
+        "total_bytes": total,
+    }
+    zf.writestr(_leaf(base_name, _INDEX_LEAF), json.dumps(manifest).encode("utf-8"))
+    for full, rel, _size in files:
+        with open(full, "rb") as handle:
+            zf.writestr(_leaf(base_name, f"{_PUBLICATION_DIR}/vectordb_index/{rel}"), handle.read())
+    logger.info(
+        "[ovpack] Shipped vector index: %d files, %.2f GB",
+        len(files), total / (1024**3),
+    )
+    return manifest
+
+
+def restore_vectordb_index(file_path: str, base_name: str) -> Optional[dict[str, Any]]:
+    """Install a shipped vector index into the local engine directory.
+
+    Intended for a freshly restored / offline target: call it before starting
+    the server (or restart it afterwards) so the engine loads the index. The
+    existing index is moved aside, never deleted.
+    """
+    index_dir = _vectordb_index_dir()
+    if index_dir is None:
+        return None
+    with zipfile.ZipFile(file_path) as zf:
+        manifest_leaf = _leaf(base_name, _INDEX_LEAF)
+        if manifest_leaf not in zf.namelist():
+            return None
+        manifest = json.loads(zf.read(manifest_leaf).decode("utf-8"))
+        backup_dir = index_dir + f".bak-{int(__import__('time').time())}"
+        if os.path.isdir(index_dir):
+            os.replace(index_dir, backup_dir)
+        os.makedirs(index_dir, exist_ok=True)
+        for item in manifest.get("files", []):
+            rel = item["path"]
+            leaf = _leaf(base_name, f"{_PUBLICATION_DIR}/vectordb_index/{rel}")
+            target = os.path.join(index_dir, *rel.split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "wb") as handle:
+                handle.write(zf.read(leaf))
+    logger.info(
+        "[ovpack] Installed vector index (%s files); previous index at %s",
+        len(manifest.get("files", [])), backup_dir,
+    )
+    return {"installed": True, "backup": backup_dir, "files": len(manifest.get("files", []))}

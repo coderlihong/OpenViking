@@ -363,12 +363,18 @@ pub async fn handle_export(
     .await
 }
 
-pub async fn handle_backup(to: String, include_vectors: bool, ctx: CliContext) -> Result<()> {
+pub async fn handle_backup(
+    to: String,
+    include_vectors: bool,
+    include_index: bool,
+    ctx: CliContext,
+) -> Result<()> {
     let client = ctx.get_client();
     commands::pack::backup(
         &client,
         &to,
         include_vectors,
+        include_index,
         ctx.output_format,
         ctx.compact,
     )

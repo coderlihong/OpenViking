@@ -1040,6 +1040,9 @@ enum Commands {
         /// Include dense vector snapshot when compatible metadata is available
         #[arg(long, default_value_t = false, help_heading = "Common options")]
         include_vectors: bool,
+        /// Also ship the engine vector index (full backup; for offline migration)
+        #[arg(long, default_value_t = false, help_heading = "Common options")]
+        include_index: bool,
     },
     /// [Data] Import .ovpack into target URI
     Import {
@@ -3423,7 +3426,8 @@ async fn main() {
         Commands::Backup {
             to,
             include_vectors,
-        } => handlers::handle_backup(to, include_vectors, ctx).await,
+            include_index,
+        } => handlers::handle_backup(to, include_vectors, include_index, ctx).await,
         Commands::Import {
             file_path,
             target_uri,

@@ -1373,10 +1373,18 @@ impl HttpClient {
             .await
     }
 
-    pub async fn backup_ovpack(&self, to: &str, include_vectors: bool) -> Result<String> {
+    pub async fn backup_ovpack(
+        &self,
+        to: &str,
+        include_vectors: bool,
+        include_index: bool,
+    ) -> Result<String> {
         self.download_pack(
             "/api/v1/pack/backup",
-            serde_json::json!({"include_vectors": include_vectors}),
+            serde_json::json!({
+                "include_vectors": include_vectors,
+                "include_index": include_index,
+            }),
             to,
             "openviking-backup",
         )
