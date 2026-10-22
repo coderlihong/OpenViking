@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import struct
 import zipfile
-from typing import Any
+from typing import Any, Iterator
 
 from openviking.core.namespace import (
     content_owner_context_for_uri,
@@ -278,6 +278,19 @@ async def _upsert_vector_snapshot_record(
     dense_vector: list[float],
     ctx: RequestContext,
 ) -> None:
+    payload = _build_vector_snapshot_payload(record, dense_vector, target_uri, ctx)
+    try:
+        await vector_store.upsert(payload, ctx=ctx)
+    except TypeError:
+        await vector_store.upsert(payload)
+
+
+def _build_vector_snapshot_payload(
+    record: dict[str, Any],
+    dense_vector: list[float],
+    target_uri: str,
+    ctx: RequestContext,
+) -> dict[str, Any]:
     level = int(record.get("level", 2))
     scalars = dict(record.get("scalars") or {})
     # A restore is not a managed generation write: those identifiers point at a
@@ -307,11 +320,13 @@ async def _upsert_vector_snapshot_record(
     elif "content" not in payload:
         payload["content"] = str(record.get("text") or "")
     payload["id"] = _vector_record_id(payload, ctx)
+    return payload
 
-    try:
-        await vector_store.upsert(payload, ctx=ctx)
-    except TypeError:
-        await vector_store.upsert(payload)
+
+# Records per bulk upsert. The engine's upsert_many lands a whole batch in one
+# adapter call (one index write window) instead of one round trip per record,
+# which is what kept snapshot restores of large tenants at ~100 records/s.
+_VECTOR_SNAPSHOT_BATCH = 500
 
 
 async def restore_vector_snapshot(
@@ -322,24 +337,68 @@ async def restore_vector_snapshot(
     manifest_entries: dict[str, dict[str, Any]],
     ctx: RequestContext,
 ) -> None:
-    for record in index_records:
-        record_id = record.get("record_id")
-        if not isinstance(record_id, str) or record_id not in dense_vectors:
-            continue
-        rel_path = record.get("path")
-        if not isinstance(rel_path, str):
-            continue
-        manifest_entry = manifest_entries.get(rel_path)
-        if manifest_entry is None:
-            continue
-        target_uri = manifest_entry_target_uri(root_uri, rel_path, manifest_entry)
-        if target_uri == "viking://user" or is_session_uri(target_uri):
-            continue
-        owner_ctx = content_owner_context_for_uri(target_uri, ctx)
-        await _upsert_vector_snapshot_record(
-            vector_store,
-            target_uri,
-            record,
-            dense_vectors[record_id],
-            owner_ctx,
-        )
+    def _iter_targeted_payloads() -> "Iterator[tuple[str, dict[str, Any]]]":
+        for record in index_records:
+            record_id = record.get("record_id")
+            if not isinstance(record_id, str) or record_id not in dense_vectors:
+                continue
+            rel_path = record.get("path")
+            if not isinstance(rel_path, str):
+                continue
+            manifest_entry = manifest_entries.get(rel_path)
+            if manifest_entry is None:
+                continue
+            target_uri = manifest_entry_target_uri(root_uri, rel_path, manifest_entry)
+            if target_uri == "viking://user" or is_session_uri(target_uri):
+                continue
+            owner_ctx = content_owner_context_for_uri(target_uri, ctx)
+            payload = _build_vector_snapshot_payload(
+                record, dense_vectors[record_id], target_uri, owner_ctx
+            )
+            yield payload["id"], payload
+
+    payloads = list(_iter_targeted_payloads())
+    bulk = hasattr(vector_store, "upsert_many")
+    if bulk and hasattr(vector_store, "begin_bulk_ingest"):
+        try:
+            await vector_store.begin_bulk_ingest()
+        except Exception as exc:  # noqa: BLE001 - rebuild deferral is best-effort
+            logger.warning(f"[ovpack] begin_bulk_ingest unavailable: {exc}")
+
+    try:
+        if not bulk:
+            # Sequential replay: every generation is written in pack order and
+            # the last write wins, exactly like the pre-batching restore.
+            for _, payload in payloads:
+                try:
+                    await vector_store.upsert(payload, ctx=ctx)
+                except TypeError:
+                    await vector_store.upsert(payload)
+            return
+
+        for start in range(0, len(payloads), _VECTOR_SNAPSHOT_BATCH):
+            chunk = payloads[start : start + _VECTOR_SNAPSHOT_BATCH]
+            # A pack may carry several generations of one logical record
+            # (oldest first, newest last); sequential upserts end on the
+            # newest, so keep the last payload per id within the batch.
+            deduped: dict[str, dict[str, Any]] = {}
+            for payload_id, payload in chunk:
+                deduped[payload_id] = payload
+            batch = list(deduped.values())
+            try:
+                await vector_store.upsert_many(batch)
+            except (TypeError, ValueError) as exc:
+                # No bulk path (or an unexpected intra-batch conflict): keep the
+                # snapshot correct via the sequential replay of this chunk.
+                logger.warning(f"[ovpack] bulk snapshot upsert unavailable ({exc}); falling back")
+                for _, payload in chunk:
+                    try:
+                        await vector_store.upsert(payload, ctx=ctx)
+                    except TypeError:
+                        await vector_store.upsert(payload)
+    finally:
+        if bulk and hasattr(vector_store, "end_bulk_ingest"):
+            try:
+                await vector_store.end_bulk_ingest()
+            except Exception as exc:  # noqa: BLE001 - best-effort
+                logger.warning(f"[ovpack] end_bulk_ingest failed: {exc}")
