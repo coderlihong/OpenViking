@@ -333,6 +333,7 @@ async def walk_uri_record_batches(
     output_fields: list[str],
     consume,
     scan_limit: int = OVPACK_VECTOR_SCAN_LIMIT,
+    group_scan_limit: int = 25_000,
 ) -> None:
     """Fetch index records for many URIs with subtree-batched filter queries.
 
@@ -340,11 +341,13 @@ async def walk_uri_record_batches(
     dominates OVPack export time on large trees (hundreds of thousands of
     round trips). This walker instead issues ``PathScope`` subtree queries and
     groups the rows locally, keeping single-query semantics per subtree:
-    a subtree whose result set reaches ``scan_limit`` may be truncated, so it
-    is split by the next path component and retried; a single URI always falls
-    back to the exact per-URI query. ``consume(uris, by_uri)`` is awaited once
-    per resolved batch, with the batch's URIs in caller order and
-    ``{normalized_uri: [raw store record]}`` (URIs with no records map to []).
+    a subtree whose result set reaches ``group_scan_limit`` may be truncated
+    (and its full-field fetch would also balloon memory on vector exports), so
+    it is split by the next path component and retried; a single URI always
+    falls back to the exact per-URI query with the full ``scan_limit``.
+    ``consume(uris, by_uri)`` is awaited once per resolved batch, with the
+    batch's URIs in caller order and ``{normalized_uri: [raw store record]}``
+    (URIs with no records map to []).
     """
     if not vector_store or not hasattr(vector_store, "filter"):
         await consume(list(uris), {})
@@ -366,13 +369,13 @@ async def walk_uri_record_batches(
             # Cheap probe first: a truncated full-field fetch of a huge subtree
             # is expensive to throw away, while an empty ["uri"] probe is not.
             probe = await _query_subtree_records(
-                vector_store, prefix_norm, ctx, ["uri"], scan_limit
+                vector_store, prefix_norm, ctx, ["uri"], group_scan_limit
             )
-            if probe is not None and len(probe) < scan_limit:
+            if probe is not None and len(probe) < group_scan_limit:
                 raw = await _query_subtree_records(
-                    vector_store, prefix_norm, ctx, output_fields, scan_limit
+                    vector_store, prefix_norm, ctx, output_fields, group_scan_limit
                 )
-                if raw is not None and len(raw) < scan_limit:
+                if raw is not None and len(raw) < group_scan_limit:
                     by_uri: dict[str, list[dict[str, Any]]] = {}
                     for record in raw:
                         key = normalize_uri_key(str(record.get("uri") or ""))
