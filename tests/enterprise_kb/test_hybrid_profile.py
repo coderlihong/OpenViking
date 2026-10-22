@@ -356,7 +356,7 @@ def test_profile_for_hybrid_uses_spec_defaults():
     profile = profile_for("hybrid")
     assert profile.recall_limit == 100
     assert profile.fused_limit == 100
-    assert profile.rerank_limit == 50
+    assert profile.rerank_limit == 20  # owner decision: smaller rerank window, tail keeps RRF order
     assert profile.mmr_top == 10
     assert profile.rrf_k == 60
     assert profile.mmr_lambda == 0.7

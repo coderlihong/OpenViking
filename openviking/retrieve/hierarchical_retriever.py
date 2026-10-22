@@ -473,23 +473,74 @@ class HierarchicalRetriever:
         stage_started = time.monotonic()
 
         recall_limit = max(profile.recall_limit, limit)
-        # Leaf global recall — independent of navigation and rerank toggles.
-        leaf_results = []
-        with telemetry.measure("search.vector_retrieval"):
-            dense_searched = query_vector is not None and await vector_proxy.collection_exists_bound()
-            if dense_searched:
-                leaf_results = await vector_proxy.search_in_tenant(
+
+        dense_level = [2] if level is None else [lv for lv in level if lv == 2] or [2]
+        recall_state: Dict[str, Any] = {
+            "dense_searched": False,
+            "vector_seconds": 0.0,
+            "lexical_seconds": 0.0,
+        }
+
+        async def _dense_recall() -> List[Dict[str, Any]]:
+            # Leaf global recall — independent of navigation and rerank toggles.
+            with telemetry.measure("search.vector_retrieval"):
+                dense_started = time.monotonic()
+                dense_searched = query_vector is not None and await vector_proxy.collection_exists_bound()
+                if not dense_searched:
+                    return []
+                rows = await vector_proxy.search_in_tenant(
                     query_vector=query_vector,
                     sparse_query_vector=sparse_query_vector,
                     context_type=context_type,
                     target_directories=target_dirs,
                     extra_filter=scope_dsl,
-                    level=[2] if level is None else [lv for lv in level if lv == 2] or [2],
+                    level=dense_level,
                     limit=recall_limit * DENSE_POOL_OVERFETCH,
                 )
-                leaf_results = diversify_by_type(leaf_results, recall_limit)
-        vector_done = time.monotonic()
-        telemetry.count("vector.searches", int(dense_searched))
+                rows = diversify_by_type(rows, recall_limit)
+                recall_state["dense_searched"] = dense_searched
+                recall_state["vector_seconds"] = time.monotonic() - dense_started
+                return rows
+
+        async def _lexical_recall() -> List[Dict[str, Any]]:
+            if self._lexical_search is None:
+                return []
+            lexical_started = time.monotonic()
+            with telemetry.measure("search.lexical_recall"):
+                rows = await self._lexical_search(
+                    query=query,
+                    ctx=ctx,
+                    context_type=context_type,
+                    target_dirs=target_dirs,
+                    scope_dsl=scope_dsl,
+                    limit=recall_limit,
+                )
+            recall_state["lexical_seconds"] = time.monotonic() - lexical_started
+            return rows
+
+        # The two recall paths share no state: dense hits the vector engine
+        # while lexical walks the authority store under the same pinned view.
+        # Running them concurrently removes the shorter stage's serial latency
+        # from every find instead of only when one of them is disabled.
+        dense_out, lexical_out = await asyncio.gather(
+            _dense_recall(), _lexical_recall(), return_exceptions=True
+        )
+        if isinstance(dense_out, BaseException):
+            raise dense_out
+        if isinstance(lexical_out, BaseException):
+            if not isinstance(lexical_out, Exception):
+                raise lexical_out
+            # Lexical path is a recall path: degrade to dense-only, loudly.
+            logger.warning("[HybridRetrieval] Lexical recall failed: %s", lexical_out)
+            telemetry.record_error(
+                "hybrid.lexical_recall", "LEXICAL_RECALL_FAILED", str(lexical_out)
+            )
+            lexical_out = []
+        leaf_results: List[Dict[str, Any]] = dense_out
+        lexical_rows: List[Dict[str, Any]] = lexical_out
+        vector_done = stage_started + recall_state["vector_seconds"]
+        lexical_done = vector_done + recall_state["lexical_seconds"]
+        telemetry.count("vector.searches", int(recall_state["dense_searched"]))
         telemetry.count("vector.scored", len(leaf_results))
         telemetry.count("vector.scanned", len(leaf_results))
 
@@ -501,43 +552,31 @@ class HierarchicalRetriever:
         }
 
         lexical_count = 0
-        if self._lexical_search is not None:
-            try:
-                lexical_rows = await self._lexical_search(
-                    query=query,
-                    ctx=ctx,
-                    context_type=context_type,
-                    target_dirs=target_dirs,
-                    scope_dsl=scope_dsl,
-                    limit=recall_limit,
-                )
-            except Exception as exc:  # noqa: BLE001 - lexical path is a recall path
-                logger.warning("[HybridRetrieval] Lexical recall failed: %s", exc)
-                telemetry.record_error("hybrid.lexical_recall", "LEXICAL_RECALL_FAILED", str(exc))
-            else:
-                if lexical_rows:
-                    lexical_count = len(lexical_rows)
-                    ranked_paths["lexical"] = [
-                        candidate_from_result(result, rank=index + 1)
-                        for index, result in enumerate(lexical_rows)
-                    ]
-        lexical_done = time.monotonic()
+        if lexical_rows:
+            lexical_count = len(lexical_rows)
+            ranked_paths["lexical"] = [
+                candidate_from_result(result, rank=index + 1)
+                for index, result in enumerate(lexical_rows)
+            ]
 
         # The pipeline is pure CPU work plus one blocking provider call; run it off
         # the event loop rather than stalling concurrent requests on rerank.
         fusion_reranker = self._build_fusion_reranker(query.query) if rerank_enabled else None
-        fusion_result = await asyncio.to_thread(
-            run_fusion,
-            ranked_paths,
-            profile=profile,
-            rerank=fusion_reranker,
-            estimate=estimate_text_tokens,
-        )
+        with telemetry.measure("search.fusion"):
+            fusion_result = await asyncio.to_thread(
+                run_fusion,
+                ranked_paths,
+                profile=profile,
+                rerank=fusion_reranker,
+                estimate=estimate_text_tokens,
+            )
 
         fusion_done = time.monotonic()
 
         for key, value in fusion_result.trace.items():
             telemetry.set(f"hybrid.{key}", value)
+        for stage, cost in fusion_result.stage_ms.items():
+            telemetry.set(f"hybrid.stage.{stage}", cost)
         telemetry.set("hybrid.rerank_requested", rerank_enabled)
         rerank_applied = bool(fusion_result.trace.get("rerank_applied"))
         rerank_degraded = bool(rerank_enabled and not rerank_applied)
@@ -556,7 +595,8 @@ class HierarchicalRetriever:
             telemetry.record_error("hybrid.rerank", "RERANK_DEGRADED", degrade_reason)
 
         candidates = [candidate.as_dict() for candidate in fusion_result.selected]
-        matched = await self._convert_to_matched_contexts(candidates, ctx=ctx)
+        with telemetry.measure("search.convert"):
+            matched = await self._convert_to_matched_contexts(candidates, ctx=ctx)
         final = matched[:limit]
         convert_done = time.monotonic()
 
@@ -568,9 +608,9 @@ class HierarchicalRetriever:
                 "[HybridRetrieval] slow find %.1fs: vector=%.1fs rows=%d lexical=%.1fs rows=%d "
                 "fusion=%.1fs convert=%.1fs candidates=%d target_dirs=%s rerank=%s",
                 stage_total,
-                vector_done - stage_started,
+                recall_state["vector_seconds"],
                 len(leaf_results),
-                lexical_done - vector_done,
+                recall_state["lexical_seconds"],
                 lexical_count,
                 fusion_done - lexical_done,
                 convert_done - fusion_done,

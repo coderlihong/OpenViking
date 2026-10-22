@@ -389,7 +389,7 @@ def test_aggregate_by_uri_preserves_namespace_id():
 def test_profile_defaults_match_spec_and_are_recorded_in_trace():
     profile = profile_for("hybrid")
     assert (profile.recall_limit, profile.fused_limit) == (100, 100)
-    assert profile.rerank_limit == 50
+    assert profile.rerank_limit == 20  # owner decision: smaller rerank window, tail keeps RRF order
     assert profile.mmr_top == 10
     assert profile.rrf_k == 60
     assert profile.mmr_lambda == 0.7
@@ -452,7 +452,7 @@ def test_with_row_budget_only_raises_caps_below_the_requested_limit():
     assert profile.with_row_budget(5) is profile  # every cap already >= limit
     slight = profile.with_row_budget(20)
     assert slight.mmr_top == 20  # the only cap below the request
-    assert (slight.recall_limit, slight.fused_limit, slight.rerank_limit) == (100, 100, 50)
+    assert (slight.recall_limit, slight.fused_limit, slight.rerank_limit) == (100, 100, 20)
     wide = profile.with_row_budget(120)
     assert (wide.recall_limit, wide.fused_limit, wide.rerank_limit, wide.mmr_top) == (
         120,

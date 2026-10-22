@@ -93,6 +93,23 @@ class TelemetrySummaryBuilder:
         "intent_analysis": "search.intent_analysis.duration_ms",
         "embed_query": "search.embed_query.duration_ms",
         "vector_retrieval": "search.vector_retrieval.duration_ms",
+        # Hybrid recall stage splits: lexical recall used to be ~2s of an
+        # unaccounted find, so every sub-stage keeps a named duration.
+        "lexical_recall": "search.lexical_recall.duration_ms",
+        "lexical_denied_derived": "search.lexical.denied_derived.duration_ms",
+        "lexical_prefix_filter": "search.lexical.prefix_filter.duration_ms",
+        "lexical_acl_many": "search.lexical.acl_many.duration_ms",
+        "lexical_search": "search.lexical.search.duration_ms",
+        "lexical_recheck": "search.lexical.recheck.duration_ms",
+        "lexical_scope": "search.lexical.scope.duration_ms",
+        "lexical_bm25": "search.lexical.bm25.duration_ms",
+        "fusion": "search.fusion.duration_ms",
+        "convert": "search.convert.duration_ms",
+        # Fusion pipeline internals (set from the run_fusion stage trace).
+        "fusion_rrf": "hybrid.stage.rrf_ms",
+        "fusion_rerank": "hybrid.stage.rerank_ms",
+        "fusion_mmr": "hybrid.stage.mmr_ms",
+        "fusion_expand": "hybrid.stage.expand_ms",
     }
 
     @staticmethod

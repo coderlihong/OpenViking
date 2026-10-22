@@ -5,6 +5,7 @@ import asyncio
 
 from openviking.indexing.derived_access import denied_derived_uris
 from openviking.indexing.publication import _view, configured_store
+from openviking.telemetry import get_current_telemetry
 from openviking_cli.exceptions import FailedPreconditionError
 from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingleton
 
@@ -20,6 +21,7 @@ def configured_lexical_recall(fs):
     async def recall(*, query, ctx, context_type, target_dirs, scope_dsl, limit):
         if context_type not in (None, 'resource'):
             return []
+        telemetry = get_current_telemetry()
         view = _view.get()
         owned = view is None
         if owned:
@@ -27,20 +29,29 @@ def configured_lexical_recall(fs):
         else:
             lease, manifest = await asyncio.to_thread(view.read, ctx.account_id, registry)
         try:
-            # Derived records published from contributor sources carry the source
-            # intersection rule too; the bare URI ACL below cannot see it.
-            denied = await denied_derived_uris(fs.acl_manager, ctx, registry=registry)
-            uris = [uri for uri in manifest if not target_dirs or any(
-                uri == root or uri.startswith(root.rstrip('/') + '/') for root in target_dirs)]
-            allowed = await fs._can_access_many(uris, ctx)
-            rows = await asyncio.to_thread(registry.lexical_search, ctx.account_id, lease,
-                                           [uri for uri in uris if allowed.get(uri, False) and uri not in denied], query.query, limit,
-                                           **({'metadata_filter': scope_dsl} if scope_dsl is not None else {}))
+            # Stage spans below exist because this path was once ~2s of an
+            # unaccounted find; keep them so future regressions name the stage.
+            with telemetry.measure('search.lexical.denied_derived'):
+                # Derived records published from contributor sources carry the source
+                # intersection rule too; the bare URI ACL below cannot see it.
+                denied = await denied_derived_uris(fs.acl_manager, ctx, registry=registry)
+            with telemetry.measure('search.lexical.prefix_filter'):
+                uris = [uri for uri in manifest if not target_dirs or any(
+                    uri == root or uri.startswith(root.rstrip('/') + '/') for root in target_dirs)]
+            with telemetry.measure('search.lexical.acl_many'):
+                allowed = await fs._can_access_many(uris, ctx)
+            authorized = [uri for uri in uris
+                          if allowed.get(uri, False) and uri not in denied]
+            with telemetry.measure('search.lexical.search'):
+                rows = await asyncio.to_thread(registry.lexical_search, ctx.account_id, lease,
+                                               authorized, query.query, limit,
+                                               **({'metadata_filter': scope_dsl} if scope_dsl is not None else {}))
             await asyncio.to_thread(registry.renew, lease)
-            # Check again before handing derived content to rerank; revocation
-            # during the authority call must not release the cached chunk text.
-            current = await fs._can_access_many([row['uri'] for row in rows], ctx)
-            current_denied = await denied_derived_uris(fs.acl_manager, ctx, registry=registry)
+            with telemetry.measure('search.lexical.recheck'):
+                # Check again before handing derived content to rerank; revocation
+                # during the authority call must not release the cached chunk text.
+                current = await fs._can_access_many([row['uri'] for row in rows], ctx)
+                current_denied = await denied_derived_uris(fs.acl_manager, ctx, registry=registry)
             return [row for row in rows
                     if current.get(row['uri'], False) and row['uri'] not in current_denied]
         finally:

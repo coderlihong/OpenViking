@@ -7,9 +7,10 @@ import logging
 import math
 import sqlite3
 import time
+from typing import Any, Mapping, Optional, Sequence
 
 from openviking.indexing.lexical import TOKENIZER_VERSION, encode, encode_query, tokenize
-from openviking.indexing.manifest_codec import decode_manifest
+from openviking.indexing.registry_gc import _snapshot_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,258 @@ _MIRROR_RETRY_SECONDS = 300.0
 # BM25 saturation/length-normalisation, matching the portable ranker.
 _BM25_K1 = 1.2
 _BM25_B = 0.75
+# Pairs per multi-VALUES statement when materialising the query scope. Keeps a
+# batch inside the host-parameter budget (900 pairs = 1800 params) while one
+# statement does one GIL crossing for the whole batch instead of one per row.
+_SCOPE_INSERT_BATCH = 900
+
+# Payload fields whose filter predicates compile into SQL (see
+# _compile_lexical_filter_sql). Everything else stays on the per-row Python
+# scan, which is the exactness fallback.
+_SQL_STRING_FIELDS = frozenset(
+    {'account_id', 'namespace_id', 'context_type', 'document_id', 'content_revision', 'index_generation'}
+)
+_SQL_LIST_FIELDS = frozenset({'business_meta_tokens', 'search_tags'})
+_SQL_INT_FIELDS = frozenset({'level'})
+_SQL_PATH_FIELDS = frozenset({'uri'})
+
+
+def _sql_in_list(params: list, values: Sequence[Any]) -> Optional[str]:
+    """A SQL ``IN`` parameter list, or None when the values are unusable.
+
+    SQLite compares without affinity here (``5 IN ('5')`` is false), which
+    mirrors Python ``in`` across JSON scalar types; NULL and container
+    parameters are refused so the COALESCE wrapping at the must/must_not level
+    keeps Python's ``None in conds -> False`` behaviour exact.
+    """
+    if not values:
+        return None
+    if any(value is None or isinstance(value, (dict, list)) for value in values):
+        return None
+    marks = ','.join('?' * len(values))
+    params.extend(values)
+    return f'({marks})'
+
+
+def _sql_json_value_predicate(field: str, conds: Sequence[Any], params: list) -> Optional[str]:
+    """Mirror ``_value_matches`` for one payload field: lists match by item,
+    scalars (including dicts and booleans, compared as whole values) compare
+    directly against the conditions, and a missing field never matches. Every
+    branch re-binds the condition list — each SQL placeholder occurrence
+    consumes its own parameter."""
+    if not conds or any(value is None or isinstance(value, (dict, list)) for value in conds):
+        return None
+    marks = ','.join('?' * len(conds))
+    if all(isinstance(value, str) for value in conds):
+        if field in _SQL_LIST_FIELDS:
+            # Only a JSON array goes through json_each (a bare scalar string
+            # is malformed JSON there, and SQLite evaluates the argument on
+            # every row, so COALESCE keeps it valid JSON at all times);
+            # dicts and scalars compare as whole values, exactly like Python.
+            extract = f"json_extract(payload,'$.{field}')"
+            each = (f"json_each(COALESCE(CASE WHEN json_type(payload,'$.{field}') = 'array' "
+                    f"THEN {extract} END, '[]'))")
+            branches = [
+                f"EXISTS (SELECT 1 FROM {each} je WHERE je.value IN ({marks}))",
+            ]
+            branches.extend(f"{extract} IN ({marks})" for _ in range(5))
+            types = ('array', 'text', 'integer', 'real', 'true', 'false')
+            case = ' '.join(f"WHEN '{json_type}' THEN {branch}"
+                            for json_type, branch in zip(types, branches, strict=True))
+            for _ in branches:
+                params.extend(conds)
+            return f"(CASE json_type(payload,'$.{field}') {case} ELSE 0 END)"
+        params.extend(conds)
+        return f"(json_extract(payload,'$.{field}') IN ({marks}))"
+    if all(isinstance(value, (int, float)) for value in conds):
+        params.extend(conds)
+        # json_extract maps JSON true/false to 1/0, matching Python's
+        # bool-as-int equality for ``value in conds``.
+        return f"(json_extract(payload,'$.{field}') IN ({marks}))"
+    return None
+
+
+def _sql_path_predicate(conds: Sequence[Any], para: Any, params: list) -> Optional[str]:
+    """Mirror ``_path_matches`` for the exactly-compilable depths.
+
+    ``-d=0`` (same node) and ``-d=-1``/absent (same node or any descendant)
+    reduce to normalized equality / prefix tests; other depths need the
+    relative-depth arithmetic and stay on the Python scan. Values are
+    normalized like ``_normalize_path`` (leading slash, trailing slashes
+    stripped, empty becomes "/"); non-text payload values never match.
+    """
+    from openviking.storage.vectordb.index.cuvs_index import _normalize_path, _parse_depth
+
+    try:
+        depth = _parse_depth(para)
+    except Exception:  # noqa: BLE001 - the Python scan re-raises the same error
+        return None
+    if depth is not None and depth not in (0, -1):
+        return None
+    if not conds or any(not isinstance(value, str) for value in conds):
+        return None
+    normalized = [_normalize_path(value).rstrip('/') or '/' for value in conds]
+    alternatives = []
+    for expected in normalized:
+        if expected == '/' and (depth is None or depth < 0):
+            # Every *text* uri relates to "/": a non-text payload value never
+            # matches (_path_matches requires str), and uri_n is exactly the
+            # text-ness guard (NULL for non-text).
+            alternatives.append('(uri_n IS NOT NULL)')
+            continue
+        params.append(expected)
+        predicate = 'uri_n = ?'
+        if depth is None or depth < 0:
+            params.extend([expected, expected, '/'])
+            predicate += ' OR (substr(uri_n, 1, length(?) + 1) = ? || ?)'
+        alternatives.append(f'({predicate})')
+    if not alternatives:
+        return None
+    return '(' + ' OR '.join(alternatives) + ')'
+
+
+def _compile_lexical_filter_sql(node: Any):
+    """Compile a validated metadata filter into SQL over the lexical payload.
+
+    Returns ``(where_sql, projections, params)`` — ``projections`` is a list of
+    ``(sql, alias)`` column definitions the predicate references — or ``None``
+    when any node falls outside the exactly-compilable subset, in which case the
+    caller uses the per-row ``matches_filter`` scan whose semantics this
+    compiler mirrors (differential-tested against it).
+    """
+    base_projections = [('sc.rowid', 'rowid'), ('sc.doc_len', 'doc_len'), ('pl.payload', 'payload')]
+    if not node:
+        return '1', base_projections, []
+    if not isinstance(node, Mapping):
+        return None
+    if 'filter' in node and len(node) == 1:
+        nested = node.get('filter')
+        if nested is None:
+            return '1', base_projections, []
+        if not isinstance(nested, Mapping):
+            return None
+        return _compile_lexical_filter_sql(nested)
+
+    params: list = []
+    used: set = set()
+
+    def compile_node(inner: Any) -> Optional[str]:
+        if not inner:
+            return '1'
+        if not isinstance(inner, Mapping):
+            return None
+        op = str(inner.get('op', '')).lower()
+        if op in {'and', 'or'}:
+            children = inner.get('conds', [])
+            if not isinstance(children, list):
+                return None
+            parts = []
+            for child in children:
+                compiled = compile_node(child)
+                if compiled is None:
+                    return None
+                parts.append(compiled)
+            if not parts:
+                return '1' if op == 'and' else '0'
+            joiner = ' AND ' if op == 'and' else ' OR '
+            return '(' + joiner.join(parts) + ')'
+
+        field = inner.get('field')
+        if not isinstance(field, str) or field not in FILTER_FIELDS:
+            return None
+        field_type = str(FILTER_FIELDS.get(field, '')).lower()
+        if field_type in {'date_time', 'geo_point'}:
+            # The Python path raises UnsupportedCuVSFilterError for these;
+            # returning None sends the caller there instead of diverging.
+            return None
+
+        if op in {'must', 'must_not'}:
+            conditions = inner.get('conds', [])
+            if not isinstance(conditions, list):
+                return None
+            if field_type == 'path':
+                predicate = _sql_path_predicate(conditions, inner.get('para'), params)
+                if predicate is not None:
+                    used.add(field)
+            elif inner.get('para') not in (None, ''):
+                return None
+            elif field in _SQL_LIST_FIELDS or field in _SQL_STRING_FIELDS or field in _SQL_INT_FIELDS:
+                predicate = _sql_json_value_predicate(field, conditions, params)
+                if predicate is not None:
+                    used.add(field)
+            else:
+                predicate = None
+            if predicate is None:
+                return None
+            return predicate if op == 'must' else f'NOT COALESCE({predicate}, 0)'
+
+        if op == 'contains':
+            substring = inner.get('substring')
+            used.add(field)
+            if not isinstance(substring, str):
+                # _contains returns False for a non-string substring.
+                return '(0)'
+            if field in _SQL_LIST_FIELDS:
+                # _contains: strings match directly, arrays match item-wise
+                # (non-string items skipped), everything else never matches.
+                # The json_each input is CASE-guarded to '[]' so a scalar
+                # string payload (not valid JSON on its own) never reaches it.
+                # typeof() -- NOT json_type(): je.value is a plain SQL value,
+                # and json_type would try to re-parse '维修' as a JSON document.
+                params.extend([substring, substring])
+                each = (f"json_each(COALESCE(CASE WHEN json_type(payload,'$.{field}') = 'array' "
+                        f"THEN json_extract(payload,'$.{field}') END, '[]'))")
+                return (
+                    f"(CASE json_type(payload,'$.{field}') "
+                    f"WHEN 'text' THEN instr(json_extract(payload,'$.{field}'), ?) > 0 "
+                    f"WHEN 'array' THEN EXISTS (SELECT 1 FROM {each} je "
+                    f"WHERE typeof(je.value) = 'text' AND instr(je.value, ?) > 0) "
+                    f"ELSE 0 END)"
+                )
+            params.append(substring)
+            return f"(instr(json_extract(payload,'$.{field}'), ?) > 0)"
+
+        if op in {'range', 'range_out'}:
+            if field not in _SQL_INT_FIELDS:
+                return None
+            comparisons = []
+            for bound in ('gt', 'gte', 'lt', 'lte'):
+                value = inner.get(bound)
+                if value is None:
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    return None
+                operator = {'gt': '>', 'gte': '>=', 'lt': '<', 'lte': '<='}[bound]
+                params.append(value)
+                comparisons.append(f"json_extract(payload,'$.{field}') {operator} ?")
+            used.add(field)
+            # _in_range: a missing (NULL) field is False; any present value
+            # without failing a comparison is True -- including types Python
+            # would not compare numerically, because no comparison runs.
+            present = (f"json_type(payload,'$.{field}') IS NOT NULL "
+                       f"AND json_type(payload,'$.{field}') != 'null'")
+            if not comparisons:
+                # validate_lexical_filter requires at least one bound, so this
+                # is defensive; keep the exact no-bound semantics anyway.
+                return f'({present})' if op == 'range' else f'NOT ({present})'
+            numeric = f"json_type(payload,'$.{field}') IN ('integer','real','true','false')"
+            inner_expr = '(' + numeric + ' AND ' + ' AND '.join(comparisons) + ')'
+            return inner_expr if op == 'range' else f'NOT COALESCE({inner_expr}, 0)'
+
+        return None
+
+    where = compile_node(node)
+    if where is None:
+        return None
+
+    projections = [('sc.rowid', 'rowid'), ('sc.doc_len', 'doc_len'), ('pl.payload', 'payload')]
+    if 'uri' in used:
+        projections.append((
+            "(CASE WHEN json_type(pl.payload,'$.uri') = 'text' "
+            "THEN CASE WHEN RTRIM('/' || TRIM(json_extract(pl.payload,'$.uri')), '/') = '' "
+            "THEN '/' ELSE RTRIM('/' || TRIM(json_extract(pl.payload,'$.uri')), '/') END "
+            "ELSE NULL END)", 'uri_n'))
+    return where, projections, params
 
 
 def _under_denied_root(uri: str, denied_roots: set[str]) -> bool:
@@ -56,6 +309,25 @@ def _under_denied_root(uri: str, denied_roots: set[str]) -> bool:
         if '/'.join(parts[:cut]) in denied_roots:
             return True
     return False
+
+
+def _lexical_telemetry_stage(stage: str, seconds: float, rows: int, terms: int = 0) -> None:
+    """Record one authority-lexical stage under the caller's request telemetry.
+
+    Runs inside ``asyncio.to_thread`` (contextvars propagate), so the gauge lands
+    on the find/search operation that issued the query. Best-effort: telemetry
+    must never turn a ranking failure into a query failure.
+    """
+    try:
+        from openviking.telemetry import get_current_telemetry
+
+        telemetry = get_current_telemetry()
+        telemetry.set(f'search.lexical.{stage}.duration_ms', round(seconds * 1000, 3))
+        telemetry.set(f'search.lexical.{stage}.rows', rows)
+        if terms:
+            telemetry.set(f'search.lexical.{stage}.terms', terms)
+    except Exception:  # noqa: BLE001 - diagnostics only
+        pass
 
 
 def lexical_fts_table(account: str) -> str:
@@ -492,10 +764,14 @@ class RegistryLexicalMixin:
                 raise ValueError('Lexical query lease expired')
             manifest = {}
             for snapshot_id in json.loads(held['snapshots']):
-                snapshot = db.execute('SELECT account,manifest FROM snapshots WHERE id=?', (snapshot_id,)).fetchone()
+                snapshot = db.execute('SELECT account FROM snapshots WHERE id=?', (snapshot_id,)).fetchone()
                 if snapshot is None or snapshot['account'] != account:
                     raise ValueError('Lexical query snapshot account mismatch')
-                manifest.update(decode_manifest(snapshot['manifest']))
+                # Snapshot rows are append-only, so the decoded manifest is
+                # memoized process-wide (see _snapshot_manifest). Re-decoding it
+                # here cost ~0.6s of GIL-bound gunzip+json CPU on every lexical
+                # query of a large corpus, serialising concurrent finds.
+                manifest.update(_snapshot_manifest(db, snapshot_id))
             denied = [row[0] for row in db.execute('SELECT uri FROM tombstones WHERE account=?', (account,))]
             table = lexical_fts_table(account)
             if (_MIRROR_RETRY.get(account, 0.0) <= time.monotonic()
@@ -556,43 +832,104 @@ class RegistryLexicalMixin:
         matching rows are read.
         """
         vocab = lexical_vocab_table(account)
+        scope_t0 = time.monotonic()
         scope = self._lexical_scope(manifest, denied, authorized_uris)
         if not scope:
             return []
         db.execute('DROP TABLE IF EXISTS temp.query_scope')
         db.execute('CREATE TEMP TABLE query_scope (uri TEXT NOT NULL, generation TEXT NOT NULL, '
                    'PRIMARY KEY(uri, generation)) WITHOUT ROWID')
-        db.executemany('INSERT OR IGNORE INTO query_scope VALUES (?,?)', scope)
+        # Batched multi-VALUES inserts: CPython's sqlite3 re-acquires the GIL
+        # for every sqlite3_step, so an executemany over tens of thousands of
+        # scope rows turns each row into one GIL handoff. Eight concurrent
+        # finds then convoy on the GIL and every request's 30ms of inserts
+        # stretches to 5-7s (measured). ~900 rows per statement keeps the
+        # batch under the host-parameter budget while collapsing the handoffs
+        # by three orders of magnitude.
+        for start in range(0, len(scope), _SCOPE_INSERT_BATCH):
+            chunk = scope[start:start + _SCOPE_INSERT_BATCH]
+            marks = ','.join(['(?,?)'] * len(chunk))
+            flat = [value for pair in chunk for value in pair]
+            db.execute(f'INSERT OR IGNORE INTO query_scope VALUES {marks}', flat)
         db.execute('DROP TABLE IF EXISTS temp.query_rows')
         db.execute('CREATE TEMP TABLE query_rows (rowid INTEGER PRIMARY KEY, doc_len INTEGER NOT NULL)')
-        scoped = [(row['rowid'], row['doc_len']) for row in db.execute(
-            'SELECT sc.rowid AS rowid, sc.doc_len AS doc_len FROM temp.query_scope s '
-            'JOIN publication_lexical_scope sc ON sc.account=? AND sc.uri=s.uri AND sc.generation=s.generation',
-            (account,))]
-        if not scoped:
+        if metadata_filter is None:
+            # The scoped (rowid, doc_len) pairs never cross into Python: the
+            # join and the query_rows population run as one statement inside
+            # SQLite (the same GIL-per-row argument as above, measured at
+            # 190x degradation for the Python-side fetch under concurrency).
+            # CROSS JOIN is a join-order constraint here, not an inner product:
+            # without it the planner drove from publication_lexical_scope by
+            # account alone — a 209k-row scan dragging 5KB payloads through
+            # rowid probes (measured 1.2s for a 382-row subtree) instead of
+            # probing the scope PK once per temp-table row (4ms).
+            db.execute(
+                'INSERT INTO query_rows(rowid, doc_len) '
+                'SELECT sc.rowid, sc.doc_len FROM temp.query_scope s '
+                'CROSS JOIN publication_lexical_scope sc ON sc.account=? AND sc.uri=s.uri AND sc.generation=s.generation',
+                (account,))
+            join_rows = db.execute('SELECT count(*) FROM temp.query_rows').fetchone()[0]
+            scoped_rows = join_rows
+        else:
+            compiled = _compile_lexical_filter_sql(metadata_filter)
+            if compiled is not None:
+                # The filter runs inside SQLite over the payload JSON: the
+                # whole scoped corpus is filtered in one statement with no
+                # per-row GIL crossings and no Python json.loads pass (the
+                # Python scan cost ~1.3s of payload parsing per query on the
+                # enterprise corpus, and convolved under concurrency). CROSS
+                # JOIN pins the same temp-table-first join order as above.
+                where_sql, projections, filter_params = compiled
+                projection_sql = ', '.join(f'{sql} AS {alias}' for sql, alias in projections)
+                db.execute(
+                    'INSERT INTO query_rows(rowid, doc_len) '
+                    f'SELECT rowid, doc_len FROM (SELECT {projection_sql} '
+                    'FROM temp.query_scope s '
+                    'CROSS JOIN publication_lexical_scope sc ON sc.account=? AND sc.uri=s.uri AND sc.generation=s.generation '
+                    'JOIN publication_lexical pl ON pl.rowid = sc.rowid) '
+                    f'WHERE {where_sql}',
+                    [account, *filter_params],
+                )
+                join_rows = db.execute(
+                    'SELECT count(*) FROM temp.query_scope s '
+                    'CROSS JOIN publication_lexical_scope sc ON sc.account=? AND sc.uri=s.uri AND sc.generation=s.generation',
+                    (account,)).fetchone()[0]
+                scoped_rows = db.execute('SELECT count(*) FROM temp.query_rows').fetchone()[0]
+            else:
+                from openviking.storage.vectordb.index.cuvs_index import matches_filter
+                lengths = {}
+                for row in db.execute(
+                    'SELECT sc.rowid AS rowid, sc.doc_len AS doc_len FROM temp.query_scope s '
+                    'CROSS JOIN publication_lexical_scope sc ON sc.account=? AND sc.uri=s.uri AND sc.generation=s.generation',
+                    (account,)):
+                    lengths[row['rowid']] = row['doc_len']
+                join_rows = len(lengths)
+                kept = []
+                rowids = list(lengths)
+                for start in range(0, len(rowids), 900):
+                    chunk = rowids[start:start + 900]
+                    for row in db.execute('SELECT rowid, payload FROM publication_lexical '
+                                          'WHERE rowid IN (%s)' % ','.join('?' * len(chunk)), chunk):
+                        if matches_filter(json.loads(row['payload']), metadata_filter, FILTER_FIELDS):
+                            kept.append((row['rowid'], lengths[row['rowid']]))
+                for start in range(0, len(kept), _SCOPE_INSERT_BATCH):
+                    chunk = kept[start:start + _SCOPE_INSERT_BATCH]
+                    marks = ','.join(['(?,?)'] * len(chunk))
+                    flat = [value for pair in chunk for value in pair]
+                    db.execute(f'INSERT OR IGNORE INTO query_rows(rowid, doc_len) VALUES {marks}', flat)
+                scoped_rows = len(kept)
+        if not join_rows:
             # The scope index for this account has not been rebuilt yet. Answering
             # with nothing would be silently wrong, so the caller falls back to the
             # whole-scope scan until the sweep fills it.
             return None
-        if metadata_filter is None:
-            db.executemany('INSERT OR IGNORE INTO query_rows(rowid, doc_len) VALUES (?,?)', scoped)
-        else:
-            from openviking.storage.vectordb.index.cuvs_index import matches_filter
-            lengths = dict(scoped)
-            rowids = list(lengths)
-            kept = []
-            for start in range(0, len(rowids), 900):
-                chunk = rowids[start:start + 900]
-                for row in db.execute('SELECT rowid, payload FROM publication_lexical '
-                                      'WHERE rowid IN (%s)' % ','.join('?' * len(chunk)), chunk):
-                    if matches_filter(json.loads(row['payload']), metadata_filter, FILTER_FIELDS):
-                        kept.append((row['rowid'], lengths[row['rowid']]))
-            db.executemany('INSERT OR IGNORE INTO query_rows(rowid, doc_len) VALUES (?,?)', kept)
+        _lexical_telemetry_stage('scope', time.monotonic() - scope_t0, len(scope), scoped_rows)
         stats = db.execute('SELECT count(*) AS docs, coalesce(avg(doc_len), 0) AS avgdl FROM temp.query_rows').fetchone()
         corpus_size = int(stats['docs'])
         if not corpus_size:
             return []
         avgdl = float(stats['avgdl']) or 1.0
+        bm25_t0 = time.monotonic()
         candidates = {row['rowid']: float(row['doc_len']) for row in db.execute(
             f'SELECT r.rowid, r.doc_len FROM temp.query_rows r JOIN {table} m ON m.rowid=r.rowid '
             f'WHERE {table} MATCH ?', (match,))}
@@ -603,20 +940,38 @@ class RegistryLexicalMixin:
         # would fail with "no such fts5 table" and silently downgrade every query
         # to the whole-scope scan (minutes on a tree).
         scores: dict[int, float] = {}
+        candidate_ids = list(candidates)
         for term in terms:
-            postings = {row['rowid']: int(row['tf']) for row in db.execute(
-                f'SELECT v.doc AS rowid, count(*) AS tf FROM {vocab} v '
-                'JOIN temp.query_rows r ON r.rowid = v.doc WHERE v.term = ? GROUP BY v.doc', (term,))}
+            # Document frequency over the effective scope: one aggregate row
+            # crosses the boundary instead of one row per scoped posting
+            # (59k postings for a tree-scoped corpus; same GIL-per-row cost
+            # that made concurrent finds convoy).
+            df_row = db.execute(
+                f'SELECT count(DISTINCT v.doc) FROM {vocab} v '
+                'WHERE v.term = ? AND v.doc IN (SELECT rowid FROM temp.query_rows)', (term,)).fetchone()
+            document_frequency = int(df_row[0])
+            if not document_frequency:
+                continue
+            idf = math.log(1.0 + (corpus_size - document_frequency + 0.5) / (document_frequency + 0.5))
+            # Term frequencies are needed only for the FTS-matched candidates,
+            # so the postings join returns the matched docs (not the scope).
+            postings: dict[int, int] = {}
+            for start in range(0, len(candidate_ids), 900):
+                chunk = candidate_ids[start:start + 900]
+                for row in db.execute(
+                    f'SELECT v.doc AS doc, count(*) AS tf FROM {vocab} v '
+                    f'WHERE v.term = ? AND v.doc IN (%s) GROUP BY v.doc' % ','.join('?' * len(chunk)),
+                    [term, *chunk]):
+                    postings[row['doc']] = int(row['tf'])
             if not postings:
                 continue
-            document_frequency = len(postings)
-            idf = math.log(1.0 + (corpus_size - document_frequency + 0.5) / (document_frequency + 0.5))
             for rowid, doc_len in candidates.items():
                 frequency = postings.get(rowid)
                 if not frequency:
                     continue
                 denominator = frequency + _BM25_K1 * (1.0 - _BM25_B + _BM25_B * doc_len / avgdl)
                 scores[rowid] = scores.get(rowid, 0.0) + idf * frequency * (_BM25_K1 + 1.0) / denominator
+        _lexical_telemetry_stage('bm25', time.monotonic() - bm25_t0, len(candidates), len(terms))
         if not scores:
             return []
         ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]

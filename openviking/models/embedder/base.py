@@ -7,6 +7,7 @@ import random
 import time
 import weakref
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Lock
@@ -58,6 +59,61 @@ def query_embed_cache_scope() -> Iterator[None]:
         yield
     finally:
         query_embed_cache_var.reset(token)
+
+
+# Process-wide LRU for *query* embeddings. Evaluation and agent loops re-issue
+# the same query text across requests (batch retries, variant sweeps, repeated
+# tool calls), and every miss paid a full remote embed round trip (~0.1-0.4s on
+# the local 2B model) before the first vector search could start. Text-only,
+# bounded, and keyed by embedder identity like the request-scoped cache; the
+# entry keeps a strong reference to the embedder so ``id(embedder)`` in the key
+# can never be reused by a different embedder instance while cached.
+_QUERY_EMBED_LRU_MAX = 512
+_query_embed_lru: "OrderedDict[tuple, tuple]" = OrderedDict()
+_query_embed_lru_lock = Lock()
+
+
+def _embed_query_process_cache_get(
+    embedder: "EmbedderBase", embedding_input: "EmbeddingInput"
+) -> Optional["EmbedResult"]:
+    """Serve a text query embed from the process-wide LRU, or None on miss.
+
+    Multimodal inputs are never cached: their payloads are large and their
+    semantics may depend on mutable image URIs.
+    """
+    if not isinstance(embedding_input, str):
+        return None
+    key = _query_cache_key(embedder, embedding_input)
+    with _query_embed_lru_lock:
+        entry = _query_embed_lru.get(key)
+        if entry is None:
+            return None
+        _query_embed_lru.move_to_end(key)
+        return entry[1]
+
+
+def _embed_query_process_cache_put(
+    embedder: "EmbedderBase", embedding_input: "EmbeddingInput", result: "EmbedResult"
+) -> None:
+    if not isinstance(embedding_input, str) or result is None:
+        return
+    key = _query_cache_key(embedder, embedding_input)
+    with _query_embed_lru_lock:
+        _query_embed_lru[key] = (embedder, result)
+        while len(_query_embed_lru) > _QUERY_EMBED_LRU_MAX:
+            _query_embed_lru.popitem(last=False)
+
+
+async def _embed_query_and_cache(
+    embedder: "EmbedderBase", embedding_input: "EmbeddingInput", stage: str
+) -> "EmbedResult":
+    """Embed one query and seed the process-wide LRU with the result."""
+    from openviking.telemetry import bind_telemetry_stage
+
+    with bind_telemetry_stage(stage):
+        result = await embedder.embed_async(embedding_input, is_query=True)
+    _embed_query_process_cache_put(embedder, embedding_input, result)
+    return result
 
 
 def _query_cache_key(embedder: "EmbedderBase", embedding_input: "EmbeddingInput") -> tuple:
@@ -137,6 +193,9 @@ async def embed_compat(
     stage = "embed_query" if is_query else "embed_resource"
     embedding_input = embedder.prepare_embedding_input(content)
     if is_query:
+        hit = _embed_query_process_cache_get(embedder, embedding_input)
+        if hit is not None:
+            return hit
         cached = await _embed_from_request_cache(embedder, embedding_input, stage)
         if cached is not None:
             return cached
@@ -162,9 +221,13 @@ async def _embed_from_request_cache(
     if pending is None:
         # Create the task synchronously and store it before the first await:
         # sibling tasks of the same request then see this entry and await the
-        # same in-flight embed instead of starting their own.
+        # same in-flight embed instead of starting their own. The task goes
+        # through _embed_query_and_cache so the result also seeds the
+        # process-wide LRU for future requests.
         with bind_telemetry_stage(stage):
-            pending = asyncio.create_task(embedder.embed_async(embedding_input, is_query=True))
+            pending = asyncio.create_task(
+                _embed_query_and_cache(embedder, embedding_input, stage)
+            )
         cache[key] = pending
     try:
         # Shield the shared task: cancelling a waiter propagates to the future

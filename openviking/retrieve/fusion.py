@@ -34,6 +34,7 @@ uses the same version-locked segmentation as the inverted index.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -46,7 +47,10 @@ DEFAULT_RRF_K = 60
 DEFAULT_MMR_LAMBDA = 0.7
 DEFAULT_RECALL_LIMIT = 100
 DEFAULT_FUSED_LIMIT = 100
-DEFAULT_RERANK_LIMIT = 50
+# Rerank window. 20 covers every served page (find limit defaults to 10) while
+# keeping the single provider call at a fraction of the 50-document batch cost;
+# the fused tail beyond the window keeps rank-only RRF order.
+DEFAULT_RERANK_LIMIT = 20
 DEFAULT_MMR_TOP = 10
 
 PROFILE_QUICK = "quick"
@@ -448,9 +452,7 @@ def mmr_select(
     lambda_: float = DEFAULT_MMR_LAMBDA,
     top_k: int = DEFAULT_MMR_TOP,
     relevance: Optional[Sequence[float]] = None,
-    similarity: Callable[[Candidate, Candidate], float] = lambda a, b: jaccard_similarity(
-        a.text_for_similarity, b.text_for_similarity
-    ),
+    similarity: Optional[Callable[[Candidate, Candidate], float]] = None,
 ) -> List[Candidate]:
     """Maximal Marginal Relevance selection over the final candidate set.
 
@@ -480,6 +482,29 @@ def mmr_select(
         raw = list(relevance)
     normalized = normalize_scores(raw)
 
+    if similarity is None:
+        # Default redundancy is token/Jaccard. Tokenizing every candidate text
+        # once (instead of twice per (remaining, selected) pair — O(top_k * n)
+        # full segmentations of multi-KB chunk text) is the difference between
+        # a measurable fraction of fusion latency and noise; the pairwise math
+        # below is identical to jaccard_similarity over the same sets.
+        token_sets = [token_set(candidate.text_for_similarity) for candidate in candidates]
+
+        def similarity(left: int, right: int) -> float:  # noqa: F811 - index-based
+            left_tokens = token_sets[left]
+            right_tokens = token_sets[right]
+            if not left_tokens or not right_tokens:
+                return 0.0
+            union = len(left_tokens | right_tokens)
+            if not union:
+                return 0.0
+            return len(left_tokens & right_tokens) / union
+
+        index_similarity = similarity
+    else:
+        def index_similarity(left: int, right: int) -> float:
+            return similarity(candidates[left], candidates[right])
+
     remaining = list(range(len(candidates)))
     selected: List[Candidate] = []
     selected_indices: List[int] = []
@@ -490,7 +515,7 @@ def mmr_select(
         for position, index in enumerate(remaining):
             redundancy = 0.0
             for chosen in selected_indices:
-                redundancy = max(redundancy, similarity(candidates[index], candidates[chosen]))
+                redundancy = max(redundancy, index_similarity(index, chosen))
             score = lambda_ * normalized[index] - (1.0 - lambda_) * redundancy
             if score > best_score:
                 best_score = score
@@ -694,12 +719,17 @@ def aggregate_by_uri(candidates: Sequence[Candidate]) -> List[Dict[str, Any]]:
 
 @dataclass
 class FusionResult:
-    """Output of :func:`run_fusion`, with the effective config for the trace."""
+    """Output of :func:`run_fusion`, with the effective config for the trace.
+
+    ``stage_ms`` carries per-stage wall timings for observability only; ``trace``
+    stays byte-deterministic for the equality contract tests rely on.
+    """
 
     selected: List[Candidate]
     fused: List[Candidate]
     aggregated: List[Dict[str, Any]]
     trace: Dict[str, Any]
+    stage_ms: Dict[str, float] = field(default_factory=dict)
 
 
 def run_fusion(
@@ -720,6 +750,10 @@ def run_fusion(
     per_path = {
         name: list(paths)[: profile.recall_limit] for name, paths in ranked_paths.items()
     }
+    stage_ms: Dict[str, float] = {}
+    monotonic = time.monotonic
+
+    started = monotonic()
     fused = reciprocal_rank_fusion(per_path, k=profile.rrf_k, limit=profile.fused_limit)
     # Without a reranker the served score would be raw RRF dust (~0.02x), which
     # no threshold can consume; rescale it into a bounded rank-position domain.
@@ -729,21 +763,28 @@ def run_fusion(
         path_count=sum(1 for path in per_path.values() if path),
         k=profile.rrf_k,
     )
+    stage_ms["rrf_ms"] = round((monotonic() - started) * 1000, 3)
 
+    started = monotonic()
     outcome = apply_rerank(fused, rerank=rerank, profile=profile)
+    stage_ms["rerank_ms"] = round((monotonic() - started) * 1000, 3)
     ranked = list(outcome.candidates)
 
     effective_lambda = profile.mmr_lambda if lambda_ is None else lambda_
+    started = monotonic()
     if apply_mmr:
         selected = mmr_select(ranked, lambda_=effective_lambda, top_k=profile.mmr_top)
     else:
         selected = [c.copy(rank=index + 1) for index, c in enumerate(ranked[: profile.mmr_top])]
+    stage_ms["mmr_ms"] = round((monotonic() - started) * 1000, 3)
 
+    started = monotonic()
     expanded = expand_parents(
         selected,
         budget_tokens=profile.parent_token_budget,
         estimate=estimate,
     )
+    stage_ms["expand_ms"] = round((monotonic() - started) * 1000, 3)
 
     trace: Dict[str, Any] = {
         "fusion": profile.as_trace(),
@@ -764,6 +805,7 @@ def run_fusion(
         fused=fused,
         aggregated=aggregate_by_uri(expanded),
         trace=trace,
+        stage_ms=stage_ms,
     )
 
 
