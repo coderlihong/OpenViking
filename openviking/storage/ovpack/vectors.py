@@ -293,11 +293,13 @@ def _build_vector_snapshot_payload(
 ) -> dict[str, Any]:
     level = int(record.get("level", 2))
     scalars = dict(record.get("scalars") or {})
-    # A restore is not a managed generation write: those identifiers point at a
-    # builds row of the exporting instance, and carrying them over would demand
-    # the destination's publication authority for a generation it never saw.
-    scalars.pop("index_generation", None)
-    scalars.pop("index_plan_id", None)
+    # Keep ``index_generation``: the pack ships the source head snapshot (see
+    # publication_bundle._install_head_snapshot), so the destination manifest
+    # carries the same generations. Dropping it makes every restored row fail
+    # the post-search visibility recheck (a row whose generation is empty is
+    # only visible when the manifest does not know its URI), which silently
+    # hides the whole restored subtree from retrieval.
+
     owner_fields = owner_fields_for_uri(target_uri)
     timestamp = get_current_timestamp()
     payload = {
