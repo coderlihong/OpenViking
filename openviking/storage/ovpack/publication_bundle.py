@@ -178,13 +178,12 @@ async def export_publication_bundle(
                 "SELECT namespace FROM heads WHERE account=?", (account,)
             ):
                 namespace = row["namespace"]
-                manifest = _decode_manifest(
-                    db.execute(
-                        "SELECT s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot "
-                        "WHERE h.account=? AND h.namespace=?",
-                        (account, namespace),
-                    ).fetchone()
-                )
+                row = db.execute(
+                    "SELECT s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot "
+                    "WHERE h.account=? AND h.namespace=?",
+                    (account, namespace),
+                ).fetchone()
+                manifest = _decode_manifest(row[0] if row is not None else None)
                 for uri, value in (manifest or {}).items():
                     if uri in wanted:
                         head_items[uri] = value
@@ -347,7 +346,7 @@ async def _import_publication_bundle_zip(
     # 2) content blobs rebuilt from the restored files (AGFS raw read: the
     #    publication view is stale at this point by design).
     result["blobs"], result["refs_fixed"] = await _rebuild_blobs_and_refs(
-        viking_fs, store, account, root_uri, entries, zf, base_name
+        viking_fs, store, account, root_uri, entries, ctx
     )
 
     # 3) merge the shipped head snapshot into the destination's published view
@@ -377,16 +376,13 @@ async def _rebuild_blobs_and_refs(
     account: str,
     root_uri: str,
     entries: list[dict[str, Any]],
-    zf: zipfile.ZipFile,
-    base_name: str,
+    ctx: Any,
 ) -> tuple[int, int]:
     from openviking.indexing.content import blob_path
     from openviking.storage.ovpack.format import join_uri
 
-    blob_root = blob_path(viking_fs, _ctx_like(account), "0" * 64)
-    blob_dir = os.path.dirname(blob_root)
-    # blob_path validates the digest; derive the directory from a real call.
-    os.makedirs(blob_dir, exist_ok=True)
+    blob_dir = blob_path(viking_fs, ctx, "0" * 64).rsplit("/", 1)[0]
+    await viking_fs._async_agfs.ensure_parent_dirs(blob_dir + "/.keep")
 
     file_entries = [
         entry for entry in entries if not entry.get("isDir") and entry.get("rel_path")
@@ -397,20 +393,20 @@ async def _rebuild_blobs_and_refs(
     async def _one(entry: dict[str, Any]) -> None:
         async with semaphore:
             uri = entry.get("uri") or join_uri(root_uri, entry["rel_path"])
-            path = viking_fs._uri_to_path(uri)
+            path = viking_fs._uri_to_path(uri, ctx=ctx)
             try:
                 data = await viking_fs._async_agfs.read(path)
             except Exception:  # noqa: BLE001 - optional sidecars may be missing
                 return
             digest = hashlib.sha256(data).hexdigest()
-            target = os.path.join(blob_dir, digest + ".bin")
-            if os.path.exists(target):
+            target = blob_path(viking_fs, ctx, digest)
+            try:
+                await viking_fs._async_agfs.stat(target)
                 counter["present"] += 1
                 return
-            tmp = target + ".tmp"
-            with open(tmp, "wb") as handle:
-                handle.write(data)
-            os.replace(tmp, target)
+            except Exception:  # noqa: BLE001 - absent blob
+                pass
+            await viking_fs._async_agfs.write(target, data)
             counter["written"] += 1
 
     await asyncio.gather(*[_one(entry) for entry in file_entries])
@@ -432,7 +428,7 @@ async def _rebuild_blobs_and_refs(
                 for uri, item in manifest.items():
                     if not isinstance(item, dict) or not isinstance(item.get("content"), dict):
                         continue
-                    path = viking_fs._uri_to_path(uri)
+                    path = viking_fs._uri_to_path(uri, ctx=ctx)
                     try:
                         data = await viking_fs._async_agfs.read(path)
                     except Exception:  # noqa: BLE001
@@ -454,14 +450,6 @@ async def _rebuild_blobs_and_refs(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[ovpack] content ref reconciliation failed: {exc}")
     return counter["written"], fixed
-
-
-def _ctx_like(account: str):
-    class _Ctx:
-        account_id = account
-        user_id = None
-
-    return _Ctx()
 
 
 def _replace_head(db, account: str, namespace: str, manifest: dict) -> None:

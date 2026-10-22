@@ -420,6 +420,7 @@ async def import_ovpack(
     vector_action_mode = normalize_vector_mode(vector_mode)
     index_records: list[dict[str, Any]] = []
     dense_vectors: dict[str, list[float]] = {}
+    imported_entries: list[dict[str, Any]] = []
     vector_action = "recompute"
 
     with zipfile.ZipFile(file_path, "r") as zf:
@@ -471,11 +472,18 @@ async def import_ovpack(
         for _, safe_zip_path, kind, rel_path in members:
             if kind in {"manifest", "internal"}:
                 continue
+            target_file_uri = join_uri(root_uri, rel_path)
+            imported_entries.append(
+                {
+                    "rel_path": rel_path,
+                    "uri": target_file_uri,
+                    "isDir": kind == "directory",
+                }
+            )
             if kind == "directory":
-                await viking_fs.mkdir(join_uri(root_uri, rel_path), exist_ok=True, ctx=ctx)
+                await viking_fs.mkdir(target_file_uri, exist_ok=True, ctx=ctx)
                 continue
 
-            target_file_uri = join_uri(root_uri, rel_path)
             data = zf.read(safe_zip_path)
             await viking_fs.write_file_bytes(target_file_uri, data, ctx=ctx)
 
@@ -494,7 +502,7 @@ async def import_ovpack(
             logger.info(f"[ovpack] Restored vector snapshot for: {root_uri}")
             try:
                 await import_publication_bundle(
-                    viking_fs, file_path, base_name, root_uri, ctx, entries
+                    viking_fs, file_path, base_name, root_uri, ctx, imported_entries
                 )
             except Exception as exc:  # noqa: BLE001 - dense restore already succeeded
                 logger.warning(f"[ovpack] publication bundle import failed: {exc}")

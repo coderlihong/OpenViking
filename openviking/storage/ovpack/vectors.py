@@ -386,7 +386,12 @@ async def restore_vector_snapshot(
                 deduped[payload_id] = payload
             batch = list(deduped.values())
             try:
-                await vector_store.upsert_many(batch)
+                try:
+                    await vector_store.upsert_many(batch, ctx=ctx)
+                except TypeError as exc:
+                    if "ctx" not in str(exc) and "unexpected keyword" not in str(exc):
+                        raise
+                    await vector_store.upsert_many(batch)
             except (TypeError, ValueError) as exc:
                 # No bulk path (or an unexpected intra-batch conflict): keep the
                 # snapshot correct via the sequential replay of this chunk.

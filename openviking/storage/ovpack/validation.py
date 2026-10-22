@@ -11,6 +11,7 @@ from typing import Any
 from openviking.storage.ovpack.format import (
     OVPACK_DENSE_PATH,
     OVPACK_INDEX_RECORDS_PATH,
+    OVPACK_INTERNAL_DIR,
     OVPACK_MANIFEST_ZIP_LEAF,
     get_viking_rel_path_from_zip,
     internal_zip_path,
@@ -365,8 +366,16 @@ def _validate_internal_members(
             continue
         actual_files.add(safe_zip_path)
 
+    # The optional publication-state bundle is an extra internal section that a
+    # plain pack does not carry; it is validated by its own consumer and must
+    # not be treated as an undeclared member.
+    publication_prefix = internal_zip_path(
+        base_name, f"{OVPACK_INTERNAL_DIR}/publication/"
+    )
     missing = sorted(expected_files - actual_files)
-    unexpected = sorted(actual_files - expected_files)
+    unexpected = sorted(
+        path for path in actual_files - expected_files if not path.startswith(publication_prefix)
+    )
     if missing or unexpected:
         raise InvalidArgumentError(
             "ovpack internal entries do not match manifest",
