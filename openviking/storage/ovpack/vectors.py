@@ -314,10 +314,24 @@ def _build_vector_snapshot_payload(
     }
     if not payload.get("abstract"):
         payload["abstract"] = str(record.get("text") or "")
+    if level <= 1:
+        # Directory summary rows keep their vector (the semantic essence) but
+        # must stay well under the embedded engine's per-row byte budget; an
+        # oversized row is rejected by the index while the payload layer still
+        # answers scans, which looks like an unsearchable level.
+        summary = str(payload.get("abstract") or "")
+        if len(summary) > 1200:
+            payload["abstract"] = summary[:1200]
+        payload.pop("business_meta_payload", None)
+        payload.pop("business_meta_tokens", None)
     chunk_text = payload.get("chunk_text")
     if isinstance(chunk_text, str) and chunk_text:
         payload["content"] = chunk_text
-    elif "content" not in payload:
+    elif "content" not in payload and level >= 2:
+        # Directory summaries already carry their text in ``abstract``; copying
+        # it into ``content`` doubles the row and pushes the serialized record
+        # at (or past) the embedded engine's per-row byte limit, which rejects
+        # the write while the payload layer still answers scans.
         payload["content"] = str(record.get("text") or "")
     payload["id"] = _vector_record_id(payload, ctx)
     return payload
@@ -371,9 +385,14 @@ async def restore_vector_snapshot(
             # the last write wins, exactly like the pre-batching restore.
             for _, payload in payloads:
                 try:
-                    await vector_store.upsert(payload, ctx=ctx)
+                    result_id = await vector_store.upsert(payload, ctx=ctx)
                 except TypeError:
-                    await vector_store.upsert(payload)
+                    result_id = await vector_store.upsert(payload)
+                if not result_id:
+                    logger.warning(
+                        "[ovpack] snapshot upsert rejected: level=%s uri=%s",
+                        payload.get("level"), payload.get("uri"),
+                    )
             return
 
         for start in range(0, len(payloads), _VECTOR_SNAPSHOT_BATCH):
@@ -387,11 +406,17 @@ async def restore_vector_snapshot(
             batch = list(deduped.values())
             try:
                 try:
-                    await vector_store.upsert_many(batch, ctx=ctx)
+                    written = await vector_store.upsert_many(batch, ctx=ctx)
                 except TypeError as exc:
                     if "ctx" not in str(exc) and "unexpected keyword" not in str(exc):
                         raise
-                    await vector_store.upsert_many(batch)
+                    written = await vector_store.upsert_many(batch)
+                if isinstance(written, list) and len(written) != len(batch):
+                    logger.warning(
+                        "[ovpack] bulk snapshot wrote %s/%s records (levels: %s)",
+                        len(written), len(batch),
+                        sorted({p.get("level") for p in batch}),
+                    )
             except (TypeError, ValueError) as exc:
                 # No bulk path (or an unexpected intra-batch conflict): keep the
                 # snapshot correct via the sequential replay of this chunk.
