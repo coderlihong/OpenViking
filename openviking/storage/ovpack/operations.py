@@ -538,6 +538,39 @@ async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]
     return entries
 
 
+# Raster content that zlib cannot shrink: stored uncompressed to save the
+# deflate CPU (the pack checksums cover content, not compression method).
+_ZIP_STORED_IMAGE_EXTS = frozenset(
+    {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+)
+# Text members still shrink ~3x at level 1 with a fraction of the level-6 CPU.
+_ZIP_TEXT_COMPRESS_LEVEL = 1
+# Files whose bytes are prefetched while earlier members deflate; the reads go
+# through the full VikingFS path (ACL + AGFS + content projection) and overlap
+# with compression instead of serialising read-then-write per file.
+_ZIP_READ_PREFETCH = 16
+
+
+def _zip_member_info(zip_path: str, *, store: bool) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(filename=zip_path, date_time=(1980, 1, 1, 0, 0, 0))
+    info.external_attr = 0o644 << 16
+    if store:
+        info.compress_type = zipfile.ZIP_STORED
+    else:
+        info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
+def _zip_write_member(
+    zf: zipfile.ZipFile, zip_path: str, data: bytes, *, store: bool
+) -> None:
+    info = _zip_member_info(zip_path, store=store)
+    if store:
+        zf.writestr(info, data)
+    else:
+        zf.writestr(info, data, compresslevel=_ZIP_TEXT_COMPRESS_LEVEL)
+
+
 async def _write_ovpack_archive(
     viking_fs,
     root_uri: str,
@@ -562,25 +595,52 @@ async def _write_ovpack_archive(
         zf.writestr(f"{base_name}/{OVPACK_FILES_DIR}/", "")
 
         content_entries = [entry for entry in entries if entry["rel_path"] != ""]
-        for entry in content_entries:
+        file_positions = [
+            position for position, entry in enumerate(content_entries) if not entry.get("isDir")
+        ]
+        pending_reads: dict[int, "asyncio.Task[bytes]"] = {}
+        next_prefetch_position = 0
+
+        def _fill_read_window() -> None:
+            nonlocal next_prefetch_position
+            while (
+                len(pending_reads) < _ZIP_READ_PREFETCH
+                and next_prefetch_position < len(file_positions)
+            ):
+                member_position = file_positions[next_prefetch_position]
+                entry = content_entries[member_position]
+                full_uri = entry.get("uri") or join_uri(root_uri, entry["rel_path"])
+                pending_reads[member_position] = asyncio.ensure_future(
+                    viking_fs.read_file_bytes(full_uri, ctx=ctx)
+                )
+                next_prefetch_position += 1
+
+        for position, entry in enumerate(content_entries):
             rel_path = entry["rel_path"]
             zip_path = get_ovpack_zip_path(base_name, rel_path)
 
             if entry.get("isDir"):
                 zf.writestr(zip_path.rstrip("/") + "/", "")
-            else:
-                full_uri = entry.get("uri") or join_uri(root_uri, rel_path)
-                try:
-                    data = await viking_fs.read_file_bytes(full_uri, ctx=ctx)
-                except Exception as exc:
-                    logger.warning(f"Failed to export file {full_uri}: {exc}")
-                    raise
+                continue
 
-                manifest_entry = manifest_file_entries.get(rel_path)
-                if manifest_entry is not None:
-                    manifest_entry["size"] = len(data)
-                    manifest_entry["sha256"] = sha256_hex(data)
-                zf.writestr(zip_path, data)
+            _fill_read_window()
+            try:
+                data = await pending_reads.pop(position)
+            except Exception as exc:
+                full_uri = entry.get("uri") or join_uri(root_uri, rel_path)
+                logger.warning(f"Failed to export file {full_uri}: {exc}")
+                raise
+
+            manifest_entry = manifest_file_entries.get(rel_path)
+            if manifest_entry is not None:
+                manifest_entry["size"] = len(data)
+                manifest_entry["sha256"] = sha256_hex(data)
+            _zip_write_member(
+                zf,
+                zip_path,
+                data,
+                store=rel_path.lower().endswith(tuple(_ZIP_STORED_IMAGE_EXTS)),
+            )
 
         manifest["content_sha256"] = manifest_content_sha256(manifest_file_entries)
         index_bytes = jsonl_bytes(index_records)
@@ -593,17 +653,23 @@ async def _write_ovpack_archive(
         }
 
         zf.writestr(f"{base_name}/{OVPACK_INTERNAL_DIR}/", "")
-        zf.writestr(internal_zip_path(base_name, OVPACK_INDEX_RECORDS_PATH), index_bytes)
+        _zip_write_member(
+            zf, internal_zip_path(base_name, OVPACK_INDEX_RECORDS_PATH), index_bytes, store=False
+        )
 
         dense_snapshot = build_dense_snapshot_manifest(index_records, dense_values)
         if dense_snapshot is not None:
             dense_bytes, dense_manifest = dense_snapshot
             manifest["index"]["dense"] = dense_manifest
-            zf.writestr(internal_zip_path(base_name, dense_manifest["path"]), dense_bytes)
+            _zip_write_member(
+                zf, internal_zip_path(base_name, dense_manifest["path"]), dense_bytes, store=True
+            )
 
-        zf.writestr(
+        _zip_write_member(
+            zf,
             f"{base_name}/{OVPACK_MANIFEST_ZIP_LEAF}",
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8"),
+            store=False,
         )
     return to
 
