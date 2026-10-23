@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import time
 import os
 import zipfile
 from typing import Any, Optional
@@ -240,22 +241,25 @@ async def _filter_existing_optional_sidecars(
     entries: list[dict[str, Any]],
     ctx: RequestContext,
 ) -> list[dict[str, Any]]:
+    # The entries come from a single directory walk of the export root, so an
+    # optional sidecar entry is present exactly when the walk saw it. Probing
+    # each of the ~400k sidecars with its own ``exists`` call made a full backup
+    # crawl for hours; the set lookup is the same information without the IO.
+    walked = {str(entry.get("rel_path") or "") for entry in entries}
     filtered: list[dict[str, Any]] = []
+    dropped = 0
     for entry in entries:
         if not _is_optional_abstract_overview(entry):
             filtered.append(entry)
             continue
-
         rel_path = str(entry.get("rel_path") or "")
-        uri = entry.get("uri") or join_uri(root_uri, rel_path)
-        try:
-            exists = await viking_fs.exists(uri, ctx=ctx)
-        except Exception:
-            exists = False
-        if exists:
+        if rel_path in walked:
             filtered.append(entry)
         else:
-            logger.info(f"[ovpack] Skipping missing abstract overview: {uri}")
+            dropped += 1
+    if dropped:
+        logger.info(f"[ovpack] skipped {dropped} optional sidecars missing from the walk")
+    logger.info(f"[ovpack] sidecar filter: {len(entries)} entries -> {len(filtered)}")
     return filtered
 
 
@@ -525,8 +529,10 @@ async def import_ovpack(
 
 async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
+    started = time.monotonic()
     for scope in PUBLIC_SCOPES:
         scope_uri = f"viking://{scope}"
+        scope_started = time.monotonic()
         entries.append(
             {
                 "rel_path": scope,
@@ -546,6 +552,10 @@ async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]
         except (NotFoundError, FileNotFoundError):
             continue
 
+        logger.info(
+            "[ovpack] walked %s: %d entries in %.1fs",
+            scope_uri, len(scope_entries), time.monotonic() - scope_started,
+        )
         for entry in _exportable_entries(scope_entries):
             rel_path = entry.get("rel_path", "")
             if not rel_path:
