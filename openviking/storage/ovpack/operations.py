@@ -552,14 +552,15 @@ def _physical_scope_root(viking_fs, ctx: RequestContext) -> Optional[str]:
                 bases.append(str(value))
     except Exception:  # noqa: BLE001 - still try the working directory
         pass
-    bases.append(os.getcwd())
+    cwd = os.getcwd()
+    bases.extend([cwd, os.path.join(cwd, "data")])
     seen: set[str] = set()
     for base in bases:
         if base in seen:
             continue
         seen.add(base)
-        for layout in ("viking", ()):
-            root = os.path.join(base, *layout, str(account_id)) if layout else os.path.join(base, str(account_id))
+        for layout in ("viking",):
+            root = os.path.join(base, layout, str(account_id))
             if os.path.isdir(os.path.join(root, "resources")):
                 return root
     return None
