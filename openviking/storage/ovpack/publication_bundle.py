@@ -536,6 +536,25 @@ async def append_publication_bundle(
         return None
 
 
+
+def has_publication_bundle(file_path: str, base_name: str) -> bool:
+    """Return whether the pack carries a publication section.
+
+    Only a pack that also ships the ledger (builds/desired/snapshots) can keep
+    a record's ``index_generation``: the destination learns those generations
+    from the pack and can pass the managed-write identity guard. Legacy packs
+    have no such rows, so the generation has to be dropped or the write is
+    rejected.
+    """
+    try:
+        with zipfile.ZipFile(file_path) as zf:
+            names = zf.namelist()
+    except (OSError, zipfile.BadZipFile):
+        return False
+    prefix = _leaf(base_name, f"{_PUBLICATION_DIR}/")
+    return any(name.startswith(prefix) for name in names)
+
+
 # ── vector index snapshot (offline migration) ──
 
 _INDEX_LEAF = f"{_PUBLICATION_DIR}/vectordb_index.json"

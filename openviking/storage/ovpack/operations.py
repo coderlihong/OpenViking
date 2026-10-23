@@ -42,6 +42,7 @@ from openviking.storage.ovpack.format import (
 from openviking.storage.ovpack.index import build_manifest, read_text_if_exists
 from openviking.storage.ovpack.publication_bundle import (
     append_publication_bundle,
+    has_publication_bundle,
     import_publication_bundle,
     ship_vectordb_index,
 )
@@ -499,6 +500,7 @@ async def import_ovpack(
                 dense_vectors,
                 manifest_entries_by_path(manifest),
                 ctx,
+                keep_generation=has_publication_bundle(file_path, base_name),
             )
             logger.info(f"[ovpack] Restored vector snapshot for: {root_uri}")
             try:
@@ -958,6 +960,7 @@ async def restore_ovpack(
             dense_vectors,
             manifest_entries,
             ctx,
+            keep_generation=has_publication_bundle(file_path, base_name),
         )
         logger.info("[ovpack] Restored vector snapshot for backup")
         try:

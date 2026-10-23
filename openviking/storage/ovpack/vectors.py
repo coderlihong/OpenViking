@@ -290,15 +290,19 @@ def _build_vector_snapshot_payload(
     dense_vector: list[float],
     target_uri: str,
     ctx: RequestContext,
+    keep_generation: bool = False,
 ) -> dict[str, Any]:
     level = int(record.get("level", 2))
     scalars = dict(record.get("scalars") or {})
-    # Keep ``index_generation``: the pack ships the source head snapshot (see
-    # publication_bundle._install_head_snapshot), so the destination manifest
-    # carries the same generations. Dropping it makes every restored row fail
-    # the post-search visibility recheck (a row whose generation is empty is
-    # only visible when the manifest does not know its URI), which silently
-    # hides the whole restored subtree from retrieval.
+    # A pack that ships the publication ledger also carries the source head
+    # snapshot, so the destination manifest holds the same generations and the
+    # restored rows must keep ``index_generation``/``index_plan_id`` to pass the
+    # visibility recheck and the managed-write identity guard. Legacy packs have
+    # no ledger rows, so those identifiers must be dropped instead or the write
+    # is rejected with a generation identity mismatch.
+    if not keep_generation:
+        scalars.pop("index_generation", None)
+        scalars.pop("index_plan_id", None)
 
     owner_fields = owner_fields_for_uri(target_uri)
     timestamp = get_current_timestamp()
@@ -352,6 +356,7 @@ async def restore_vector_snapshot(
     dense_vectors: dict[str, list[float]],
     manifest_entries: dict[str, dict[str, Any]],
     ctx: RequestContext,
+    keep_generation: bool = False,
 ) -> None:
     def _iter_targeted_payloads() -> "Iterator[tuple[str, dict[str, Any]]]":
         for record in index_records:
@@ -369,7 +374,11 @@ async def restore_vector_snapshot(
                 continue
             owner_ctx = content_owner_context_for_uri(target_uri, ctx)
             payload = _build_vector_snapshot_payload(
-                record, dense_vectors[record_id], target_uri, owner_ctx
+                record,
+                dense_vectors[record_id],
+                target_uri,
+                owner_ctx,
+                keep_generation=keep_generation,
             )
             yield payload["id"], payload
 
