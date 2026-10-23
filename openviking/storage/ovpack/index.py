@@ -503,9 +503,12 @@ async def build_manifest(
         for plan in entry_plans
     }
 
+    consumed = 0
+
     async def consume(
         uris: list[str], by_uri: dict[str, list[dict[str, Any]]]
     ) -> None:
+        nonlocal consumed
         for uri in uris:
             plan = plan_by_uri.get(normalize_uri_key(uri))
             if plan is None:
@@ -536,6 +539,13 @@ async def build_manifest(
             # the export is what OOMs large tenants.
             for record in records:
                 record.pop("vector", None)
+        consumed += len(uris)
+        if consumed % 10000 < len(uris):
+            logger.info(
+                "[ovpack] manifest plan: %d/%d entries packed",
+                consumed,
+                len(entry_plans),
+            )
 
     await walk_uri_record_batches(
         vector_store,
