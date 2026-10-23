@@ -542,19 +542,61 @@ async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]
             }
         )
         try:
-            scope_entries = await viking_fs.tree(
+            top_entries = await viking_fs.tree(
                 scope_uri,
                 show_all_hidden=True,
                 node_limit=None,
-                level_limit=None,
+                level_limit=1,
                 ctx=ctx,
             )
         except (NotFoundError, FileNotFoundError):
             continue
 
+        # Walk each top-level child concurrently. A single unlimited tree of a
+        # 390k-node scope serializes every AGFS readdir behind one await chain
+        # (minutes with no output); fanning out the subtrees keeps several
+        # readdirs in flight and lets the export report progress per subtree.
+        top_children = [
+            entry
+            for entry in top_entries
+            if entry.get("rel_path") and entry.get("isDir")
+        ]
+        top_files = [
+            entry
+            for entry in top_entries
+            if entry.get("rel_path") and not entry.get("isDir")
+        ]
+        scope_entries = list(top_files)
+        walk_sem = asyncio.Semaphore(8)
+
+        async def _walk_child(child_entry: dict[str, Any]) -> None:
+            child_uri = join_uri(scope_uri, child_entry["rel_path"])
+            async with walk_sem:
+                try:
+                    child_entries = await viking_fs.tree(
+                        child_uri,
+                        show_all_hidden=True,
+                        node_limit=None,
+                        level_limit=None,
+                        ctx=ctx,
+                    )
+                except (NotFoundError, FileNotFoundError):
+                    return
+            for entry in child_entries:
+                rel = str(entry.get("rel_path") or "")
+                if not rel:
+                    continue
+                merged = dict(entry)
+                merged["rel_path"] = f"{child_entry['rel_path']}/{rel}"
+                scope_entries.append(merged)
+
+        await asyncio.gather(*[_walk_child(child) for child in top_children])
         logger.info(
-            "[ovpack] walked %s: %d entries in %.1fs",
-            scope_uri, len(scope_entries), time.monotonic() - scope_started,
+            "[ovpack] walked %s: %d entries (%d subtrees) in %.1fs",
+            scope_uri,
+            len(scope_entries),
+            len(top_children),
+            time.monotonic() - scope_started,
         )
         for entry in _exportable_entries(scope_entries):
             rel_path = entry.get("rel_path", "")
