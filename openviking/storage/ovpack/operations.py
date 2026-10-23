@@ -59,6 +59,7 @@ from openviking.storage.ovpack.policy import (
     backup_scopes_from_manifest,
     is_backup_package,
     is_excluded_rel_path,
+    manifest_root_uri,
     resolve_import_root_uri,
     validate_export_source_uri,
     validate_import_scope_compatibility,
@@ -200,6 +201,40 @@ async def _root_exists(viking_fs, root_uri: str, ctx: RequestContext) -> bool:
         return False
 
 
+async def _clear_scope_root_children(viking_fs, root_uri: str, ctx: RequestContext) -> None:
+    """Empty a scope root (e.g. ``viking://resources``) for a top-level import.
+
+    A tenant-scoped identity cannot delete the namespace root itself
+    ("Deleting a namespace root requires root access"), but every child of the
+    root is a concrete content path that the same identity may delete. This is
+    the overwrite path for imports that target the root URI: remove each child,
+    never the root.
+    """
+    try:
+        children = await viking_fs.ls(root_uri, output="original", ctx=ctx)
+    except Exception as exc:  # noqa: BLE001 - listing failures surface on write anyway
+        logger.warning(f"[ovpack] Cannot list {root_uri} children for overwrite: {exc}")
+        return
+    child_uris = []
+    for child in children or []:
+        if isinstance(child, dict) and child.get("uri"):
+            child_uris.append(str(child["uri"]))
+        elif isinstance(child, str):
+            child_uris.append(child)
+    for child_uri in child_uris:
+        try:
+            await viking_fs.rm(child_uri, recursive=True, ctx=ctx)
+            logger.info(f"[ovpack] Overwrite cleared existing child {child_uri}")
+        except (NotFoundError, FileNotFoundError):
+            continue
+        except Exception as exc:  # noqa: BLE001 - keep clearing siblings, fail on write if fatal
+            raise ConflictError(
+                f"Cannot overwrite existing child at {child_uri}. "
+                "Clear it manually or use on_conflict='skip'/'fail'.",
+                resource=child_uri,
+            ) from exc
+
+
 async def _ensure_parent_exists(viking_fs, parent: str, ctx: RequestContext) -> None:
     try:
         await viking_fs.stat(parent, ctx=ctx, skip_count=True)
@@ -260,7 +295,7 @@ async def _filter_existing_optional_sidecars(
             dropped += 1
     if dropped:
         logger.info(f"[ovpack] skipped {dropped} optional sidecars missing from the walk")
-    logger.info(f"[ovpack] sidecar filter: {len(entries)} entries -> {len(filtered)}")
+    logger.warning(f"[ovpack] sidecar filter: {len(entries)} entries -> {len(filtered)}")
     return filtered
 
 
@@ -521,7 +556,13 @@ async def import_ovpack(
 
         for existing_root in existing_roots:
             logger.info(f"[ovpack] Overwriting existing resource at {existing_root}")
-            await _remove_existing_root(viking_fs, existing_root, ctx)
+            if parent == "viking://" and manifest_root_uri(manifest) == existing_root:
+                # The target is a namespace root (e.g. viking://resources): the
+                # calling tenant usually cannot delete the root itself, so clear
+                # its children instead and merge the pack on top of the root.
+                await _clear_scope_root_children(viking_fs, existing_root, ctx)
+            else:
+                await _remove_existing_root(viking_fs, existing_root, ctx)
 
         for _, safe_zip_path, kind, rel_path in members:
             if kind in {"manifest", "internal"}:
@@ -645,9 +686,10 @@ def _physical_backup_entries(root: str) -> list[dict[str, Any]]:
 async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]]:
     started = time.monotonic()
     physical_root = _physical_scope_root(viking_fs, ctx)
+    logger.warning("[ovpack] physical root probe: %s", physical_root)
     if physical_root is not None:
         entries = _physical_backup_entries(physical_root)
-        logger.info(
+        logger.warning(
             "[ovpack] walked %s directly: %d entries in %.1fs",
             physical_root, len(entries), time.monotonic() - started,
         )
@@ -715,7 +757,7 @@ async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]
                 scope_entries.append(merged)
 
         await asyncio.gather(*[_walk_child(child) for child in top_children])
-        logger.info(
+        logger.warning(
             "[ovpack] walked %s: %d entries (%d subtrees) in %.1fs",
             scope_uri,
             len(scope_entries),
@@ -972,6 +1014,7 @@ async def backup_ovpack(
     include_index: bool = False,
 ) -> str:
     """Export all public OpenViking scopes as a restore-only backup package."""
+    logger.warning("[ovpack] backup start: to=%s include_vectors=%s", to, include_vectors)
     base_name = OVPACK_BACKUP_NAME
     if os.path.isdir(to):
         to = os.path.join(to, f"{base_name}.ovpack")

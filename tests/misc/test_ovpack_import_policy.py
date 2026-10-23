@@ -26,7 +26,11 @@ from openviking.storage.ovpack.operations import (
     restore_ovpack,
 )
 from openviking.storage.vector_ids import chunk_vector_record_id, vector_record_id
-from openviking_cli.exceptions import InvalidArgumentError, NotFoundError
+from openviking_cli.exceptions import (
+    InvalidArgumentError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -1631,3 +1635,71 @@ async def test_recompute_import_replays_image_occurrences_with_source_meta(
     }
     assert image_call["summary_dict"]["summary"] == "该图为品牌标识。"
     assert "image_occurrences" not in captured[chapter_uri]["summary_dict"]
+
+
+class NamespaceRootVikingFS(FakeVikingFS):
+    """FakeVikingFS that models the namespace-root delete guard of the real FS.
+
+    ``rm`` on a scope root (viking://resources, viking://user/<id>) raises
+    PermissionDeniedError exactly like the production ACL guard; concrete child
+    paths delete normally.
+    """
+
+    def __init__(self, existing_roots: set[str] | None = None) -> None:
+        super().__init__(existing_roots)
+
+    async def ls(self, uri: str, output: str = "original", ctx=None):
+        if uri in self.existing_roots:
+            if uri == "viking://resources":
+                return [
+                    {"uri": "viking://resources/stale.txt", "isDir": False},
+                ]
+            return []
+        raise NotFoundError(uri, "file")
+
+    async def rm(self, uri: str, recursive: bool = False, ctx=None):
+        assert recursive is True
+        canonical = uri.rstrip("/")
+        parts = [p for p in canonical.split("/") if p]
+        if canonical == "viking://resources" or (
+            parts[:1] == ["user"] and len(parts) == 2
+        ):
+            raise PermissionDeniedError(
+                "Deleting a namespace root requires root access; use a concrete content "
+                "path instead.",
+                resource=uri,
+            )
+        self.removed_roots.append(uri)
+
+
+@pytest.mark.asyncio
+async def test_import_top_level_scope_overwrite_clears_children_without_deleting_root(
+    temp_ovpack_path: Path, request_ctx: RequestContext
+):
+    manifest = _manifest_for_files("resources", {"README.md": "hello"})
+    manifest["root"] = {
+        "name": "resources",
+        "uri": "viking://resources",
+        "scope": "resources",
+    }
+    _write_ovpack_with_manifest(
+        temp_ovpack_path,
+        "resources",
+        {"README.md": "hello"},
+        manifest=manifest,
+    )
+    fake_fs = NamespaceRootVikingFS(existing_roots={"viking://resources"})
+
+    result = await import_ovpack(
+        fake_fs,
+        str(temp_ovpack_path),
+        "viking://",
+        request_ctx,
+        on_conflict="overwrite",
+    )
+
+    assert result == "viking://resources"
+    # The stale pre-existing child is cleared; the root itself is never removed.
+    assert "viking://resources/stale.txt" in fake_fs.removed_roots
+    assert all(uri != "viking://resources" for uri in fake_fs.removed_roots)
+    assert "viking://resources/README.md" in fake_fs.written_files

@@ -579,7 +579,7 @@ async def build_manifest(
                 record.pop("vector", None)
         consumed += len(uris)
         if consumed % 10000 < len(uris):
-            logger.info(
+            logger.warning(
                 "[ovpack] manifest plan: %d/%d entries packed",
                 consumed,
                 len(entry_plans),
