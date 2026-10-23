@@ -71,6 +71,39 @@ def _store():
     return configured_store()
 
 
+def published_generations(account: str) -> dict[str, str]:
+    """Return ``{uri: generation}`` for the account's published head snapshots.
+
+    Restored rows keep the source ``index_generation`` and the managed-write
+    window only accepts a generation the destination ledger still considers
+    live. A pack shipped with a publication bundle therefore has to be replayed
+    against the shipped head: rows whose generation the head no longer
+    references are superseded and must be dropped instead of written.
+    """
+    store = _store()
+    if store is None:
+        return {}
+    try:
+        with store.db(readonly=True) as db:
+            rows = db.execute(
+                "SELECT s.manifest FROM heads h JOIN snapshots s ON s.id=h.snapshot "
+                "WHERE h.account=?",
+                (account,),
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001 - migration aid is best-effort
+        logger.warning("[ovpack] published generation lookup failed: %s", exc)
+        return {}
+    generations: dict[str, str] = {}
+    for row in rows:
+        manifest = _decode_manifest(row[0])
+        if not isinstance(manifest, dict):
+            continue
+        for uri, item in manifest.items():
+            if isinstance(item, dict) and item.get("generation"):
+                generations[uri] = str(item["generation"])
+    return generations
+
+
 def _chunks(items: list[Any], size: int = _IN_QUERY_CHUNK):
     for start in range(0, len(items), size):
         yield items[start : start + size]
@@ -406,7 +439,25 @@ async def _rebuild_blobs_and_refs(
                 return
             except Exception:  # noqa: BLE001 - absent blob
                 pass
-            await viking_fs._async_agfs.write(target, data)
+            # Sibling workers race to create the same blob directory/content and
+            # the store reports that as a lock conflict or an existing file.
+            # Mirror the canonical archive path: retry briefly and, when a
+            # winner already landed the bytes, move on instead of failing the
+            # whole bundle (which used to abort every migration).
+            for attempt in range(3):
+                try:
+                    await viking_fs._async_agfs.write(target, data)
+                    counter["written"] += 1
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    message = str(exc).lower()
+                    if "exist" in message or "already" in message:
+                        counter["present"] += 1
+                        return
+                    if "lock" in message and attempt < 2:
+                        await asyncio.sleep(0.1 * (attempt + 1))
+                        continue
+                    raise
             counter["written"] += 1
 
     await asyncio.gather(*[_one(entry) for entry in file_entries])

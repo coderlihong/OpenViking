@@ -45,6 +45,7 @@ from openviking.storage.ovpack.publication_bundle import (
     append_publication_bundle,
     has_publication_bundle,
     import_publication_bundle,
+    published_generations,
     ship_vectordb_index,
 )
 from openviking.storage.ovpack.manifest import (
@@ -395,6 +396,53 @@ async def _enqueue_direct_vectorization(
     )
 
 
+async def _restore_snapshot_with_ledger(
+    *,
+    viking_fs,
+    vector_store,
+    file_path: str,
+    base_name: str,
+    root_uri: str,
+    index_records: list[dict[str, Any]],
+    dense_vectors: dict[str, list[float]],
+    manifest_entries: dict[str, dict[str, Any]],
+    entries: list[dict[str, Any]],
+    ctx: RequestContext,
+) -> None:
+    """Install the pack's publication ledger, then replay its dense snapshot.
+
+    The ledger must go first: restored rows keep ``index_generation`` and
+    ``index_plan_id`` (the managed-write window needs the destination ledger to
+    know that generation, otherwise it fails with "Unknown index generation").
+    After the shipped head is installed, rows whose generation the head no
+    longer references are superseded — a pack exported from a source that was
+    reindexed more than once can carry them — and are skipped rather than
+    aborting the migration.
+    """
+    ledger_present = has_publication_bundle(file_path, base_name)
+    if ledger_present:
+        await import_publication_bundle(
+            viking_fs, file_path, base_name, root_uri, ctx, entries
+        )
+    allowed = published_generations(ctx.account_id) if ledger_present else None
+    restored, skipped = await restore_vector_snapshot(
+        vector_store,
+        root_uri,
+        index_records,
+        dense_vectors,
+        manifest_entries,
+        ctx,
+        keep_generation=ledger_present,
+        allowed_generations=allowed,
+    )
+    logger.info(
+        "[ovpack] Restored %s vector record(s) for %s%s",
+        restored,
+        root_uri,
+        f" (skipped {skipped} superseded)" if skipped else "",
+    )
+
+
 async def import_ovpack(
     viking_fs,
     file_path: str,
@@ -497,22 +545,18 @@ async def import_ovpack(
 
     if not is_session_uri(root_uri):
         if vector_action == "restore":
-            await restore_vector_snapshot(
-                vector_store,
-                root_uri,
-                index_records,
-                dense_vectors,
-                manifest_entries_by_path(manifest),
-                ctx,
-                keep_generation=has_publication_bundle(file_path, base_name),
+            await _restore_snapshot_with_ledger(
+                viking_fs=viking_fs,
+                vector_store=vector_store,
+                file_path=file_path,
+                base_name=base_name,
+                root_uri=root_uri,
+                index_records=index_records,
+                dense_vectors=dense_vectors,
+                manifest_entries=manifest_entries_by_path(manifest),
+                entries=imported_entries,
+                ctx=ctx,
             )
-            logger.info(f"[ovpack] Restored vector snapshot for: {root_uri}")
-            try:
-                await import_publication_bundle(
-                    viking_fs, file_path, base_name, root_uri, ctx, imported_entries
-                )
-            except Exception as exc:  # noqa: BLE001 - dense restore already succeeded
-                logger.warning(f"[ovpack] publication bundle import failed: {exc}")
         else:
             await _enqueue_direct_vectorization(
                 viking_fs,
@@ -884,6 +928,7 @@ async def export_ovpack(
                 "Cannot export incomplete OpenViking vector index snapshot",
                 details=report.details(),
             )
+    current_generations = published_generations(ctx.account_id) if include_vectors else None
     manifest, index_records, dense_values = await build_manifest(
         viking_fs,
         vector_store,
@@ -892,6 +937,7 @@ async def export_ovpack(
         entries,
         ctx,
         include_vectors=include_vectors,
+        current_generations=current_generations,
     )
     await _write_ovpack_archive(
         viking_fs,
@@ -948,6 +994,7 @@ async def backup_ovpack(
                 "Cannot export incomplete OpenViking vector index snapshot",
                 details=report.details(),
             )
+    current_generations = published_generations(ctx.account_id) if include_vectors else None
     manifest, index_records, dense_values = await build_manifest(
         viking_fs,
         vector_store,
@@ -958,6 +1005,7 @@ async def backup_ovpack(
         package_type=OVPACK_BACKUP_TYPE,
         scopes=list(PUBLIC_SCOPES),
         include_vectors=include_vectors,
+        current_generations=current_generations,
     )
     await _write_ovpack_archive(
         viking_fs,
@@ -1085,22 +1133,18 @@ async def restore_ovpack(
     logger.info(f"[ovpack] Successfully restored backup {file_path}")
 
     if vector_action == "restore":
-        await restore_vector_snapshot(
-            vector_store,
-            root_uri,
-            index_records,
-            dense_vectors,
-            manifest_entries,
-            ctx,
-            keep_generation=has_publication_bundle(file_path, base_name),
+        await _restore_snapshot_with_ledger(
+            viking_fs=viking_fs,
+            vector_store=vector_store,
+            file_path=file_path,
+            base_name=base_name,
+            root_uri=root_uri,
+            index_records=index_records,
+            dense_vectors=dense_vectors,
+            manifest_entries=manifest_entries,
+            entries=restored_entries,
+            ctx=ctx,
         )
-        logger.info("[ovpack] Restored vector snapshot for backup")
-        try:
-            await import_publication_bundle(
-                viking_fs, file_path, base_name, root_uri, ctx, restored_entries
-            )
-        except Exception as exc:  # noqa: BLE001 - dense restore already succeeded
-            logger.warning(f"[ovpack] publication bundle import failed: {exc}")
         return root_uri
 
     vectorization_groups: dict[str, list[dict[str, Any]]] = {}

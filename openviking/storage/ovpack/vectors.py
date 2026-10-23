@@ -357,8 +357,23 @@ async def restore_vector_snapshot(
     manifest_entries: dict[str, dict[str, Any]],
     ctx: RequestContext,
     keep_generation: bool = False,
-) -> None:
+    allowed_generations: dict[str, str] | None = None,
+) -> tuple[int, int]:
+    """Replay a pack's dense snapshot into the destination vector store.
+
+    ``allowed_generations`` is the destination's published ``{uri: generation}``
+    map (only meaningful for packs that also ship the ledger). A pack exported
+    from a source that was reindexed more than once can carry superseded rows
+    for the same URI; those generations are not live in the shipped head, so the
+    managed-write window would reject them. They are dropped here instead of
+    failing the whole migration.
+
+    Returns ``(restored, skipped_superseded)``.
+    """
+    skipped_superseded = 0
+
     def _iter_targeted_payloads() -> "Iterator[tuple[str, dict[str, Any]]]":
+        nonlocal skipped_superseded
         for record in index_records:
             record_id = record.get("record_id")
             if not isinstance(record_id, str) or record_id not in dense_vectors:
@@ -372,6 +387,11 @@ async def restore_vector_snapshot(
             target_uri = manifest_entry_target_uri(root_uri, rel_path, manifest_entry)
             if target_uri == "viking://user" or is_session_uri(target_uri):
                 continue
+            if keep_generation and allowed_generations is not None:
+                generation = (record.get("scalars") or {}).get("index_generation")
+                if generation is not None and generation != allowed_generations.get(target_uri):
+                    skipped_superseded += 1
+                    continue
             owner_ctx = content_owner_context_for_uri(target_uri, ctx)
             payload = _build_vector_snapshot_payload(
                 record,
@@ -383,6 +403,13 @@ async def restore_vector_snapshot(
             yield payload["id"], payload
 
     payloads = list(_iter_targeted_payloads())
+    if skipped_superseded:
+        logger.warning(
+            "[ovpack] skipped %s superseded snapshot record(s) for %s "
+            "(generation no longer referenced by the shipped head)",
+            skipped_superseded,
+            root_uri,
+        )
     bulk = hasattr(vector_store, "upsert_many")
     if bulk and hasattr(vector_store, "begin_bulk_ingest"):
         try:
@@ -404,7 +431,7 @@ async def restore_vector_snapshot(
                         "[ovpack] snapshot upsert rejected: level=%s uri=%s",
                         payload.get("level"), payload.get("uri"),
                     )
-            return
+            return len(payloads), skipped_superseded
 
         for start in range(0, len(payloads), _VECTOR_SNAPSHOT_BATCH):
             chunk = payloads[start : start + _VECTOR_SNAPSHOT_BATCH]
@@ -443,3 +470,5 @@ async def restore_vector_snapshot(
                 await vector_store.end_bulk_ingest()
             except Exception as exc:  # noqa: BLE001 - best-effort
                 logger.warning(f"[ovpack] end_bulk_ingest failed: {exc}")
+
+    return len(payloads), skipped_superseded

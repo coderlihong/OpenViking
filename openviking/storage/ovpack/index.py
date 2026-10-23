@@ -226,6 +226,29 @@ def normalize_uri_key(uri: str) -> str:
     return uri.rstrip("/") or "/"
 
 
+def current_generation_records(
+    records: list[dict[str, Any]], expected_generation: str | None
+) -> list[dict[str, Any]]:
+    """Keep only rows the published head still references.
+
+    The vector store keeps one row per build generation; after repeated
+    reindexes older generations stay behind and are filtered out of retrieval by
+    the visibility recheck. Shipping them would make the pack unrestorable with
+    ``vector_mode=require`` (the managed-write window rejects superseded
+    generations), so an export drops them instead. ``None`` means the head has
+    no entry for this URI (legacy data or a scope-less backup): keep the rows.
+    """
+    if expected_generation is None:
+        return records
+    current: list[dict[str, Any]] = []
+    for record in records:
+        generation = (record.get("scalars") or {}).get("index_generation")
+        if generation is not None and generation != expected_generation:
+            continue
+        current.append(record)
+    return current
+
+
 def _export_output_fields(include_vectors: bool) -> list[str]:
     """Same field set the per-URI exporter fetches, timestamps included."""
     return [
@@ -446,6 +469,7 @@ async def build_manifest(
     package_type: str | None = None,
     scopes: list[str] | None = None,
     include_vectors: bool = False,
+    current_generations: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], "list[float] | array"]:
     root_user_id = owner_fields_for_uri(root_uri).get("owner_user_id")
     root_entry: dict[str, Any] = {"path": "", "kind": "directory"}
@@ -457,6 +481,12 @@ async def build_manifest(
     # with dense vectors carries ~400k x 2048 floats, which is ~3GB packed as
     # an array but ~25GB+ as boxed Python floats (observed OOM).
     dense_values = array("f")
+    published_generations: dict[str, str] | None = None
+    if current_generations is not None:
+        published_generations = {
+            normalize_uri_key(uri): generation
+            for uri, generation in current_generations.items()
+        }
 
     if root_uri != "viking://" and not is_session_uri(root_uri):
         root_records = await index_records_for_uri(
@@ -467,6 +497,10 @@ async def build_manifest(
             ctx=ctx,
             include_vectors=include_vectors,
         )
+        if published_generations is not None:
+            root_records = current_generation_records(
+                root_records, published_generations.get(normalize_uri_key(root_uri))
+            )
         append_index_records(
             index_records,
             dense_values,
@@ -515,6 +549,10 @@ async def build_manifest(
                 continue
             seq, rel_path, plan_uri, is_dir, entry_user_id = plan
             records = by_uri.get(normalize_uri_key(uri), [])
+            if published_generations is not None:
+                records = current_generation_records(
+                    records, published_generations.get(normalize_uri_key(plan_uri))
+                )
             texts = (
                 await directory_vector_texts(viking_fs, plan_uri, ctx) if is_dir else {}
             )
