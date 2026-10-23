@@ -227,6 +227,21 @@ async def _clear_scope_root_children(viking_fs, root_uri: str, ctx: RequestConte
             logger.info(f"[ovpack] Overwrite cleared existing child {child_uri}")
         except (NotFoundError, FileNotFoundError):
             continue
+        except FailedPreconditionError as exc:
+            # Generated directory catalogues ({dir}/index.md) refuse deletion and
+            # are regenerated from the directory's children; a pack member with
+            # the same rel path overwrites their content below, so skipping is safe.
+            if "generated directory catalogue" in str(exc):
+                logger.info(
+                    f"[ovpack] Overwrite kept regenerated catalogue {child_uri} "
+                    "(content rewritten by the pack member)"
+                )
+                continue
+            raise ConflictError(
+                f"Cannot overwrite existing child at {child_uri}. "
+                "Clear it manually or use on_conflict='skip'/'fail'.",
+                resource=child_uri,
+            ) from exc
         except Exception as exc:  # noqa: BLE001 - keep clearing siblings, fail on write if fatal
             raise ConflictError(
                 f"Cannot overwrite existing child at {child_uri}. "

@@ -27,6 +27,7 @@ from openviking.storage.ovpack.operations import (
 )
 from openviking.storage.vector_ids import chunk_vector_record_id, vector_record_id
 from openviking_cli.exceptions import (
+    FailedPreconditionError,
     InvalidArgumentError,
     NotFoundError,
     PermissionDeniedError,
@@ -1703,3 +1704,50 @@ async def test_import_top_level_scope_overwrite_clears_children_without_deleting
     assert "viking://resources/stale.txt" in fake_fs.removed_roots
     assert all(uri != "viking://resources" for uri in fake_fs.removed_roots)
     assert "viking://resources/README.md" in fake_fs.written_files
+
+
+class RegeneratedCatalogueVikingFS(NamespaceRootVikingFS):
+    """NamespaceRootVikingFS whose root index.md is a generated catalogue."""
+
+    async def rm(self, uri: str, recursive: bool = False, ctx=None):
+        canonical = uri.rstrip("/")
+        if canonical == "viking://resources/index.md":
+            raise FailedPreconditionError(
+                f"Cannot delete the generated directory catalogue: {uri}. "
+                "It is regenerated from the directory's children after any "
+                "change; delete the directory or its authored content instead.",
+                details={"resource": uri, "expected": "authored content"},
+            )
+        await super().rm(uri, recursive=recursive, ctx=ctx)
+
+
+@pytest.mark.asyncio
+async def test_import_top_level_overwrite_keeps_regenerated_catalogue(
+    temp_ovpack_path: Path, request_ctx: RequestContext
+):
+    manifest = _manifest_for_files("resources", {"README.md": "hello"})
+    manifest["root"] = {
+        "name": "resources",
+        "uri": "viking://resources",
+        "scope": "resources",
+    }
+    _write_ovpack_with_manifest(
+        temp_ovpack_path,
+        "resources",
+        {"README.md": "hello"},
+        manifest=manifest,
+    )
+    fake_fs = RegeneratedCatalogueVikingFS(existing_roots={"viking://resources"})
+
+    result = await import_ovpack(
+        fake_fs,
+        str(temp_ovpack_path),
+        "viking://",
+        request_ctx,
+        on_conflict="overwrite",
+    )
+
+    assert result == "viking://resources"
+    assert "viking://resources/README.md" in fake_fs.written_files
+    # The generated catalogue survived clearing; the pack member overwrote it.
+    assert "viking://resources/index.md" not in fake_fs.removed_roots
