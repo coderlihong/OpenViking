@@ -84,7 +84,12 @@ from openviking.utils.embedding_utils import (
     vectorize_directory_meta,
     vectorize_file,
 )
-from openviking_cli.exceptions import ConflictError, InvalidArgumentError, NotFoundError
+from openviking_cli.exceptions import (
+    ConflictError,
+    FailedPreconditionError,
+    InvalidArgumentError,
+    NotFoundError,
+)
 from openviking_cli.utils.logger import get_logger
 from openviking_cli.utils.uri import VikingURI
 
