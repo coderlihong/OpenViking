@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import hashlib
+import random
 import json
 import os
 import zipfile
@@ -444,7 +445,7 @@ async def _rebuild_blobs_and_refs(
             # Mirror the canonical archive path: retry briefly and, when a
             # winner already landed the bytes, move on instead of failing the
             # whole bundle (which used to abort every migration).
-            for attempt in range(3):
+            for attempt in range(8):
                 try:
                     await viking_fs._async_agfs.write(target, data)
                     counter["written"] += 1
@@ -454,13 +455,27 @@ async def _rebuild_blobs_and_refs(
                     if "exist" in message or "already" in message:
                         counter["present"] += 1
                         return
-                    if "lock" in message and attempt < 2:
-                        await asyncio.sleep(0.1 * (attempt + 1))
+                    if "lock" in message and attempt < 7:
+                        # AGFS node locks are contended by design here; back off
+                        # with jitter instead of aborting the whole bundle.
+                        await asyncio.sleep(0.2 * (attempt + 1) + random.random() * 0.3)
                         continue
                     raise
             counter["written"] += 1
 
-    await asyncio.gather(*[_one(entry) for entry in file_entries])
+    # A 200k-entry bundle previously gathered all writes at once; the stampede
+    # tripped AGFS's 5ms lock timeout and aborted the migration. Throttle to
+    # _BLOB_WORKERS inflight writes and let the retry loop absorb the rest.
+    batch_size = _BLOB_WORKERS * 64
+    for start in range(0, len(file_entries), batch_size):
+        await asyncio.gather(
+            *[_one(entry) for entry in file_entries[start : start + batch_size]]
+        )
+        logger.info(
+            "[ovpack] blob rebuild: %d/%d entries processed",
+            min(start + batch_size, len(file_entries)),
+            len(file_entries),
+        )
 
     # reconcile manifest content refs with the on-disk revision
     fixed = 0
