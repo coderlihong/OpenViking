@@ -527,9 +527,72 @@ async def import_ovpack(
     return root_uri
 
 
-async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]]:
+def _physical_scope_root(viking_fs, ctx: RequestContext) -> Optional[str]:
+    """Return the on-disk AGFS root for the calling account, when it is local.
+
+    The AGFS virtual path (/local/{account}/...) is materialized under
+    ``{agfs.path}/viking/{account}`` for the local backend. A backup already
+    runs with account-wide authority, so walking that tree directly is both
+    safe and orders of magnitude cheaper than the ACL-filtered, per-node
+    ``viking_fs.tree`` traversal (1s vs >20min for a 390k-node tenant).
+    """
+    try:
+        from openviking_cli.utils.config import get_openviking_config
+
+        agfs_path = getattr(get_openviking_config().storage.agfs, "path", None)
+        account_id = ctx.account_id
+        if not agfs_path or not account_id:
+            return None
+        root = os.path.join(str(agfs_path), "viking", str(account_id))
+        return root if os.path.isdir(root) else None
+    except Exception:  # noqa: BLE001 - fall back to the portable walk
+        return None
+
+
+def _physical_backup_entries(root: str) -> list[dict[str, Any]]:
+    """Build backup entries from the local AGFS tree in one directory walk."""
     entries: list[dict[str, Any]] = []
+    for scope in PUBLIC_SCOPES:
+        scope_dir = os.path.join(root, *scope.split("/"))
+        if not os.path.isdir(scope_dir):
+            continue
+        entries.append(
+            {"rel_path": scope, "uri": f"viking://{scope}", "isDir": True, "size": 0}
+        )
+        for dirpath, dirnames, filenames in os.walk(scope_dir):
+            dirnames.sort()
+            filenames.sort()
+            rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+            for name in dirnames:
+                rel_path = f"{rel_dir}/{name}"
+                entries.append(
+                    {"rel_path": rel_path, "uri": f"viking://{rel_path}", "isDir": True, "size": 0}
+                )
+            for name in filenames:
+                rel_path = f"{rel_dir}/{name}"
+                full = os.path.join(dirpath, name)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    continue
+                entries.append(
+                    {"rel_path": rel_path, "uri": f"viking://{rel_path}", "isDir": False, "size": size}
+                )
+    return entries
+
+
+async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]]:
     started = time.monotonic()
+    physical_root = _physical_scope_root(viking_fs, ctx)
+    if physical_root is not None:
+        entries = _physical_backup_entries(physical_root)
+        logger.info(
+            "[ovpack] walked %s directly: %d entries in %.1fs",
+            physical_root, len(entries), time.monotonic() - started,
+        )
+        return entries
+
+    entries: list[dict[str, Any]] = []
     for scope in PUBLIC_SCOPES:
         scope_uri = f"viking://{scope}"
         scope_started = time.monotonic()
