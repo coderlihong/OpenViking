@@ -497,3 +497,56 @@ async def test_plan_build_never_blocks_the_event_loop(embedding, monkeypatch):
     count = await enqueue_text_plan(base, SOURCE, embedding, queue)
     assert count > 1
     assert seen["thread"] is not seen["main"], "plan build must not run on the event loop"
+
+
+def test_planning_encodes_each_distinct_text_once(embedding, monkeypatch):
+    """Planning must not re-encode the same string.
+
+    ``build_plan`` measures shrinking prefixes while binary-searching for a
+    token budget and re-measures overlap tails it just built. On a real 6k-char
+    chapter that produced 216 encode calls worth 98% of plan time, so planning
+    rather than embedding dominated indexing. Memoize per plan.
+    """
+    import openviking.indexing.plan as plan_module
+
+    original = plan_module.load_tokenizer
+    calls: list[str] = []
+
+    class CountingTokenizer:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def encode(self, text, add_special_tokens=False):
+            calls.append(text)
+            return self._inner.encode(text, add_special_tokens=add_special_tokens)
+
+    monkeypatch.setattr(
+        plan_module, "load_tokenizer", lambda *a, **k: CountingTokenizer(original(*a, **k))
+    )
+
+    plan = plan_resource(SOURCE, URI, "acct", embedding)
+
+    assert plan.chunks
+    # Same text is never encoded twice within one plan. Without the cache the
+    # binary searches re-encode shrinking prefixes and the count grows well past
+    # the number of distinct strings.
+    assert len(calls) == len(set(calls)), "duplicate encodes: cache miss"
+
+
+def test_planning_cache_does_not_change_chunking(embedding, monkeypatch):
+    """Memoizing token counts must not alter the plan itself."""
+    baseline = plan_resource(SOURCE, URI, "acct", embedding)
+
+    import openviking.indexing.plan as plan_module
+
+    original = plan_module.load_tokenizer
+    monkeypatch.setattr(
+        plan_module,
+        "load_tokenizer",
+        lambda *a, **k: original(*a, **k),
+    )
+    again = plan_resource(SOURCE, URI, "acct", embedding)
+
+    assert [(c.chunk_id, c.embedding_text) for c in baseline.chunks] == [
+        (c.chunk_id, c.embedding_text) for c in again.chunks
+    ]

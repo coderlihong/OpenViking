@@ -576,6 +576,29 @@ def build_plan(
     return plan
 
 
+def _cached_counter(tokenizer):
+    """Return a token counter that encodes each distinct text at most once.
+
+    ``build_plan`` measures the same strings repeatedly: binary searches
+    (``prefix_piece``/``_split_render``) re-count shrinking prefixes, overlap
+    trimming re-counts the tail it just built, and a heading's rendered form is
+    measured for every block that falls under it. A 6k-character chapter made
+    216 encode calls that were 98% of plan time (165ms of 168ms), so planning --
+    not embedding -- dominated indexing. Text is immutable, so memoizing on the
+    string is safe; the cache lives for one plan and never crosses documents.
+    """
+    cache: dict[str, int] = {}
+
+    def count(text: str) -> int:
+        cached = cache.get(text)
+        if cached is None:
+            cached = len(tokenizer.encode(text, add_special_tokens=False).ids)
+            cache[text] = cached
+        return cached
+
+    return count
+
+
 def plan_resource(source: str, uri: str, account_id: str, embedding) -> IndexPlan:
     """Plan a resource, raising ``PlanRejectionError`` for deterministic rejects."""
     try:
@@ -600,7 +623,7 @@ def plan_resource(source: str, uri: str, account_id: str, embedding) -> IndexPla
             account_id,
             config,
             space,
-            lambda text: len(tokenizer.encode(text, add_special_tokens=False).ids),
+            _cached_counter(tokenizer),
         )
     except ValueError as exc:
         if isinstance(exc, PlanRejectionError):
