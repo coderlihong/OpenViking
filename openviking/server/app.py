@@ -432,14 +432,28 @@ def create_app(
                                 "Sealed %d stranded publication batch(es)", swept
                             )
                         if prune is not None:
-                            # Each publish writes a whole manifest snapshot; only
-                            # the head of each account (and unexpired leases) can
-                            # still read one, so the rest is dead weight that grew
-                            # the store to 30GB of unreachable manifests.
-                            dropped = await asyncio.to_thread(prune, 3600.0, 64)
-                            if dropped:
+                            # Each publish writes a whole *complete* manifest
+                            # snapshot (~28MB gzipped on a large account) and only
+                            # the head of each account can read one, so every
+                            # publish leaves a large unreachable row behind.
+                            # Measured: 70 publishes/min, i.e. ~116GB/hour of
+                            # manifest growth -- far past the old 64-rows-per-
+                            # minute, 1-hour-old sweep, which could never catch
+                            # up and let the store reach 36GB with 96% dead pages.
+                            # The age floor only has to clear the query-lease TTL
+                            # (120s) plus the renewal window, so 600s is ample;
+                            # the sweep loops until a pass finds nothing, which
+                            # bounds each burst while still draining a backlog.
+                            pruned_total = 0
+                            for _ in range(20):
+                                dropped = await asyncio.to_thread(prune, 600.0, 500)
+                                pruned_total += dropped or 0
+                                if not dropped:
+                                    break
+                            if pruned_total:
                                 logger.info(
-                                    "Pruned %d unreachable manifest snapshot(s)", dropped
+                                    "Pruned %d unreachable manifest snapshot(s)",
+                                    pruned_total,
                                 )
                         windows = getattr(registry, "prune_generation_write_windows", None)
                         if windows is not None:

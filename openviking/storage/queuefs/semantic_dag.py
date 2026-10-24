@@ -215,6 +215,24 @@ class SemanticNodeScheduler:
 _node_schedulers: "WeakKeyDictionary[asyncio.AbstractEventLoop, SemanticNodeScheduler]" = (
     WeakKeyDictionary()
 )
+# One LLM semaphore per event loop, shared by every executor on that loop. It
+# used to be created per executor, i.e. per directory message, so the effective
+# limit was messages x max_concurrent_llm instead of max_concurrent_llm.
+_llm_semaphores: "WeakKeyDictionary[asyncio.AbstractEventLoop, Dict[int, asyncio.Semaphore]]" = (
+    WeakKeyDictionary()
+)
+
+
+def get_llm_semaphore(max_concurrent: int) -> asyncio.Semaphore:
+    """The shared LLM semaphore for this loop, bounded by ``max_concurrent``."""
+    loop = asyncio.get_running_loop()
+    limit = max(1, int(max_concurrent))
+    by_limit = _llm_semaphores.setdefault(loop, {})
+    semaphore = by_limit.get(limit)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(limit)
+        by_limit[limit] = semaphore
+    return semaphore
 
 
 def get_semantic_node_scheduler(max_workers: int) -> SemanticNodeScheduler:
@@ -285,7 +303,7 @@ class SemanticDagExecutor:
         }
         self._added_paths = {path.rstrip("/") for path in self._changes.get("added", [])}
         self._node_concurrency = max(1, max_concurrent_llm)
-        self._llm_sem = asyncio.Semaphore(max_concurrent_llm)
+        self._llm_sem = get_llm_semaphore(max_concurrent_llm)
         self._viking_fs = get_viking_fs()
         self._nodes: Dict[str, DirNode] = {}
         self.image_summaries: Dict[str, dict] = {}

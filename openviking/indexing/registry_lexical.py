@@ -506,6 +506,15 @@ class RegistryLexicalMixin:
             raise ValueError('Lexical prune batch must be a positive integer')
         now = time.time()
         cutoff = now - float(older_than_seconds)
+        # Compute the protected set under a *read-only* transaction. It walks
+        # heads/leases and decodes each pinned snapshot manifest (~28MB gzip
+        # each), which measured 9.5s -- and it used to run inside ``self.db()``,
+        # i.e. under BEGIN IMMEDIATE. That held the single writer for nine
+        # seconds every sweep, and every embedding receipt queued behind it.
+        # A deferred read transaction does not block writers in WAL, so the
+        # expensive read moves out and only the DELETE keeps the writer.
+        with self.db(readonly=True) as ro:
+            protected = self._protected_generations(ro)
         with self.db() as db:
             for table in ('leases', 'gc_leases'):
                 if db.execute(f'SELECT 1 FROM {table} WHERE expires>? LIMIT 1', (now,)).fetchone():
@@ -514,7 +523,6 @@ class RegistryLexicalMixin:
             # must freeze the prune exactly like a legacy row does.
             if self._query_leases.live_snapshot_ids():
                 return 0
-            protected = self._protected_generations(db)
             candidates = [
                 dict(row)
                 for row in db.execute(

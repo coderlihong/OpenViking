@@ -202,17 +202,23 @@ class QueueManager:
             self.start()
 
     def _embedding_batch_target(self) -> int:
-        """How many embedding messages one dequeue should try to take.
+        """How many embedding messages one dequeue should take, and run at once.
 
-        The batched commit is the whole point of collecting a batch, and its
-        benefit grows with the batch. ``max_concurrent`` bounds how many run at
-        once, not how many may be committed together, so the target is decoupled
-        from it and capped to keep one commit's work bounded.
+        This is the in-flight ceiling. Every member of a batch is in flight
+        simultaneously (the handler gathers them) and the batch's vectors commit
+        together, so batch size *and* concurrency are the same number here.
+
+        It must not be multiplied by anything else: with ``max_concurrent``
+        bounding concurrent *batches* while each batch held its whole member list
+        in flight, the real request count was threads x batches x members. That
+        over-subscribed the endpoint -- 934 concurrent embeds against one that
+        saturates near 24 from this host -- and per-call latency went from 309ms
+        to 6.7s, which is why a queue with more concurrency ran slower.
         """
         configured = int(getattr(self, "_embedding_batch_size", 0) or 0)
         if configured > 0:
             return configured
-        return max(1, min(128, self._max_concurrent_embedding * 4))
+        return max(1, int(self._max_concurrent_embedding))
 
     def _worker_thread_count(self, queue_name: str) -> int:
         """How many worker threads to run for a queue.
@@ -232,11 +238,13 @@ class QueueManager:
         configured = int(getattr(self, "_embedding_worker_threads", 0) or 0)
         if configured > 0:
             return configured
-        # Each thread brings its own event loop and therefore its own semaphore
-        # pool, so thread count multiplies the achievable in-flight requests.
-        # Default to 4: enough to saturate the model endpoint without turning the
-        # queue into a thread farm.
-        return max(1, min(8, int(getattr(self, "_default_embedding_worker_threads", 4))))
+        # One worker thread. Concurrency inside a batch already saturates the
+        # endpoint, and threads multiply the in-flight count: 4 threads x N
+        # batches x batch size over-subscribed it badly enough that per-call
+        # latency went from 309ms to 6.7s. A single loop keeps the window
+        # predictable; raise this only when the endpoint is known to have
+        # headroom.
+        return max(1, int(getattr(self, "_default_embedding_worker_threads", 1)))
 
     def _start_queue_worker(self, queue: NamedQueue) -> None:
         """Start dedicated worker thread(s) for a queue if not already running."""
@@ -328,15 +336,32 @@ class QueueManager:
     ) -> None:
         """Concurrent worker: drains the queue and processes items in parallel.
 
-        A Semaphore caps inflight tasks at max_concurrent.
+        ``max_concurrent`` is a ceiling on in-flight *documents*, not on batches
+        and not on tasks. Those are three different numbers and conflating them
+        is what made a highly concurrent queue slower than a quiet one:
+
+        * a batch's members all run concurrently (the handler gathers them), so
+          a batch of 24 costs 24 in-flight requests;
+        * if the window counts *batches*, the real request count is
+          batches x members -- measured at 24 x 24 = 521 concurrent embeds
+          against an endpoint that saturates near 24 from this host, which
+          raised per-call latency from 309ms to seconds.
+
+        So the window is tracked in members. A dequeue asks for at most the
+        number of free member slots, and the whole batch is charged to the
+        window for as long as it runs.
         """
         poll_interval = (
             self._REQUEUE_POLL_INTERVAL
             if queue.name in {self.SESSION_COMMIT, self.EXTERNAL_TASK}
             else self._poll_interval
         )
-        sem = asyncio.Semaphore(max_concurrent)
         active_tasks: Set[asyncio.Task] = set()
+        # How many documents each running batch occupies in the window. A dict
+        # rather than an attribute on the Task: asyncio.Task is a C type and
+        # the count must not depend on it accepting arbitrary attributes.
+        batch_members: Dict[asyncio.Task, int] = {}
+        in_flight = 0
 
         async def process_batch(batch: list[Dict[str, Any]]) -> None:
             """Process a dequeued batch, then ack each member that settled.
@@ -364,45 +389,38 @@ class QueueManager:
                 except Exception as e:  # noqa: BLE001
                     logger.error(f"[QueueManager] Ack failed for {queue.name}: {e}")
 
-        async def process_one(data: Dict[str, Any]) -> None:
-            async with sem:
-                msg_id = data.get("id", "") if isinstance(data, dict) else ""
-                try:
-                    await queue.process_dequeued(data)
-                    # Ack after successful processing (delete from persistent storage).
-                    await queue.ack(msg_id, data)
-                except Exception as e:
-                    # The message remains in processing and will be recovered.
-                    logger.error(f"[QueueManager] Concurrent worker error for {queue.name}: {e}")
-
         while not stop_event.is_set():
-            # Prune completed tasks
-            active_tasks = {t for t in active_tasks if not t.done()}
+            # Prune completed tasks, returning their members to the window.
+            for task in [t for t in active_tasks if t.done()]:
+                active_tasks.discard(task)
+                in_flight -= batch_members.pop(task, 0)
 
-            # While capacity remains, keep draining the queue. Fill the window
-            # with one batched dequeue instead of one AGFS round-trip per
+            # While member capacity remains, keep draining the queue. Fill the
+            # window with one batched dequeue instead of one AGFS round-trip per
             # message: a serial per-message dequeue capped dispatch at
             # ~1/deq_latency tasks/s and left most of the concurrency idle.
-            while len(active_tasks) < max_concurrent:
+            while in_flight < max_concurrent:
                 if not queue.has_dequeue_handler():
                     break
-                # Ask for a batch sized by the concurrency window, not by the
-                # number of free task slots: with several worker threads each
-                # requesting only its own remaining slots, the queue is split
-                # into many tiny batches (measured: 57 batches of 2) and every
-                # batch pays the per-batch commit cost. A batch amortises that
-                # cost over its members, so take as many as the window allows.
-                want = max_concurrent - len(active_tasks)
+                free = max_concurrent - in_flight
+                want = free
                 if queue.name == self.EMBEDDING:
-                    want = max(want, self._embedding_batch_target())
+                    # A batch is dispatched as one unit and its members are all
+                    # in flight at once, so it may not be larger than the free
+                    # window; also cap it at the configured target so a big
+                    # window does not turn into one enormous batch.
+                    want = min(free, self._embedding_batch_target())
                 batch = await queue.dequeue_batch_raw(want)
                 if not batch:
                     break
                 task = asyncio.create_task(process_batch(batch))
+                # Charge the batch's members to the window for its lifetime.
+                batch_members[task] = len(batch)
+                in_flight += len(batch)
                 active_tasks.add(task)
                 logger.debug(
                     f"[QueueManager] Dispatched {len(batch)} tasks from batch dequeue "
-                    f"for {queue.name} (active={len(active_tasks)})"
+                    f"for {queue.name} (in_flight={in_flight})"
                 )
                 if len(batch) < 2:
                     # Either the queue is nearly drained or the backend lacks

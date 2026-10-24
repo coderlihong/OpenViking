@@ -124,10 +124,14 @@ async def _describe_images(viking_fs, md_uris: list[str], ctx: RequestContext) -
     corpus fetch — so a non-empty caption here is trusted and the VLM skipped.
     """
     from openviking.indexing.image_context import collect_image_contexts
+    from openviking.storage.queuefs.semantic_dag import get_llm_semaphore
     from openviking.parse.parsers.media.utils import generate_image_summary
 
     vlm = getattr(_config(), "vlm", None)
-    llm_sem = asyncio.Semaphore(max(1, getattr(vlm, "max_concurrent", None) or 1))
+    # Shared per loop, not per call: ``_describe_images`` runs once per document
+    # batch, so a fresh semaphore each time meant the VLM limit was really
+    # batches x max_concurrent instead of max_concurrent.
+    llm_sem = get_llm_semaphore(getattr(vlm, "max_concurrent", None) or 1)
 
     cited: dict[str, None] = {}
     for md_uri in md_uris:

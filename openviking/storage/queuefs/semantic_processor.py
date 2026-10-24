@@ -107,8 +107,26 @@ class SemanticProcessor(DequeueHandlerBase):
             max_concurrent_llm: Maximum concurrent LLM calls
         """
         self.max_concurrent_llm = max_concurrent_llm
+        # One semaphore per processor, not per directory message. The limit is
+        # meant to bound concurrent LLM calls *process-wide*, but every message
+        # used to build its own ``asyncio.Semaphore(max_concurrent_llm)``, so the
+        # real ceiling was messages x limit: measured 65 directory messages
+        # in flight against a configured limit of 32, i.e. 2x the intended load
+        # on the VLM endpoint for no added throughput.
+        self._llm_sem: Optional[asyncio.Semaphore] = None
         self._default_ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
         self._circuit_breaker = CircuitBreaker()
+
+    def _llm_semaphore(self) -> asyncio.Semaphore:
+        """The one LLM semaphore shared by every message this processor handles.
+
+        Created lazily because the processor is constructed outside a running
+        event loop; ``asyncio.Semaphore`` binds to the loop that first awaits it,
+        which is the queue worker's loop.
+        """
+        if self._llm_sem is None:
+            self._llm_sem = asyncio.Semaphore(max(1, int(self.max_concurrent_llm)))
+        return self._llm_sem
 
     @classmethod
     def _cache_dag_stats(cls, telemetry_id: str, uri: str, stats: DagStats) -> None:
@@ -667,7 +685,7 @@ class SemanticProcessor(DequeueHandlerBase):
         viking_fs = get_viking_fs()
         dir_uri = msg.uri
         ctx = ctx or self._default_ctx
-        llm_sem = asyncio.Semaphore(self.max_concurrent_llm)
+        llm_sem = self._llm_semaphore()
 
         try:
             entries = await viking_fs.ls(dir_uri, node_limit=LS_ALL_NODES, ctx=ctx)
@@ -1120,7 +1138,7 @@ class SemanticProcessor(DequeueHandlerBase):
             {"name": file_name, "summary": summary_content}
         """
         file_name = file_path.split("/")[-1]
-        llm_sem = llm_sem or asyncio.Semaphore(self.max_concurrent_llm)
+        llm_sem = llm_sem or self._llm_semaphore()
         media_type = get_media_type(file_name, None)
         if file_name.lower().endswith(".ts"):
             try:
@@ -1731,7 +1749,7 @@ class SemanticProcessor(DequeueHandlerBase):
 
         # Generate partial overviews concurrently using global link placeholders.
         if llm_sem is None:
-            llm_sem = asyncio.Semaphore(self.max_concurrent_llm)
+            llm_sem = self._llm_semaphore()
         partial_overviews = [None] * len(batches)
         batch_prompts: List[Tuple[int, str, Dict[str, str]]] = []
 

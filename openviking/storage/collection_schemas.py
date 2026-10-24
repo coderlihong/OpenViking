@@ -723,9 +723,20 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         # serialisation point. Gathering the per-message work lets the model
         # calls overlap while the vector write and the receipts still land as
         # one commit each.
+        started = time.monotonic()
         results = await asyncio.gather(*(one(data) for data in batch))
+        embedded = time.monotonic()
         if collector["upserts"]:
             await self._commit_collected(collector["upserts"])
+        finished = time.monotonic()
+        logger.debug(
+            "[batch] n=%d deferred=%d embed=%.0fms commit=%.0fms (%.1fms/item)",
+            len(batch),
+            len(collector["upserts"]),
+            (embedded - started) * 1000,
+            (finished - embedded) * 1000,
+            (finished - started) * 1000 / max(1, len(batch)),
+        )
         return list(results)
 
     async def _commit_collected(self, pending: list[dict]) -> None:
@@ -741,8 +752,19 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         payloads = [item["data"] for item in pending]
         written: list[dict] = []
         try:
-            await self._vikingdb.upsert_many(payloads)
-            written = pending
+            # ``upsert_many`` needs the request context for ACL materialization,
+            # and one batch can in principle span accounts, so group by ctx and
+            # issue one adapter call per group. The batch is one dequeue from one
+            # queue worker, so this is nearly always a single group.
+            groups: dict[int, tuple[Any, list[dict]]] = {}
+            for item in pending:
+                key = id(item["ctx"])
+                groups.setdefault(key, (item["ctx"], []))[1].append(item)
+            for ctx, members in groups.values():
+                await self._vikingdb.upsert_many(
+                    [item["data"] for item in members], ctx=ctx
+                )
+                written.extend(members)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "[TextEmbeddingHandler] Batched vector write failed for %d chunk(s): %s",
@@ -871,8 +893,19 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             user_id = context_user.get("user_id") or inserted_data.get("owner_user_id") or "default"
             user = UserIdentifier(account_id=account_id, user_id=user_id)
             ctx = RequestContext(user=user, role=Role.USER, bypass_acl=True)
-            collector = resolve_telemetry(embedding_msg.telemetry_id)
-            telemetry_ctx = bind_telemetry(collector) if collector is not None else nullcontext()
+            # NB: this must not be named ``collector``. The parameter of that name
+            # carries the batch's deferred writes; rebinding it to the telemetry
+            # collector silently set the deferred path to ``None`` for every
+            # member, so a "batched" commit became one upsert and one receipt
+            # transaction per chunk while the caller's ``upserts`` list stayed
+            # empty. That is why batches measured a 0ms commit and per-item cost
+            # stayed at the single-document rate no matter how large the batch.
+            telemetry_collector = resolve_telemetry(embedding_msg.telemetry_id)
+            telemetry_ctx = (
+                bind_telemetry(telemetry_collector)
+                if telemetry_collector is not None
+                else nullcontext()
+            )
 
             with telemetry_ctx:
                 if self._vikingdb.is_closing:
