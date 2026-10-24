@@ -522,16 +522,30 @@ async def collect_image_contexts(
                 if cache is not None:
                     cache.texts[source_uri] = text
             if parsed is None:
-                parsed = _ParsedSource(text)
+                # ``_ParsedSource`` runs MarkdownIt plus an HTMLParser over the
+                # whole chapter: pure CPU that holds the GIL for its duration.
+                # Inline on the event loop it stalled every other coroutine --
+                # a manual reindex of 1486 images spent its vector stage here at
+                # 100% of one core with the loop blocked (py-spy: MainThread
+                # active+gil inside html/parser.py check_for_whole_start_tag).
+                # Parsing has no loop state, so run it in a worker thread.
+                parsed = await asyncio.to_thread(_ParsedSource, text)
                 if cache is not None:
                     cache.parsed[source_uri] = parsed
-            found = extract_occurrences(
+            # ``extract_occurrences`` walks the token stream and runs an
+            # HTMLParser over every inline/block fragment to recover
+            # ``<figcaption>`` bodies. That is the same GIL-holding CPU work as
+            # ``_ParsedSource``; py-spy caught the event loop inside
+            # ``_terminate_unclosed_img`` here even after construction moved off
+            # the loop. Keep it off the loop too.
+            found = await asyncio.to_thread(
+                extract_occurrences,
                 text,
                 source_uri,
                 image_uri,
                 token_budget,
-                count_tokens=count_tokens,
-                parsed=parsed,
+                count_tokens,
+                parsed,
             )
             if epoch is not None:
                 for occurrence in found:

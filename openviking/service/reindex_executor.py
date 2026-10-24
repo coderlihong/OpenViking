@@ -85,6 +85,10 @@ PRUNE_OUTPUT_FIELDS = ["id", "uri", "level", "context_type", "account_id", "owne
 # one or two of a directory level, so the cap must cover a realistic chunk
 # count; hitting the cap only degrades into a rebuild, never into a wrong skip.
 _RECORD_REVISION_SCAN_LIMIT = 256
+# Upper bound for the one-shot reuse-guard prefetch. A manual subtree holds a few
+# thousand records; the cap keeps a namespace-root reindex from materialising an
+# unbounded map, and exceeding it simply leaves later URIs on the per-URI path.
+_REVISION_PREFETCH_LIMIT = 50000
 
 # The two enterprise build modes share one IndexPlan with D1 ingestion. They are
 # the only modes that may take a dry_run preview (``prune_orphans`` keeps its own
@@ -1941,7 +1945,12 @@ class ReindexExecutor:
         )
 
     async def _published_content_unchanged(
-        self, file_uri: str, *, ctx: RequestContext, manifest: dict[str, Any] | None = None
+        self,
+        file_uri: str,
+        *,
+        ctx: RequestContext,
+        manifest: dict[str, Any] | None = None,
+        revision_index: dict[str, list[dict[str, Any]]] | None = None,
     ) -> bool:
         """True when the live generation already holds this exact content.
 
@@ -1998,6 +2007,7 @@ class ReindexExecutor:
             content_revision=revision,
             live_generation=self._manifest_generation(file_uri, manifest),
             ctx=ctx,
+            revision_index=revision_index,
         )
 
     @staticmethod
@@ -2034,6 +2044,95 @@ class ReindexExecutor:
         generation = item.get("generation")
         return str(generation) if generation else None
 
+    async def _prefetch_revision_index(
+        self, root_uri: str, *, ctx: RequestContext
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Every visible record under ``root_uri``, grouped by URI, in one query.
+
+        Each reuse guard otherwise runs its own vector-store filter, so a subtree
+        with 1786 files issued 1786 queries. One recursive query up front answers
+        them from memory instead. On the 1935 deployment this cut the vector stage
+        of a 1907-record reindex from 60.6s to 58.9s; the bulk of that stage turned
+        out to be CPU-bound HTML parsing on the event loop (see
+        ``indexing/image_context.py``), not the queries, so the prefetch is a
+        smaller win than the profile first suggested -- it is kept because it
+        removes a per-file round trip that grows with subtree size.
+
+        Returns ``{}`` when the store is unavailable or the query fails, in which
+        case the guards fall back to their per-URI query.
+        """
+        try:
+            service = get_service()
+            backend = getattr(service, "vikingdb_manager", None)
+        except Exception:  # noqa: BLE001 - a guard must never fail a run
+            return {}
+        if backend is None:
+            logger.warning("[reindex-prefetch] no vikingdb backend; per-URI queries")
+            return {}
+        try:
+            records = await backend.filter(
+                filter=And(
+                    [
+                        Eq("account_id", ctx.account_id),
+                        PathScope("uri", root_uri, depth=-1),
+                    ]
+                ),
+                limit=_REVISION_PREFETCH_LIMIT,
+                output_fields=["uri", "index_generation", "content_revision", "chunk_text", "level"],
+                ctx=ctx,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Reindex reuse-guard prefetch failed for %s (%r); "
+                "falling back to per-URI queries",
+                root_uri,
+                exc,
+            )
+            return {}
+        index: dict[str, list[dict[str, Any]]] = {}
+        for record in records or []:
+            uri = record.get("uri")
+            if uri:
+                index.setdefault(uri, []).append(record)
+        logger.warning(
+            "[reindex-prefetch] %d record(s) across %d URI(s) under %s",
+            len(records or []),
+            len(index),
+            root_uri,
+        )
+        return index
+
+    @staticmethod
+    def _visible_records_from_index(
+        index: dict[str, list[dict[str, Any]]] | None,
+        *,
+        uri: str,
+        level: int,
+        content_revision: str,
+        live_generation: str | None,
+    ) -> list[dict[str, Any]] | None:
+        """Visible records for ``uri`` from a prefetched index, or None if absent.
+
+        ``None`` means "no prefetch covers this URI", which sends the caller back
+        to the per-URI query rather than guessing.
+        """
+        if not index or uri not in index:
+            return None
+        visible = []
+        for record in index[uri]:
+            if int(record.get("level", -1)) != int(level):
+                continue
+            generation = record.get("index_generation")
+            if live_generation is not None:
+                if generation != live_generation:
+                    continue
+            elif generation not in (None, ""):
+                continue
+            if record.get("content_revision") != content_revision:
+                continue
+            visible.append(record)
+        return visible
+
     async def _matching_record_exists(
         self,
         *,
@@ -2043,6 +2142,7 @@ class ReindexExecutor:
         live_generation: str | None,
         ctx: RequestContext,
         expected_texts: list[str] | None = None,
+        revision_index: dict[str, list[dict[str, Any]]] | None = None,
     ) -> bool:
         """True when a *visible* record for (uri, level) already holds this content.
 
@@ -2058,6 +2158,21 @@ class ReindexExecutor:
         joint image plan re-captions an unchanged asset, and only identical
         captions make the existing vectors worth reusing.
         """
+        cached = self._visible_records_from_index(
+            revision_index,
+            uri=uri,
+            level=level,
+            content_revision=content_revision,
+            live_generation=live_generation,
+        )
+        if cached is not None:
+            if not cached:
+                return False
+            if expected_texts is None:
+                return True
+            stored = sorted(str(record.get("chunk_text") or "") for record in cached)
+            return stored == sorted(expected_texts)
+
         try:
             service = get_service()
             backend = getattr(service, "vikingdb_manager", None)
@@ -2162,6 +2277,7 @@ class ReindexExecutor:
         *,
         ctx: RequestContext,
         manifest: dict[str, Any] | None,
+        revision_index: dict[str, list[dict[str, Any]]] | None = None,
     ) -> bool:
         """True when the live image records already hold this asset and captions.
 
@@ -2197,6 +2313,7 @@ class ReindexExecutor:
             live_generation=self._manifest_generation(file_uri, manifest),
             ctx=ctx,
             expected_texts=expected,
+            revision_index=revision_index,
         )
 
     @draft_source_job
@@ -2230,6 +2347,12 @@ class ReindexExecutor:
         # compare each URI's live generation against it instead of re-capturing
         # a snapshot per record.
         manifest = await self._live_manifest(ctx)
+
+        # The reuse guards ask the vector store "does a visible record with this
+        # revision already exist?" once per file -- 1786 separate queries for one
+        # manual subtree. Pull every record under the root once and answer the
+        # guards from that map.
+        revision_index = await self._prefetch_revision_index(root_uri, ctx=ctx)
 
         for directory_uri in deduped_directories:
             if directory_uri == "viking://":
@@ -2413,11 +2536,15 @@ class ReindexExecutor:
                     # of one file, 24 old + 21 new rows). Compare the archived
                     # asset sha and the captions before spending an embedding.
                     unchanged = await self._image_records_unchanged(
-                        file_uri, summary_dict, ctx=ctx, manifest=manifest
+                        file_uri,
+                        summary_dict,
+                        ctx=ctx,
+                        manifest=manifest,
+                        revision_index=revision_index,
                     )
                 else:
                     unchanged = await self._published_content_unchanged(
-                        file_uri, ctx=ctx, manifest=manifest
+                        file_uri, ctx=ctx, manifest=manifest, revision_index=revision_index
                     )
                 if unchanged:
                     # The live generation already holds this exact content and its
