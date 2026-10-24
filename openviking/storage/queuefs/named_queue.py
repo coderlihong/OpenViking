@@ -67,6 +67,23 @@ class DequeueHandlerBase(abc.ABC):
         """Complete this delivery, or raise to leave it unacknowledged."""
         raise NotImplementedError
 
+    async def on_dequeue_batch(
+        self, batch: list[Optional[Dict[str, Any]]]
+    ) -> list[ProcessResult]:
+        """Complete a dequeued batch, optionally sharing work across members.
+
+        The default is one ``on_dequeue`` per message, which is what every
+        handler did before batching existed. A handler that can do better
+        overrides this: the embedding handler embeds each chunk on its own (the
+        provider's ``messages`` wire format takes one document per call) but
+        writes the whole batch's vectors and publication receipts under one
+        lock each, because the store's single writer -- not the model -- is the
+        throughput ceiling.
+
+        Must return exactly one result per input, in the same order.
+        """
+        return [await self.on_dequeue(data) for data in batch]
+
 
 class NamedQueue:
     """NamedQueue: Operation class for specific named queue, supports status tracking."""
@@ -296,6 +313,19 @@ class NamedQueue:
             # the inner payload itself.
             out.append({"id": item.get("id", ""), "data": item.get("data")})
         return out
+
+    async def process_dequeued_batch(
+        self, batch: list[Dict[str, Any]]
+    ) -> list[ProcessResult]:
+        """Process a dequeued batch through the handler's batch entry point."""
+        handler = self._dequeue_handler
+        if handler is None:
+            return [ProcessResult.success(item) for item in batch]
+        raw = await handler.on_dequeue_batch([self._message_of(item) for item in batch])
+        return [self._validate_result(result) for result in raw]
+
+    def _message_of(self, data: Dict[str, Any]):
+        return data
 
     async def process_dequeued(self, data: Dict[str, Any]) -> ProcessResult:
         """Process one fetched delivery and settle local status exactly once."""

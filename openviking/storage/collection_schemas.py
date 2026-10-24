@@ -687,8 +687,131 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         self._record_request_success(embedding_msg, vector_written=vector_written)
         return ProcessResult.success()
 
+    async def on_dequeue_batch(
+        self, batch: list[Optional[Dict[str, Any]]]
+    ) -> list[ProcessResult]:
+        """Process a dequeued batch, committing its vectors and receipts together.
+
+        The provider's ``messages`` wire format embeds one document per call, so
+        embedding stays per-chunk. What this batches is the store side: on the
+        1935 deployment the single writer, not the model, was the ceiling -- a
+        50-document drain took 73s at 422ms/chunk, of which 231ms was the vector
+        upsert and 61ms the publication receipt, against a 15ms embedding call.
+
+        Each member still runs the full single-message path; only the two writes
+        at the end are collected and issued once for the whole batch. A member
+        that fails keeps its own failure and the batch's other members still
+        commit, which is the same contract as processing them one at a time.
+        """
+        if not batch:
+            return []
+        collector: dict[str, list] = {"upserts": []}
+
+        async def one(data) -> ProcessResult:
+            try:
+                return await self._process_message(data, collector=collector)
+            except Exception as exc:  # noqa: BLE001
+                # A member that raises keeps its own failure; the batch still
+                # commits the members that succeeded, exactly as separate
+                # deliveries would have.
+                return ProcessResult.failed(str(exc))
+
+        # Embed concurrently, commit together. The provider takes one document
+        # per call (``messages`` wire format), so serialising the members here
+        # made a batch as slow as its members summed: measured 60 documents at
+        # 45 docs/min with a batch concurrency of 79, i.e. the batch was the
+        # serialisation point. Gathering the per-message work lets the model
+        # calls overlap while the vector write and the receipts still land as
+        # one commit each.
+        results = await asyncio.gather(*(one(data) for data in batch))
+        if collector["upserts"]:
+            await self._commit_collected(collector["upserts"])
+        return list(results)
+
+    async def _commit_collected(self, pending: list[dict]) -> None:
+        """Write a batch's vectors and receipts with one lock each.
+
+        Vectors go through ``upsert_many`` (one adapter call, one managed-write
+        window) and the receipts through ``record_and_settle_receipts`` (one
+        transaction). Members whose generation already moved on are dropped from
+        the receipt set by the store itself, so a superseded sibling cannot fail
+        the batch. A vector write that fails leaves its message unacked, which is
+        what the per-message path did too: the queue recovers it on restart.
+        """
+        payloads = [item["data"] for item in pending]
+        written: list[dict] = []
+        try:
+            await self._vikingdb.upsert_many(payloads)
+            written = pending
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "[TextEmbeddingHandler] Batched vector write failed for %d chunk(s): %s",
+                len(pending),
+                exc,
+            )
+            # Fall back to one at a time so a single bad record cannot take the
+            # whole batch's vectors down with it.
+            for item in pending:
+                try:
+                    await self._vikingdb.upsert(
+                        item["data"], ctx=item["ctx"], options=item["options"]
+                    )
+                    written.append(item)
+                except Exception as one_exc:  # noqa: BLE001
+                    logger.error(
+                        "[TextEmbeddingHandler] Chunk write failed after batch retry: %s",
+                        one_exc,
+                    )
+
+        receipts = []
+        for item in written:
+            store = item["store"]
+            generation = item["generation"]
+            if store is None or not generation:
+                continue
+            try:
+                from openviking.storage.vector_ids import publication_member_id
+
+                receipts.append((generation, publication_member_id(item["data"])))
+            except Exception:  # noqa: BLE001
+                continue
+        if not receipts:
+            return
+        store = next((item["store"] for item in written if item["store"] is not None), None)
+        record_and_settle = getattr(store, "record_and_settle_receipts", None) if store else None
+        if record_and_settle is None:
+            return
+        try:
+            states = await asyncio.to_thread(record_and_settle, receipts)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "[TextEmbeddingHandler] Batched receipt commit failed for %d chunk(s): %s",
+                len(receipts),
+                exc,
+            )
+            return
+        for state in (states or {}).values():
+            if state.get("state") == "failed":
+                logger.warning(
+                    "[TextEmbeddingHandler] Generation cannot publish: %s",
+                    state.get("error"),
+                )
+
     async def on_dequeue(self, data: Optional[Dict[str, Any]]) -> ProcessResult:
         """Process dequeued message and add embedding vector(s)."""
+        return await self._process_message(data, collector=None)
+
+    async def _process_message(
+        self, data: Optional[Dict[str, Any]], *, collector
+    ) -> ProcessResult:
+        """One message end to end; ``collector`` batches the trailing writes.
+
+        ``collector`` is a dict the batch path passes in. When present, the
+        vector upsert and the publication receipt are appended to it instead of
+        being issued here, so the caller can commit the whole batch under one
+        lock each. Everything else -- validation, embedding, superseded and
+        failed handling -- is identical for both paths.
+        """
         if not data:
             return ProcessResult.success()
 
@@ -985,6 +1108,20 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                             embedding_msg,
                             ctx,
                         )
+                    if collector is not None:
+                        # Deferred: the batch commits every vector in one call.
+                        collector["upserts"].append(
+                            {
+                                "data": inserted_data,
+                                "ctx": ctx,
+                                "options": upsert_options,
+                                "msg": embedding_msg,
+                                "generation": generation,
+                                "store": publication_store,
+                                "telemetry": embedding_msg.telemetry_id,
+                            }
+                        )
+                        return ProcessResult.success(inserted_data)
                     result = await self._vikingdb.upsert(
                         inserted_data,
                         ctx=ctx,

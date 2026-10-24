@@ -284,6 +284,32 @@ class QueueManager:
         sem = asyncio.Semaphore(max_concurrent)
         active_tasks: Set[asyncio.Task] = set()
 
+        async def process_batch(batch: list[Dict[str, Any]]) -> None:
+            """Process a dequeued batch, then ack each member that settled.
+
+            The handler commits the whole batch's vectors and publication
+            receipts under one lock each, which is what keeps the store's single
+            writer from serialising the queue. Members still ack individually,
+            and a failed member is left unacked for recovery exactly as the
+            per-message path left it.
+            """
+            try:
+                results = await queue.process_dequeued_batch(batch)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[QueueManager] Batched worker error for {queue.name}: {e}")
+                return
+            for data, result in zip(batch, results):
+                msg_id = data.get("id", "") if isinstance(data, dict) else ""
+                if result.outcome.value == "failed":
+                    logger.error(
+                        f"[QueueManager] Member failed in batch for {queue.name}: {result.error}"
+                    )
+                    continue
+                try:
+                    await queue.ack(msg_id, data)
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"[QueueManager] Ack failed for {queue.name}: {e}")
+
         async def process_one(data: Dict[str, Any]) -> None:
             async with sem:
                 msg_id = data.get("id", "") if isinstance(data, dict) else ""
@@ -309,9 +335,8 @@ class QueueManager:
                 batch = await queue.dequeue_batch_raw(max_concurrent - len(active_tasks))
                 if not batch:
                     break
-                for data in batch:
-                    task = asyncio.create_task(process_one(data))
-                    active_tasks.add(task)
+                task = asyncio.create_task(process_batch(batch))
+                active_tasks.add(task)
                 logger.debug(
                     f"[QueueManager] Dispatched {len(batch)} tasks from batch dequeue "
                     f"for {queue.name} (active={len(active_tasks)})"
