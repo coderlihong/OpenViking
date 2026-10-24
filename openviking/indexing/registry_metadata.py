@@ -6,6 +6,7 @@ import time
 
 from openviking.indexing.business_meta import AuthoritativeMeta, MetaValue, build_meta
 from openviking.indexing.registry_gc import (
+    _snapshot_generation_for,
     _snapshot_generation_index,
     _tombstone_covers,
     _under_tombstone,
@@ -148,12 +149,17 @@ class RegistryMetadataMixin:
     def metadata_latest(self, account, uri):
         """Latest published authoritative metadata for a single URI.
 
-        ``capture`` + ``metadata_read`` materialize and merge the whole account
-        manifest (tens of thousands of entries, after decoding an ~11MB snapshot
-        blob) just to answer for one URI, and this runs once per file during
-        reindex. Reading the head snapshot directly is equivalent for one URI
-        and costs two indexed lookups: snapshot manifests are append-only and
-        head snapshots are exactly what pins published generations.
+        This runs once per file during reindex, so it must not materialize an
+        account manifest. ``metadata_read`` decodes an ~11MB snapshot blob, and
+        reading the head snapshot still decoded the *whole* manifest just to look
+        one URI up -- 4.9s per call on a 185k-entry head, on the event loop.
+
+        It must still read the *head snapshot*, not ``desired``: ``desired``
+        records what a build was asked to produce, while this must report what is
+        actually published. They diverge whenever a build fails, and answering
+        from ``desired`` there returns metadata for a generation that never
+        published (test_source_edit_during_build_blocks_all_pending_metadata).
+        So the manifest stays the authority, but only the one entry is extracted.
         """
         with self.db(readonly=True) as db:
             if _tombstone_covers(db, account, uri):
@@ -162,7 +168,7 @@ class RegistryMetadataMixin:
                 "SELECT s.id, s.namespace FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
                 (account,),
             ).fetchall():
-                generation = _snapshot_generation_index(db, row["id"]).get(uri)
+                generation = _snapshot_generation_for(db, row["id"], uri)
                 if generation is None:
                     continue
                 record = db.execute(

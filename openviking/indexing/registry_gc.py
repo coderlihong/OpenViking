@@ -86,6 +86,30 @@ def _snapshot_generation_index(db, snapshot):
     return _cache_snapshot(snapshot, _snapshot_manifest(db, snapshot))
 
 
+def _snapshot_generation_for(db, snapshot, uri):
+    """The generation one snapshot records for ``uri``, or None.
+
+    ``_snapshot_generation_index`` builds the *whole* {uri: generation} mapping,
+    which on a large account is ~185k entries / 710ms of GIL-bound work. Callers
+    that ask about a single URI -- ``metadata_latest`` runs once per file during
+    reindex -- must not pay that. The cached index is still preferred when it is
+    already warm; otherwise the raw manifest is searched for this one key.
+    """
+    cached = _SNAPSHOT_GENERATIONS_CACHE.get(snapshot)
+    if cached is not None:
+        return cached.get(uri)
+    manifest = _SNAPSHOT_MANIFEST_CACHE.get(snapshot)
+    if manifest is None:
+        row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (snapshot,)).fetchone()
+        if row is None:
+            raise FailedPreconditionError('Pinned snapshot dependency is missing')
+        # Deliberately *not* memoized: keeping a 185k-entry manifest alive for
+        # the two-entry cache evicts the one a walk actually needs.
+        manifest = decode_manifest(row[0])
+    item = manifest.get(uri)
+    return item.get('generation') if isinstance(item, dict) else None
+
+
 def _tombstone_covers(db, account, uri):
     """True when uri or one of its ancestors has an active tombstone.
 
