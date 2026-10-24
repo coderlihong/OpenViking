@@ -437,3 +437,49 @@ def test_settle_many_advances_each_counter_once(tmp_path):
     assert remaining == 0
     assert store.seal_batch(batch)
     assert store.batch_state(batch)["state"] == "published"
+
+
+def test_multi_chunk_member_records_one_counter_advance(tmp_path):
+    """A member owning several chunks must advance its batch counter once.
+
+    Each chunk of one generation records its own receipt, but the batch counter
+    counts *members*, not receipts. Settling the generation once per chunk drove
+    the counter negative, the batch never settled, and the queue retried healthy
+    chunks with "Newer index attempt superseded batch member".
+    """
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    # One generation, three expected children (a chapter with three chunks).
+    generation = store.begin("acct", "ns", A, "new", ["c1", "c2", "c3"], batch=batch)
+    store.seal(generation)
+    sibling = member(store, batch, B)
+
+    recorded, touched = store.record_receipts(
+        [(generation, "c1"), (generation, "c2"), (generation, "c3"), (sibling, "x")]
+    )
+    assert recorded == 4
+    # The generation appears once even though it recorded three receipts.
+    assert touched.count(generation) == 1
+
+    store.settle_many_after_receipts(touched)
+    remaining = store.batch_state(batch)["remaining"]
+    assert remaining == 0, f"counter should reach zero, got {remaining}"
+
+    assert store.seal_batch(batch)
+    assert store.batch_state(batch)["state"] == "published"
+
+
+def test_partially_received_member_does_not_advance_counter(tmp_path):
+    """A member missing receipts must not decrement the batch counter yet."""
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    generation = store.begin("acct", "ns", A, "new", ["c1", "c2"], batch=batch)
+    store.seal(generation)
+    before = store.batch_state(batch)["remaining"]
+
+    recorded, touched = store.record_receipts([(generation, "c1")])
+    assert recorded == 1
+    store.settle_many_after_receipts(touched)
+
+    assert store.batch_state(batch)["remaining"] == before, "counter advanced early"
+    assert store.batch_state(batch)["state"] != "published"

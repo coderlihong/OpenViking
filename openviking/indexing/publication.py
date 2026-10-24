@@ -1362,7 +1362,13 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 if inserted:
                     recorded += 1
                     touched.append(generation)
-        return recorded, touched
+        # One entry per generation, not per receipt. A generation owns several
+        # chunks, so appending it once per inserted receipt would make
+        # ``settle_many_after_receipts`` advance its batch counter several times
+        # for one member -- the counter went negative and the batch never
+        # settled, which surfaced as "Newer index attempt superseded batch
+        # member" retries on an otherwise healthy chunk.
+        return recorded, list(dict.fromkeys(touched))
 
     def settle_many_after_receipts(self, generations):
         """Advance counters and schedule publication for many generations at once.
@@ -1382,6 +1388,10 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             for generation in generations:
                 row = self._build(db, generation)
                 if row["state"] in {"building", "queued"}:
+                    # ``inserted=1`` means "this call recorded at least one new
+                    # receipt for the member"; ``_receipt_recorded`` only
+                    # decrements the batch counter when the member is also fully
+                    # ready, so a partly-received generation leaves it alone.
                     self._receipt_recorded(db, row, 1, outcome)
                 states[generation] = dict(self._build(db, generation))
         return states

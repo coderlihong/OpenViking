@@ -48,6 +48,15 @@ const CONTROL_FILES: &[ControlFileSpec] = &[
         name: "dequeue",
         mode: 0o444,
     },
+    // Batch dequeue, addressed as "dequeue_batch@N" (see ParsedPath::parse).
+    // Without this entry the path parser did not recognise it as a control
+    // operation, every batch read raised "no operation specified", and the
+    // Python consumer silently fell back to one message per round trip -- which
+    // is why the queue could never assemble a batch to commit.
+    ControlFileSpec {
+        name: "dequeue_batch",
+        mode: 0o444,
+    },
     ControlFileSpec {
         name: "peek",
         mode: 0o444,
@@ -1077,11 +1086,14 @@ mod tests {
             .read_dir("/test", None, None, None, None)
             .await
             .unwrap();
-        assert_eq!(entries.len(), 8);
+        assert_eq!(entries.len(), CONTROL_FILES.len());
 
         let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
         assert!(names.contains(&"enqueue".to_string()));
         assert!(names.contains(&"dequeue".to_string()));
+        // Batch dequeue must be addressable or the Python consumer silently
+        // falls back to one message per round trip.
+        assert!(names.contains(&"dequeue_batch".to_string()));
         assert!(names.contains(&"peek".to_string()));
         assert!(names.contains(&"size".to_string()));
         assert!(names.contains(&"status".to_string()));

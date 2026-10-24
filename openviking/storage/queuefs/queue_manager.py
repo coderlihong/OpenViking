@@ -116,6 +116,11 @@ class QueueManager:
         self.timeout = timeout
         self.mount_point = mount_point
         self._max_concurrent_embedding = max_concurrent_embedding
+        # Optional override for how many worker threads the embedding queue runs.
+        # 0/None derives it from max_concurrent (see _worker_thread_count).
+        self._embedding_worker_threads = int(
+            getattr(self, "_config_embedding_worker_threads", 0) or 0
+        )
         self._max_concurrent_semantic = max_concurrent_semantic
         self._max_concurrent_external_parse = max_concurrent_external_parse
         self._max_concurrent_add_resource = max_concurrent_add_resource
@@ -123,7 +128,7 @@ class QueueManager:
         self._max_concurrent_external_task = max_concurrent_external_task
         self._queues: Dict[str, NamedQueue] = {}
         self._started = False
-        self._queue_threads: Dict[str, threading.Thread] = {}
+        self._queue_threads: Dict[str, list] = {}
         self._queue_stop_events: Dict[str, threading.Event] = {}
         self._poll_interval = 0.2
         self._task_work_index = TaskWorkIndex()
@@ -196,23 +201,72 @@ class QueueManager:
         if start:
             self.start()
 
+    def _embedding_batch_target(self) -> int:
+        """How many embedding messages one dequeue should try to take.
+
+        The batched commit is the whole point of collecting a batch, and its
+        benefit grows with the batch. ``max_concurrent`` bounds how many run at
+        once, not how many may be committed together, so the target is decoupled
+        from it and capped to keep one commit's work bounded.
+        """
+        configured = int(getattr(self, "_embedding_batch_size", 0) or 0)
+        if configured > 0:
+            return configured
+        return max(1, min(128, self._max_concurrent_embedding * 4))
+
+    def _worker_thread_count(self, queue_name: str) -> int:
+        """How many worker threads to run for a queue.
+
+        Each worker owns a private event loop, and the embedder's concurrency
+        semaphore is keyed by event loop -- so one thread caps the whole queue at
+        one semaphore's worth of in-flight requests no matter how large the batch
+        is. Measured on the 1935 deployment: the embedder sustained 17,170
+        docs/min in isolation while the queue delivered 128, a 134x loss that
+        came entirely from serialising requests behind a single loop.
+
+        Embedding gets several threads so the semaphore is no longer the
+        ceiling; queues that mutate shared bookkeeping stay single-threaded.
+        """
+        if queue_name != self.EMBEDDING:
+            return 1
+        configured = int(getattr(self, "_embedding_worker_threads", 0) or 0)
+        if configured > 0:
+            return configured
+        # Each thread brings its own event loop and therefore its own semaphore
+        # pool, so thread count multiplies the achievable in-flight requests.
+        # Default to 4: enough to saturate the model endpoint without turning the
+        # queue into a thread farm.
+        return max(1, min(8, int(getattr(self, "_default_embedding_worker_threads", 4))))
+
     def _start_queue_worker(self, queue: NamedQueue) -> None:
-        """Start a dedicated worker thread for a queue if not already running."""
-        if queue.name in self._queue_threads:
-            thread = self._queue_threads[queue.name]
-            if thread.is_alive():
-                return
+        """Start dedicated worker thread(s) for a queue if not already running."""
+        existing = self._queue_threads.get(queue.name)
+        if existing and any(thread.is_alive() for thread in existing):
+            return
 
         max_concurrent = self._max_concurrent_for_queue(queue.name)
         stop_event = threading.Event()
         self._queue_stop_events[queue.name] = stop_event
-        thread = threading.Thread(
-            target=self._queue_worker_loop,
-            args=(queue, stop_event, max_concurrent),
-            daemon=True,
-        )
-        self._queue_threads[queue.name] = thread
-        thread.start()
+        threads = []
+        count = self._worker_thread_count(queue.name)
+        for index in range(count):
+            thread = threading.Thread(
+                target=self._queue_worker_loop,
+                args=(queue, stop_event, max_concurrent),
+                name=f"{queue.name}-worker-{index}",
+                daemon=True,
+            )
+            threads.append(thread)
+        self._queue_threads[queue.name] = threads
+        for thread in threads:
+            thread.start()
+        if count > 1:
+            logger.info(
+                "[QueueManager] Started %d worker threads for %s (max_concurrent=%d)",
+                count,
+                queue.name,
+                max_concurrent,
+            )
 
     def _max_concurrent_for_queue(self, queue_name: str) -> int:
         """Return the worker concurrency limit for a named queue."""
@@ -332,7 +386,16 @@ class QueueManager:
             while len(active_tasks) < max_concurrent:
                 if not queue.has_dequeue_handler():
                     break
-                batch = await queue.dequeue_batch_raw(max_concurrent - len(active_tasks))
+                # Ask for a batch sized by the concurrency window, not by the
+                # number of free task slots: with several worker threads each
+                # requesting only its own remaining slots, the queue is split
+                # into many tiny batches (measured: 57 batches of 2) and every
+                # batch pays the per-batch commit cost. A batch amortises that
+                # cost over its members, so take as many as the window allows.
+                want = max_concurrent - len(active_tasks)
+                if queue.name == self.EMBEDDING:
+                    want = max(want, self._embedding_batch_target())
+                batch = await queue.dequeue_batch_raw(want)
                 if not batch:
                     break
                 task = asyncio.create_task(process_batch(batch))
@@ -373,10 +436,13 @@ class QueueManager:
         # Stop queue workers
         for stop_event in self._queue_stop_events.values():
             stop_event.set()
-        for name, thread in self._queue_threads.items():
-            thread.join(timeout=10.0)
-            if thread.is_alive():
-                logger.warning(f"[QueueManager] Worker thread {name} did not exit in time")
+        for name, threads in self._queue_threads.items():
+            for thread in threads:
+                thread.join(timeout=10.0)
+                if thread.is_alive():
+                    logger.warning(
+                        f"[QueueManager] Worker thread {name} did not exit in time"
+                    )
         self._queue_threads.clear()
         self._queue_stop_events.clear()
 
