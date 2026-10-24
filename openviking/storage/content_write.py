@@ -607,6 +607,19 @@ class ContentWriteCoordinator:
                 overview_sample_limit=getattr(semantic_config, "overview_sample_limit", 32),
                 refresh_ratio=getattr(semantic_config, "freshness_refresh_ratio", 0.10),
                 force_refresh=force_refresh,
+                # Wait for the sidecar lease instead of taking it zero-timeout.
+                # The planner default is 0.0, so under a concurrent write burst
+                # -- every document in one directory contending for the same
+                # .overview.md/.abstract.md pair -- all but one caller lost the
+                # race, fell into the LockAcquisitionError branch, and degraded
+                # to per-file work with aggregate_directory=False. Those messages
+                # then carry no coalesce_key, so nothing deduplicates them and
+                # the semantic queue runs one full directory aggregation per
+                # file, serialised by the tree path lock. Measured: 30 documents
+                # in one directory produced 30 uncoalesced messages and drained
+                # one at a time; the same 30 in 30 directories hit the configured
+                # concurrency of 32.
+                lock_timeout_secs=1.0,
             )
             action = decision.action
         except LockAcquisitionError:
