@@ -9,6 +9,7 @@ import json
 import math
 import sqlite3
 import time
+from collections import OrderedDict
 from uuid import uuid4
 
 from openviking.indexing.manifest_codec import decode_manifest
@@ -24,28 +25,39 @@ GC_COMMANDS = ('generation_write_begin', 'generation_write_confirm', 'generation
 # manifest for *every* managed write (i.e. per embedded item) while holding the
 # single writer lock, which is what put multi-second lock waits in front of
 # every other writer during a reindex (measured 0.6-10s lock waits).
-_SNAPSHOT_MANIFEST_CACHE: dict[str, dict] = {}
-_SNAPSHOT_GENERATIONS_CACHE: dict[str, dict[str, str]] = {}
-_SNAPSHOT_MANIFEST_CACHE_MAX = 2
+_SNAPSHOT_MANIFEST_CACHE: "OrderedDict[str, dict]" = OrderedDict()
+_SNAPSHOT_GENERATIONS_CACHE: "OrderedDict[str, dict[str, str]]" = OrderedDict()
+# How many snapshots to keep decoded. This used to be 2 with a wholesale
+# ``clear()`` on overflow, which thrashed: a reindex publishes a new snapshot
+# every batch, so any read touching the previous head evicted the entry the
+# writer needed next and every lookup paid a full 28MB decode + parse again
+# (measured 371ms cold against 5.5ms warm, repeatedly, inside the write
+# transaction). An LRU over a handful of snapshots keeps the live head, the
+# one before it, and whatever a concurrent lease pinned.
+_SNAPSHOT_MANIFEST_CACHE_MAX = 8
 
 
 def _cache_snapshot(snapshot, manifest):
     """Memoize one snapshot's manifest together with its {uri: generation} index.
 
     Both caches are keyed by snapshot id and must stay in step, so they are
-    filled from the same call.
+    filled from the same call. Eviction is LRU and drops the *same* snapshot
+    from both caches so a manifest can never outlive its index.
     """
-    if len(_SNAPSHOT_MANIFEST_CACHE) >= _SNAPSHOT_MANIFEST_CACHE_MAX and snapshot not in _SNAPSHOT_MANIFEST_CACHE:
-        _SNAPSHOT_MANIFEST_CACHE.clear()
-        _SNAPSHOT_GENERATIONS_CACHE.clear()
-    _SNAPSHOT_MANIFEST_CACHE[snapshot] = manifest
     index = {}
     for uri, item in manifest.items():
         if isinstance(item, dict) and item.get('generation'):
             index[uri] = item['generation']
-    if len(_SNAPSHOT_GENERATIONS_CACHE) >= _SNAPSHOT_MANIFEST_CACHE_MAX and snapshot not in _SNAPSHOT_GENERATIONS_CACHE:
-        _SNAPSHOT_GENERATIONS_CACHE.clear()
+    _SNAPSHOT_MANIFEST_CACHE[snapshot] = manifest
+    _SNAPSHOT_MANIFEST_CACHE.move_to_end(snapshot)
     _SNAPSHOT_GENERATIONS_CACHE[snapshot] = index
+    _SNAPSHOT_GENERATIONS_CACHE.move_to_end(snapshot)
+    while len(_SNAPSHOT_MANIFEST_CACHE) > _SNAPSHOT_MANIFEST_CACHE_MAX:
+        evicted, _ = _SNAPSHOT_MANIFEST_CACHE.popitem(last=False)
+        _SNAPSHOT_GENERATIONS_CACHE.pop(evicted, None)
+    while len(_SNAPSHOT_GENERATIONS_CACHE) > _SNAPSHOT_MANIFEST_CACHE_MAX:
+        evicted, _ = _SNAPSHOT_GENERATIONS_CACHE.popitem(last=False)
+        _SNAPSHOT_MANIFEST_CACHE.pop(evicted, None)
     return index
 
 
@@ -82,6 +94,11 @@ def _snapshot_generation_index(db, snapshot):
     """Immutable {uri: generation} view of one snapshot manifest."""
     cached = _SNAPSHOT_GENERATIONS_CACHE.get(snapshot)
     if cached is not None:
+        # Touch: this is the entry the hot paths keep asking for, and the LRU
+        # must not evict it in favour of a snapshot only one caller read once.
+        _SNAPSHOT_GENERATIONS_CACHE.move_to_end(snapshot)
+        if snapshot in _SNAPSHOT_MANIFEST_CACHE:
+            _SNAPSHOT_MANIFEST_CACHE.move_to_end(snapshot)
         return cached
     return _cache_snapshot(snapshot, _snapshot_manifest(db, snapshot))
 
@@ -97,6 +114,7 @@ def _snapshot_generation_for(db, snapshot, uri):
     """
     cached = _SNAPSHOT_GENERATIONS_CACHE.get(snapshot)
     if cached is not None:
+        _SNAPSHOT_GENERATIONS_CACHE.move_to_end(snapshot)
         return cached.get(uri)
     manifest = _SNAPSHOT_MANIFEST_CACHE.get(snapshot)
     if manifest is None:

@@ -425,7 +425,13 @@ def create_app(
                 # producer that is between its last receipt and seal_batch.
                 while True:
                     try:
-                        await asyncio.sleep(60)
+                        # 15s, not 60s: a publish writes a full manifest snapshot
+                        # and the sweep is the only thing that reclaims the one it
+                        # replaced. At 60s the sweep was outrun by the publish rate
+                        # and the table only grew (measured 51 publishes/min
+                        # against a sweep that reclaimed at most 500 rows per
+                        # minute, most of them ineligible on age).
+                        await asyncio.sleep(15)
                         swept = await asyncio.to_thread(recover, 200, 60.0)
                         if swept:
                             logger.info(
@@ -440,13 +446,16 @@ def create_app(
                             # manifest growth -- far past the old 64-rows-per-
                             # minute, 1-hour-old sweep, which could never catch
                             # up and let the store reach 36GB with 96% dead pages.
-                            # The age floor only has to clear the query-lease TTL
-                            # (120s) plus the renewal window, so 600s is ample;
-                            # the sweep loops until a pass finds nothing, which
-                            # bounds each burst while still draining a backlog.
+                            # The age floor is only a safety margin on top of the
+                            # explicit lease check `prune_snapshots` already does
+                            # (it skips every snapshot a live query lease, gc
+                            # lease or recovery record pins). The TTL is 120s and
+                            # leases renew every 40s, so 240s is two TTLs -- ample
+                            # -- and a 600s floor simply parked every snapshot for
+                            # ten minutes while the table kept growing.
                             pruned_total = 0
                             for _ in range(20):
-                                dropped = await asyncio.to_thread(prune, 600.0, 500)
+                                dropped = await asyncio.to_thread(prune, 240.0, 500)
                                 pruned_total += dropped or 0
                                 if not dropped:
                                     break
