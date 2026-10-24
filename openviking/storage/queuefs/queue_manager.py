@@ -115,12 +115,14 @@ class QueueManager:
         self._agfs = agfs
         self.timeout = timeout
         self.mount_point = mount_point
+        # ``max_concurrent`` is the only concurrency knob this class honours.
+        # The embedding window is sized from it and nothing multiplies it: the
+        # batch target used to be ``max_concurrent * 4``, the worker thread count
+        # a second factor, and each of those was read from an attribute that no
+        # caller ever set (``_embedding_batch_size`` / ``_embedding_worker_threads``
+        # / ``_default_embedding_worker_threads``), so the "configuration" was
+        # dead code around hard-coded constants.
         self._max_concurrent_embedding = max_concurrent_embedding
-        # Optional override for how many worker threads the embedding queue runs.
-        # 0/None derives it from max_concurrent (see _worker_thread_count).
-        self._embedding_worker_threads = int(
-            getattr(self, "_config_embedding_worker_threads", 0) or 0
-        )
         self._max_concurrent_semantic = max_concurrent_semantic
         self._max_concurrent_external_parse = max_concurrent_external_parse
         self._max_concurrent_add_resource = max_concurrent_add_resource
@@ -215,9 +217,6 @@ class QueueManager:
         saturates near 24 from this host -- and per-call latency went from 309ms
         to 6.7s, which is why a queue with more concurrency ran slower.
         """
-        configured = int(getattr(self, "_embedding_batch_size", 0) or 0)
-        if configured > 0:
-            return configured
         return max(1, int(self._max_concurrent_embedding))
 
     def _worker_thread_count(self, queue_name: str) -> int:
@@ -233,18 +232,14 @@ class QueueManager:
         Embedding gets several threads so the semaphore is no longer the
         ceiling; queues that mutate shared bookkeeping stay single-threaded.
         """
-        if queue_name != self.EMBEDDING:
-            return 1
-        configured = int(getattr(self, "_embedding_worker_threads", 0) or 0)
-        if configured > 0:
-            return configured
-        # One worker thread. Concurrency inside a batch already saturates the
-        # endpoint, and threads multiply the in-flight count: 4 threads x N
-        # batches x batch size over-subscribed it badly enough that per-call
-        # latency went from 309ms to 6.7s. A single loop keeps the window
-        # predictable; raise this only when the endpoint is known to have
-        # headroom.
-        return max(1, int(getattr(self, "_default_embedding_worker_threads", 1)))
+        # One thread for every queue. Threads multiply the in-flight count --
+        # each owns a private event loop, so its own semaphore -- and the window
+        # is already sized to ``max_concurrent`` in *documents*. With four
+        # embedding threads the real request count was threads x window, which
+        # over-subscribed the endpoint badly enough that per-call latency went
+        # from 309ms to 6.7s. One loop keeps the window exactly what was
+        # configured; raise it only with evidence of endpoint headroom.
+        return 1
 
     def _start_queue_worker(self, queue: NamedQueue) -> None:
         """Start dedicated worker thread(s) for a queue if not already running."""
