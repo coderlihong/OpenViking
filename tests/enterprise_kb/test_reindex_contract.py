@@ -1010,3 +1010,61 @@ async def test_published_content_unchanged_falls_back_to_legacy_records(
     # A changed file must not be mistaken for the published revision.
     await e.fs.write(URI, "# 章节\n\n改过的正文。\n" * 10, ctx=e.ctx)
     assert not await executor._published_content_unchanged(URI, ctx=e.ctx, manifest={})
+
+
+# --------------------------------------------------------------------------- #
+# Per-run overview memo: one read per parent directory, not one per file
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_parent_overview_is_read_once_per_directory():
+    """A directory's overview must be fetched once, not once per chapter.
+
+    ``_best_file_summary`` asks the parent directory for its entry on every
+    file. A directory holding 36 chapters therefore re-read and re-parsed the
+    same 7KB ``.overview.md`` 36 times; a live reindex of 1907 records spent its
+    wall clock on these repeats while the process sat at 6% CPU.
+    """
+    executor = reindex.ReindexExecutor()
+    reads: list[str] = []
+
+    async def fake_read(uri, *, ctx):
+        reads.append(uri)
+        return "## a.md\n摘要 A\n\n## b.md\n摘要 B\n\n## c.md\n摘要 C\n"
+
+    executor._safe_read_text = fake_read
+    executor._fetch_existing_record = AsyncMock(return_value=None)
+    ctx = SimpleNamespace(account_id="acct")
+    cache: dict[str, dict[str, str]] = {}
+    parent = "viking://resources/raw/menus/book/1_Intro"
+
+    for name in ("a.md", "b.md", "c.md"):
+        summary = await executor._best_file_summary(
+            f"{parent}/{name}", ctx=ctx, overview_cache=cache
+        )
+        assert summary.startswith("摘要")
+
+    assert len(reads) == 1, f"overview re-read {len(reads)} times"
+    assert parent in cache
+
+
+@pytest.mark.asyncio
+async def test_parent_overview_cache_absent_still_works():
+    """Without a cache the executor keeps the original one-read-per-file contract."""
+    executor = reindex.ReindexExecutor()
+    reads: list[str] = []
+
+    async def fake_read(uri, *, ctx):
+        reads.append(uri)
+        return "## a.md\n摘要 A\n"
+
+    executor._safe_read_text = fake_read
+    executor._fetch_existing_record = AsyncMock(return_value=None)
+    ctx = SimpleNamespace(account_id="acct")
+    parent = "viking://resources/raw/menus/book/1_Intro"
+
+    for _ in range(3):
+        await executor._best_file_summary(f"{parent}/a.md", ctx=ctx)
+
+    assert len(reads) == 3

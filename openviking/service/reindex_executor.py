@@ -2350,10 +2350,18 @@ class ReindexExecutor:
                             f"Failed to reindex {directory_uri} L1 vector: {exc}"
                         )
 
+        # One parsed ``.overview.md`` per parent directory, shared by every file
+        # in this run. ``vectors_only`` never rewrites L0/L1, so the entries are
+        # immutable here; without this each of the 36 chapters in a directory
+        # re-read and re-parsed the same overview.
+        overview_cache: dict[str, dict[str, str]] = {}
+
         async def process_file(file_uri: str) -> _ReindexCounters:
             file_counters = _ReindexCounters(scanned_records=1)
             parent_uri = VikingURI(file_uri).parent.uri
-            summary = await self._best_file_summary(file_uri, ctx=ctx)
+            summary = await self._best_file_summary(
+                file_uri, ctx=ctx, overview_cache=overview_cache
+            )
             embedding = get_openviking_config().embedding
             chunking = getattr(embedding, "chunking", None)
             if (
@@ -2945,6 +2953,10 @@ class ReindexExecutor:
         else:
             raise NotFoundError(uri, "memory")
 
+        # Same per-parent memo as the resource path: memory files in one
+        # directory share a single ``.overview.md``.
+        overview_cache: dict[str, dict[str, str]] = {}
+
         async def process_file(file_uri: str) -> _ReindexCounters:
             file_counters = _ReindexCounters(scanned_records=1)
             body_source = await self._read_memory_body(file_uri, ctx=ctx)
@@ -2963,7 +2975,9 @@ class ReindexExecutor:
             )
             abstract = self._best_non_empty(
                 self._record_abstract(existing),
-                await self._best_file_summary(file_uri, ctx=ctx),
+                await self._best_file_summary(
+                    file_uri, ctx=ctx, overview_cache=overview_cache
+                ),
             )
             if not body and existing is None:
                 file_counters.unsupported_records += 1
@@ -3130,20 +3144,52 @@ class ReindexExecutor:
             return ""
         return "" if _is_not_ready_sentinel(value, _OVERVIEW_NOT_READY_SUFFIX) else value
 
-    async def _best_file_summary(self, uri: str, *, ctx: RequestContext) -> str:
+    async def _best_file_summary(
+        self,
+        uri: str,
+        *,
+        ctx: RequestContext,
+        overview_cache: dict[str, dict[str, str]] | None = None,
+    ) -> str:
         parent_uri = VikingURI(uri).parent.uri
         file_name = uri.rsplit("/", 1)[-1]
-        overviews = await self._safe_read_text(f"{parent_uri}/.overview.md", ctx=ctx)
-        if overviews:
-            parsed = self._parse_overview_md(body_for_preview(overviews))
-            if file_name in parsed:
-                return parsed[file_name]
+        parsed = await self._parent_overview_entries(
+            parent_uri, ctx=ctx, cache=overview_cache
+        )
+        if file_name in parsed:
+            return parsed[file_name]
         existing = await self._fetch_existing_record(
             uri=uri,
             level=2,
             ctx=self._content_owner_ctx(uri, ctx),
         )
         return self._record_abstract(existing)
+
+    async def _parent_overview_entries(
+        self,
+        parent_uri: str,
+        *,
+        ctx: RequestContext,
+        cache: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, str]:
+        """Parsed ``.overview.md`` entries for one parent directory, read once per run.
+
+        Every file asks its parent for a summary, so a directory holding 36
+        chapters re-read and re-parsed the same 7KB overview 36 times. A reindex
+        of 1907 records across 121 directories spent its wall clock on these
+        repeated reads while the process sat at 6% CPU. ``vectors_only`` never
+        rewrites L0/L1, so the overview is immutable for the run that supplies
+        ``cache``; callers that may regenerate overviews simply pass no cache.
+        """
+        if cache is not None and parent_uri in cache:
+            return cache[parent_uri]
+        overviews = await self._safe_read_text(f"{parent_uri}/.overview.md", ctx=ctx)
+        parsed = (
+            self._parse_overview_md(body_for_preview(overviews)) if overviews else {}
+        )
+        if cache is not None:
+            cache[parent_uri] = parsed
+        return parsed
 
     async def _best_resource_file_vector_text(
         self,
