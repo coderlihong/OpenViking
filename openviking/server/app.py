@@ -460,7 +460,13 @@ def create_app(
                                 if not dropped:
                                     break
                             if pruned_total:
-                                logger.info(
+                                # debug, not info: this fires on every sweep
+                                # while a reindex runs (one snapshot per publish).
+                                # It was logged at info and the deployment runs at
+                                # WARNING, so a store that had grown to 36GB of
+                                # dead manifests reclaimed nothing visibly -- the
+                                # log made it look like the sweep never ran.
+                                logger.debug(
                                     "Pruned %d unreachable manifest snapshot(s)",
                                     pruned_total,
                                 )
