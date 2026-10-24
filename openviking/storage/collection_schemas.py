@@ -956,8 +956,24 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                 # Write to vector database
                 try:
                     raw_upsert_options = inserted_data.pop("_upsert_options", {})
+                    # A managed chunk's record id embeds its index generation, so
+                    # a fresh generation always mints ids that cannot exist yet.
+                    # ``partial_update`` would pre-read every one of them and
+                    # always miss -- a full adapter round trip per chunk on the
+                    # hot write path (measured 245ms average upsert, of which the
+                    # read is the leading part). ``assume_new`` keeps the merge
+                    # semantics for unmanaged writes and skips the futile read
+                    # for managed ones.
+                    _managed_new = bool(
+                        inserted_data.get("chunk_id")
+                        and inserted_data.get("index_generation")
+                    )
                     upsert_options = normalize_upsert_options(
-                        {**raw_upsert_options, "partial_update": True}
+                        {
+                            **raw_upsert_options,
+                            "partial_update": True,
+                            **({"assume_new": True} if _managed_new else {}),
+                        }
                     )
                     # Ensure vector DB has deterministic IDs per semantic layer.
                     uri = inserted_data.get("uri")

@@ -560,25 +560,46 @@ class RegistryLexicalMixin:
                 'SELECT account, rows, tokenizer, updated FROM publication_lexical_index ORDER BY account')]
 
     def _lexical_accounts_due(self, accounts):
-        with self.db() as db:
+        """Accounts whose lexical mirror needs a rebuild.
+
+        Reads first, writes second. The discovery queries are read-only, and
+        running them inside ``self.db()`` took the single write lock for a full
+        ``SELECT DISTINCT`` over ``publication_lexical`` -- tens of thousands of
+        rows against a multi-GB file. Under the vector phase that scan sat in
+        front of every embedding receipt: 99% of the measured receipt transaction
+        time was lock wait, with this scan as the holder. A deferred read
+        transaction does not block writers in WAL, so the two halves are split
+        and only the rare marker insert/update keeps the writer.
+        """
+        with self.db(readonly=True) as db:
             known = {row[0] for row in db.execute(f'SELECT DISTINCT {_ACCOUNT_EXPR} FROM publication_lexical') if row[0]}
             marked = {row['account']: int(row['rows']) for row in db.execute('SELECT account, rows FROM publication_lexical_index')}
-            for account in known - set(marked):
+            unmarked = known - set(marked)
+            if accounts is not None:
+                wanted = set(accounts)
+                due = {account for account, rows in marked.items() if rows < 0}
+                return sorted(a for a in (due | (unmarked & wanted)) if a in wanted)
+            due = {account for account, rows in marked.items() if rows < 0}
+            missing_mirror = {
+                account
+                for account, rows in marked.items()
+                if rows >= 0 and not self._fts_index_present(db, lexical_fts_table(account))
+            }
+        if not unmarked and not missing_mirror:
+            return sorted(due)
+        with self.db() as db:
+            for account in unmarked:
                 # Pre-existing rows from before the mirror existed: mark them so
                 # the sweep rebuilds instead of searching a partial index.
                 db.execute('INSERT OR IGNORE INTO publication_lexical_index VALUES (?,?,?,?)',
                            (account, _INDEX_INCOMPLETE, TOKENIZER_VERSION, time.time()))
-                marked[account] = _INDEX_INCOMPLETE
-            if accounts is not None:
-                wanted = set(accounts)
-                return sorted(a for a in marked if a in wanted)
-            due = {account for account, rows in marked.items() if rows < 0}
-            for account, rows in marked.items():
-                if rows >= 0 and not self._fts_index_present(db, lexical_fts_table(account)):
-                    db.execute('UPDATE publication_lexical_index SET rows=? WHERE account=?',
-                               (_INDEX_INCOMPLETE, account))
-                    due.add(account)
-            return sorted(due)
+            for account in missing_mirror:
+                db.execute('UPDATE publication_lexical_index SET rows=? WHERE account=?',
+                           (_INDEX_INCOMPLETE, account))
+        if accounts is not None:
+            wanted = set(accounts)
+            return sorted(a for a in (due | (unmarked & wanted)) if a in wanted)
+        return sorted(due | missing_mirror | unmarked)
 
     def rebuild_lexical_index(self, accounts=None, batch_rows: int = _INDEX_BATCH_ROWS):
         """(Re)build per-account lexical FTS mirrors from ``publication_lexical``.

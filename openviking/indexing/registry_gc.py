@@ -208,7 +208,14 @@ class RegistryGCMixin:
             raise ValueError('A bounded managed write batch is required')
         bound = []
         protected = None
-        with self.db() as db:
+        # Validation is read-only and the write is a single row, but both used to
+        # run under BEGIN IMMEDIATE: every managed chunk write therefore took the
+        # single writer for a walk over heads/leases/snapshots
+        # (``_protected_generations``). Under the vector phase that put this
+        # fence in front of every embedding receipt. Validate under a deferred
+        # read transaction (which never blocks writers in WAL), then take the
+        # writer only for the one INSERT.
+        with self.db(readonly=True) as db:
             for fields in records:
                 if not isinstance(fields, dict) or fields.get('account_id') != account:
                     raise ValueError('Managed write account mismatch')
@@ -238,10 +245,12 @@ class RegistryGCMixin:
                 bound.append({'generation': generation, 'child': child, 'uri': row['uri']})
             if len({(item['generation'], item['child']) for item in bound}) != len(bound):
                 raise ValueError('Duplicate managed write member')
-            token = uuid4().hex
+        token = uuid4().hex
+        payload = json.dumps(bound, sort_keys=True)
+        with self.db() as db:
             db.execute("INSERT INTO generation_write_windows VALUES (?,?,?,?,'writing',?,NULL)",
-                       (token, account, backend, json.dumps(bound, sort_keys=True), time.time()))
-            return token
+                       (token, account, backend, payload, time.time()))
+        return token
 
     def generation_write_confirm(self, account, token, backend):
         with self.db() as db:

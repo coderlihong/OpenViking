@@ -169,6 +169,11 @@ def _bounded_record(data: Dict[str, Any], max_bytes: int) -> Dict[str, Any]:
 @dataclass(frozen=True)
 class UpsertOptions:
     partial_update: bool = False
+    # The caller knows this record id is brand new (a deterministic id derived
+    # from a chunk that has never been written). ``partial_update`` exists to
+    # merge fields into an existing row, so its pre-read can only miss here --
+    # and that read is a full adapter round trip on the hot chunk-write path.
+    assume_new: bool = False
     search_tag_mode: str = "replace"
 
 
@@ -201,6 +206,7 @@ def normalize_upsert_options(
         return options
     return UpsertOptions(
         partial_update=bool(options.get("partial_update", False)),
+        assume_new=bool(options.get("assume_new", False)),
         search_tag_mode=str(options.get("search_tag_mode", "replace")),
     )
 
@@ -506,7 +512,7 @@ class _SingleAccountBackend:
             logger.warning("Rejecting upsert: %s", exc)
             return ""
 
-        if options.partial_update:
+        if options.partial_update and not options.assume_new:
             try:
                 existing_records = await self._async_adapter.call("get", [payload["id"]])
                 if self._bound_account_id:

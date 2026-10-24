@@ -294,3 +294,146 @@ async def test_actual_uri_reindex_batches_two_source_files(
     for msg in second:
         assert (await e.handler.on_dequeue({"data": msg.to_json()})).outcome.value == "success"
     assert {uri: await e.fs.read_file(uri, ctx=e.ctx) for uri in (A, B)} == {A: SOURCE, B: SOURCE}
+
+
+# --------------------------------------------------------------------------- #
+# Batched receipts: one lock for a whole dequeued batch, identical outcomes
+# --------------------------------------------------------------------------- #
+
+
+def _receipts(store, generations):
+    with store.db(readonly=True) as db:
+        return {
+            (row["generation"], row["child"])
+            for row in db.execute("SELECT generation, child FROM receipts")
+        }
+
+
+def test_record_receipts_matches_single_acknowledge_exactly(tmp_path):
+    """The bulk path must leave the store in the same state as one-at-a-time.
+
+    The embedding queue records a receipt per chunk; on the single-writer store
+    that lock was the throughput ceiling (415 write transactions, 383s of lock
+    wait, for 100 documents whose model calls took 15ms each). Batching the
+    inserts must change only how many times the lock is taken.
+    """
+    serial = PublicationStore(str(tmp_path / "serial"))
+    batched = PublicationStore(str(tmp_path / "batched"))
+    batch_serial = serial.begin_batch("acct", "ns")
+    batch_batched = batched.begin_batch("acct", "ns")
+    gens_serial = [member(serial, batch_serial, uri) for uri in (A, B)]
+    gens_batched = [member(batched, batch_batched, uri) for uri in (A, B)]
+
+    for generation in gens_serial:
+        serial.acknowledge(generation, "x")
+    recorded, touched = batched.record_receipts([(g, "x") for g in gens_batched])
+    assert recorded == len(gens_batched)
+    for generation in touched:
+        batched.settle_after_receipts(generation)
+
+    # Two independent stores mint different generation ids, so compare the
+    # receipt structure: one row per member child, same children, same count.
+    serial_rows = _receipts(serial, gens_serial)
+    batched_rows = _receipts(batched, gens_batched)
+    assert len(serial_rows) == len(batched_rows) == 2
+    assert {child for _gen, child in serial_rows} == {
+        child for _gen, child in batched_rows
+    } == {"x"}
+    serial.seal_batch(batch_serial)
+    batched.seal_batch(batch_batched)
+    assert serial.batch_state(batch_serial)["state"] == batched.batch_state(
+        batch_batched
+    )["state"] == "published"
+    # Both stores published the same URIs; ids differ by construction.
+    assert set(view(serial)) >= {A, B}
+    assert set(view(batched)) >= {A, B}
+
+
+def test_record_receipts_is_idempotent_like_acknowledge(tmp_path):
+    """A replayed receipt records nothing and does not double-advance the batch."""
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    generation = member(store, batch, A)
+
+    recorded, touched = store.record_receipts([(generation, "x")])
+    assert recorded == 1 and touched == [generation]
+    store.settle_after_receipts(generation)
+
+    recorded, touched = store.record_receipts([(generation, "x")])
+    assert recorded == 0 and touched == []
+    # The batch itself publishes only once the producer seals it.
+    assert store.seal_batch(batch)
+    assert store.batch_state(batch)["state"] == "published"
+
+
+def test_record_receipts_rejects_unexpected_child(tmp_path):
+    """An unexpected child is still refused, exactly as acknowledge refuses it."""
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    generation = member(store, batch, A)
+
+    with pytest.raises(ValueError, match="Unexpected child"):
+        store.record_receipts([(generation, "not-a-member")])
+
+
+def test_record_receipts_skips_generations_that_cannot_publish(tmp_path):
+    """A failed generation is skipped, not raised, so siblings still record."""
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    first = member(store, batch, A)
+    second = member(store, batch, B)
+    # Fail one member the way the publication gate does; a failed generation no
+    # longer accepts receipts, and that must not stop its sibling from recording.
+    with store.db() as db:
+        db.execute(
+            "UPDATE builds SET state='failed', error=? WHERE generation=?",
+            ("superseded by newer attempt", first),
+        )
+
+    recorded, touched = store.record_receipts([(first, "x"), (second, "x")])
+    assert recorded == 1
+    assert touched == [second]
+    recorded_rows = _receipts(store, [first, second])
+    assert (first, "x") not in recorded_rows
+    assert (second, "x") in recorded_rows
+
+
+def test_settle_many_matches_per_generation_settle(tmp_path):
+    """Batched settle must advance every counter exactly as settling one by one."""
+    serial = PublicationStore(str(tmp_path / "serial"))
+    batched = PublicationStore(str(tmp_path / "batched"))
+    batch_serial = serial.begin_batch("acct", "ns")
+    batch_batched = batched.begin_batch("acct", "ns")
+    gens_serial = [member(serial, batch_serial, uri) for uri in (A, B)]
+    gens_batched = [member(batched, batch_batched, uri) for uri in (A, B)]
+
+    for generation in gens_serial:
+        serial.record_receipt(generation, "x")
+        serial.settle_after_receipts(generation)
+
+    recorded, touched = batched.record_receipts([(g, "x") for g in gens_batched])
+    assert recorded == len(gens_batched)
+    states = batched.settle_many_after_receipts(touched)
+    assert set(states) == set(touched)
+
+    serial.seal_batch(batch_serial)
+    batched.seal_batch(batch_batched)
+    assert serial.batch_state(batch_serial)["state"] == "published"
+    assert batched.batch_state(batch_batched)["state"] == "published"
+    assert len(_receipts(serial, gens_serial)) == len(_receipts(batched, gens_batched))
+
+
+def test_settle_many_advances_each_counter_once(tmp_path):
+    """The batch counter must reach zero, not go negative or stall."""
+    store = PublicationStore(str(tmp_path / "db"))
+    batch = store.begin_batch("acct", "ns")
+    gens = [member(store, batch, uri) for uri in (A, B)]
+
+    recorded, touched = store.record_receipts([(g, "x") for g in gens])
+    assert recorded == 2
+    store.settle_many_after_receipts(touched)
+
+    remaining = store.batch_state(batch)["remaining"]
+    assert remaining == 0
+    assert store.seal_batch(batch)
+    assert store.batch_state(batch)["state"] == "published"

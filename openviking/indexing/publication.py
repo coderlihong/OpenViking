@@ -1282,6 +1282,126 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             self._receipt_recorded(db, self._build(db, generation), inserted, outcome)
         return bool(outcome.get("published"))
 
+    def record_receipt(self, generation, child):
+        """Insert one receipt row without advancing or publishing.
+
+        The embedding queue writes the vector first and then records the
+        receipt. On the single-writer store each of those is a
+        ``BEGIN IMMEDIATE``, and the lock -- not the work -- is the ceiling: a
+        100-document drain took 415 write transactions whose lock wait summed to
+        383s while the model needed 15ms per document.
+
+        This is the batched-write half. The caller inserts rows for a whole
+        dequeued batch in one transaction, then settles each touched generation
+        with ``settle_after_receipts`` outside that transaction. Splitting it
+        keeps the expensive publish walk and the correctness checks off the
+        writer lock, exactly as the single-receipt path already does.
+        """
+        with self.db() as db:
+            row = self._build(db, generation)
+            if child not in json.loads(row["expected"]):
+                raise ValueError("Unexpected child cannot satisfy publication")
+            if row["state"] not in {"building", "queued"}:
+                return False
+            return bool(
+                db.execute(
+                    "INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, child)
+                ).rowcount
+            )
+
+    def record_and_settle_receipts(self, entries):
+        """Record receipts for a whole batch and settle them, in two transactions.
+
+        The embedding queue's hot path. ``entries`` is a sequence of
+        ``(generation, child)``; all rows land under one ``BEGIN IMMEDIATE``,
+        then the touched generations are settled under a second. Compared with
+        the per-chunk path -- which takes the lock twice per chunk -- this takes
+        it twice per batch.
+
+        Returns ``{generation: state}`` for every generation the caller should
+        report on. A child the generation does not expect raises, exactly as the
+        single-receipt path raises: the batch is rejected as a whole rather than
+        silently dropping a member.
+        """
+        recorded, touched = self.record_receipts(entries)
+        if not touched:
+            return {}
+        return self.settle_many_after_receipts(touched)
+
+    def record_receipts(self, entries):
+        """Insert receipts for many generations in ONE write transaction.
+
+        This is the batched form of ``record_receipt``: the embedding queue
+        records a whole dequeued batch's receipts under a single
+        ``BEGIN IMMEDIATE`` instead of one per chunk. ``entries`` is a sequence
+        of ``(generation, child)``.
+
+        Each row is validated exactly as the single-receipt path validates it --
+        an unexpected child still raises, a non-writable generation is still
+        skipped -- so what lands in ``receipts`` is identical. Only the number of
+        lock acquisitions changes. Returns ``(recorded, touched)``: the number of
+        rows inserted and the set of generations whose receipts were touched and
+        therefore need ``settle_after_receipts``.
+
+        Callers must settle every touched generation afterwards; that is where
+        the counter advances and the deferred publication is scheduled, and it
+        must happen outside this transaction so a publish never holds the lock.
+        """
+        recorded = 0
+        touched = []
+        with self.db() as db:
+            for generation, child in entries:
+                row = self._build(db, generation)
+                if child not in json.loads(row["expected"]):
+                    raise ValueError("Unexpected child cannot satisfy publication")
+                if row["state"] not in {"building", "queued"}:
+                    continue
+                inserted = db.execute(
+                    "INSERT OR IGNORE INTO receipts VALUES (?,?)", (generation, child)
+                ).rowcount
+                if inserted:
+                    recorded += 1
+                    touched.append(generation)
+        return recorded, touched
+
+    def settle_many_after_receipts(self, generations):
+        """Advance counters and schedule publication for many generations at once.
+
+        The settle half of the batched receipt path. Every generation whose
+        receipts were just inserted needs its batch counter advanced exactly
+        once and its publication deferred; doing that per generation would put
+        the single-writer lock back in the loop for each one. The per-generation
+        work is unchanged -- ``_receipt_recorded`` still runs for each -- only
+        the enclosing transaction is shared.
+
+        Returns ``{generation: state}`` for the caller to report.
+        """
+        outcome = {}
+        states = {}
+        with self.db() as db:
+            for generation in generations:
+                row = self._build(db, generation)
+                if row["state"] in {"building", "queued"}:
+                    self._receipt_recorded(db, row, 1, outcome)
+                states[generation] = dict(self._build(db, generation))
+        return states
+
+    def settle_after_receipts(self, generation):
+        """Advance the counter and publish for a generation whose receipts landed.
+
+        The second half of the batched receipt path: called once per touched
+        generation after the bulk insert commits, so the counter advance and the
+        deferred publication still happen exactly once per generation instead of
+        once per receipt.
+        """
+        outcome = {}
+        with self.db() as db:
+            row = self._build(db, generation)
+            if row["state"] not in {"building", "queued"}:
+                return dict(row)
+            self._receipt_recorded(db, row, 1, outcome)
+            return dict(self._build(db, generation))
+
     def acknowledge_and_state(self, generation, child):
         """``acknowledge`` followed by ``state`` inside one transaction.
 
