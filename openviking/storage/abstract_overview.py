@@ -558,13 +558,20 @@ async def plan_abstract_overview_refresh(
     force_refresh: bool = False,
     overview_sample_limit: int = 32,
     refresh_ratio: float = 0.10,
-    lock_timeout_secs: float = 0.0,
+    lock_timeout_secs: float = 5.0,
 ) -> FreshnessDecision:
     """Atomically record direct-child changes and choose refresh scheduling.
 
     Both sidecars receive the same counter snapshot under one exact-path lease.
     A missing or legacy baseline is refreshed immediately and migrated by the
     ensuing semantic task.
+
+    ``lock_timeout_secs`` defaults to the filesystem's own lease timeout rather
+    than 0. A zero timeout means "give up if the sidecars are busy right now",
+    and callers that did not override it silently degraded under any concurrent
+    write burst: every document in a directory contends for the same
+    .overview.md/.abstract.md pair, so all but one lost the race and scheduled
+    per-file work instead of one aggregated refresh.
     """
     # Lazy import keeps this low-level sidecar module importable by VikingFS
     # while queuefs itself imports VikingFS during package initialization.
