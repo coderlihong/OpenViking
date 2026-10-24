@@ -96,6 +96,12 @@ class QueueManager:
     DATA_CLEANUP = "UserDeletion"
     # Deferred work re-enqueues itself; throttle the next scheduling round.
     _REQUEUE_POLL_INTERVAL = 1.0
+    # Bounded window for letting a shallow embedding queue fill into one batch.
+    # Short enough that latency does not suffer when the producer has stopped,
+    # long enough to cover a burst of single-document writes arriving back to
+    # back (measured inter-write gap is tens of milliseconds).
+    _BATCH_FILL_TIMEOUT = 0.15
+    _BATCH_FILL_INTERVAL = 0.01
 
     def __init__(
         self,
@@ -326,6 +332,35 @@ class QueueManager:
         finally:
             loop.close()
 
+    async def _await_embedding_fill(self, queue: NamedQueue, want: int) -> int:
+        """Let a shallow embedding queue fill before committing a scrap batch.
+
+        Returns the batch size to ask for. A queue that already holds ``want``
+        messages is taken immediately; a shallower one is polled for a short,
+        bounded window so a burst of individual writes can accumulate into one
+        batch. The window is capped well below a request timeout and the loop
+        never blocks the drain: if nothing arrives the caller proceeds with
+        whatever is there.
+        """
+        target = max(1, int(want))
+        if target < 2:
+            return target
+        deadline = asyncio.get_running_loop().time() + self._BATCH_FILL_TIMEOUT
+        best = 0
+        while True:
+            try:
+                depth = int(await queue.size())
+            except Exception:  # noqa: BLE001
+                return target
+            if depth <= 0:
+                # Nothing queued at all: do not wait, the outer loop needs to
+                # poll rather than spin here.
+                return target
+            best = max(best, min(depth, target))
+            if best >= target or asyncio.get_running_loop().time() >= deadline:
+                return best
+            await asyncio.sleep(self._BATCH_FILL_INTERVAL)
+
     async def _worker_async_concurrent(
         self, queue: NamedQueue, stop_event: threading.Event, max_concurrent: int
     ) -> None:
@@ -405,6 +440,17 @@ class QueueManager:
                     # window; also cap it at the configured target so a big
                     # window does not turn into one enormous batch.
                     want = min(free, self._embedding_batch_target())
+                    # Each batch costs a fixed number of writer transactions
+                    # (managed-write begin+confirm, receipt record+settle) no
+                    # matter how many members it carries, so a half-empty batch
+                    # pays that cost per few chunks. Measured: a burst of 100
+                    # single-document writes produced 49 batches averaging 4.1
+                    # members, i.e. 83% of the batch capacity was wasted and the
+                    # single writer was taken 4x per 4 chunks instead of 4x per
+                    # 24. When the queue is shallow the producer is simply ahead
+                    # of the drain, so give it a moment to fill rather than
+                    # committing a scrap batch.
+                    want = await self._await_embedding_fill(queue, want)
                 batch = await queue.dequeue_batch_raw(want)
                 if not batch:
                     break

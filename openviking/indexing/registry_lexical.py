@@ -513,19 +513,18 @@ class RegistryLexicalMixin:
         # seconds every sweep, and every embedding receipt queued behind it.
         # A deferred read transaction does not block writers in WAL, so the
         # expensive read moves out and only the DELETE keeps the writer.
+        # Find candidates FIRST, in a read-only transaction. The cheap indexed
+        # scan decides whether there is anything to do at all; only when it does
+        # is the expensive protected-set walk (which decodes every pinned
+        # snapshot manifest, ~3s cold) worth paying. It used to run first
+        # unconditionally, so a sweep with nothing to collect still burned three
+        # seconds of GIL and cache before returning 0 -- measured on the live
+        # store, where every lexical row is still referenced by `desired` and the
+        # sweep therefore never had a victim.
         with self.db(readonly=True) as ro:
-            protected = self._protected_generations(ro)
-        with self.db() as db:
-            for table in ('leases', 'gc_leases'):
-                if db.execute(f'SELECT 1 FROM {table} WHERE expires>? LIMIT 1', (now,)).fetchone():
-                    return 0
-            # Query-view leases live in the dedicated store; an active lease
-            # must freeze the prune exactly like a legacy row does.
-            if self._query_leases.live_snapshot_ids():
-                return 0
             candidates = [
                 dict(row)
-                for row in db.execute(
+                for row in ro.execute(
                     f'SELECT l.rowid AS rowid, l.generation AS generation, '
                     f'l.tokens AS tokens, {_ACCOUNT_EXPR} AS account '
                     f'FROM publication_lexical l JOIN builds b ON b.generation=l.generation '
@@ -535,9 +534,20 @@ class RegistryLexicalMixin:
                     (cutoff, limit),
                 )
             ]
+            if not candidates:
+                return 0
+            for table in ('leases', 'gc_leases'):
+                if ro.execute(f'SELECT 1 FROM {table} WHERE expires>? LIMIT 1', (now,)).fetchone():
+                    return 0
+            # Query-view leases live in the dedicated store; an active lease
+            # must freeze the prune exactly like a legacy row does.
+            if self._query_leases.live_snapshot_ids():
+                return 0
+            protected = self._protected_generations(ro)
             victims = [row for row in candidates if row['generation'] not in protected]
             if not victims:
                 return 0
+        with self.db() as db:
             rowids = [row['rowid'] for row in victims]
             marks = ','.join('?' * len(rowids))
             removed_by_account: dict[str, int] = {}
