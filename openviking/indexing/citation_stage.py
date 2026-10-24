@@ -86,30 +86,32 @@ async def normalize_citations(
             "captions_backfilled": 0,
             "warnings": [],
         }
-        async with asyncio.Semaphore(1):
-            with draft_sources():
-                # rewrite_image_uris globs markdown under the root itself, so a
-                # single-file URI normalizes just that file and a directory
-                # walks its whole subtree.
-                stats = await rewrite_image_uris(uri, ctx=ctx, lease_ref=lock)
-                counters["files_normalized"] = int(stats.get("files_processed") or 0)
-                md_uris = [uri]
-                if is_dir:
-                    glob_result = await viking_fs.glob(
-                        "**/*.md" if recursive else "*.md", uri=uri, ctx=ctx
-                    )
-                    md_uris = list(glob_result.get("matches") or [])
-                image_summaries = await _describe_images(viking_fs, md_uris, ctx)
-                counters["images_described"] = len(image_summaries)
-                for image_uri, summary_dict in image_summaries.items():
-                    updated = await backfill_image_captions(
-                        viking_fs,
-                        image_uri,
-                        summary_dict,
-                        ctx=_content_owner_ctx(image_uri, ctx),
-                        lock=lock,
-                    )
-                    counters["captions_backfilled"] += len(updated)
+        # No semaphore here: this block is a straight sequence of awaits with no
+        # fan-out (rewrite -> glob -> describe -> backfill), so a Semaphore(1)
+        # guarded nothing. Mutual exclusion comes from the path lock taken above.
+        with draft_sources():
+            # rewrite_image_uris globs markdown under the root itself, so a
+            # single-file URI normalizes just that file and a directory
+            # walks its whole subtree.
+            stats = await rewrite_image_uris(uri, ctx=ctx, lease_ref=lock)
+            counters["files_normalized"] = int(stats.get("files_processed") or 0)
+            md_uris = [uri]
+            if is_dir:
+                glob_result = await viking_fs.glob(
+                    "**/*.md" if recursive else "*.md", uri=uri, ctx=ctx
+                )
+                md_uris = list(glob_result.get("matches") or [])
+            image_summaries = await _describe_images(viking_fs, md_uris, ctx)
+            counters["images_described"] = len(image_summaries)
+            for image_uri, summary_dict in image_summaries.items():
+                updated = await backfill_image_captions(
+                    viking_fs,
+                    image_uri,
+                    summary_dict,
+                    ctx=_content_owner_ctx(image_uri, ctx),
+                    lock=lock,
+                )
+                counters["captions_backfilled"] += len(updated)
         return counters
     finally:
         if own_lease and lease is not None:
