@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -1751,3 +1752,78 @@ async def test_import_top_level_overwrite_keeps_regenerated_catalogue(
     assert "viking://resources/README.md" in fake_fs.written_files
     # The generated catalogue survived clearing; the pack member overwrote it.
     assert "viking://resources/index.md" not in fake_fs.removed_roots
+
+
+@pytest.mark.asyncio
+async def test_import_vectorization_never_fans_out_unbounded(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A tenant-sized import must not materialize one coroutine per file.
+
+    ``_enqueue_direct_vectorization`` used to gather every file of the pack at
+    once. On a real bundle that is hundreds of thousands of coroutines built
+    before the first one runs, which starved the event loop: /ready and /health
+    stopped answering and the live service looked down for the whole import.
+    """
+    from openviking.storage.ovpack import operations
+
+    in_flight = 0
+    peak = 0
+    seen: list[str] = []
+
+    async def fake_work(uri: str) -> None:
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        seen.append(uri)
+        try:
+            await asyncio.sleep(0)
+        finally:
+            in_flight -= 1
+
+    window = operations._VECTORIZE_WINDOW
+    assert window > 0
+    total = window * 20
+    await operations._bounded_vectorize(
+        (fake_work(f"viking://resources/f{i}.md") for i in range(total)),
+        total=total,
+        label="files",
+    )
+
+    assert len(seen) == total
+    assert peak <= window, f"window exceeded: {peak} concurrent coroutines"
+
+
+@pytest.mark.asyncio
+async def test_import_vectorization_surfaces_failures():
+    """A failing file aborts the import instead of being silently swallowed."""
+    from openviking.storage.ovpack import operations
+
+    async def boom() -> None:
+        raise RuntimeError("vectorize failed")
+
+    with pytest.raises(RuntimeError, match="vectorize failed"):
+        await operations._bounded_vectorize([boom()], total=1, label="files")
+
+
+@pytest.mark.asyncio
+async def test_import_vectorization_cancels_pending_on_failure():
+    """Remaining work is cancelled so a failed import leaves no orphan tasks."""
+    from openviking.storage.ovpack import operations
+
+    cancelled: list[int] = []
+
+    async def boom() -> None:
+        raise RuntimeError("stop")
+
+    async def slow(i: int) -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            cancelled.append(i)
+            raise
+
+    work = [boom()] + [slow(i) for i in range(operations._VECTORIZE_WINDOW * 2)]
+    with pytest.raises(RuntimeError, match="stop"):
+        await operations._bounded_vectorize(work, total=len(work), label="files")
+    assert cancelled, "pending tasks were not cancelled"

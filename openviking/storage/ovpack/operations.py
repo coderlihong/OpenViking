@@ -97,6 +97,14 @@ logger = get_logger(__name__)
 
 OPTIONAL_ABSTRACT_OVERVIEW_FILES = frozenset({".abstract.md", ".overview.md"})
 
+# Import-time vectorization used to gather every file of the pack at once. A
+# tenant bundle carries hundreds of thousands of entries, so the gather built
+# that many coroutines before the first one finished: the loop stalled behind
+# the O(n) fan-out, /ready and /health stopped answering, and the whole server
+# looked down for the length of the import. Throttle to a bounded window and
+# log progress so a long import stays observable.
+_VECTORIZE_WINDOW = 32
+
 
 def _index_records_by_level(
     index_records: list[dict[str, Any]], rel_path: str
@@ -442,13 +450,56 @@ async def _enqueue_direct_vectorization(
             scalar_override=scalar_override,
         )
 
-    await asyncio.gather(*(index_dir(dir_uri) for dir_uri in dir_uris))
-    await asyncio.gather(
-        *(
+    await _bounded_vectorize(
+        (index_dir(dir_uri) for dir_uri in dir_uris),
+        total=len(dir_uris),
+        label="directories",
+    )
+    await _bounded_vectorize(
+        (
             index_file(file_uri, parent_uri, file_name, rel_path)
             for file_uri, parent_uri, file_name, rel_path in file_entries
-        )
+        ),
+        total=len(file_entries),
+        label="files",
     )
+
+
+async def _bounded_vectorize(work, *, total: int, label: str) -> None:
+    """Run ``work`` with at most ``_VECTORIZE_WINDOW`` coroutines in flight.
+
+    ``asyncio.gather`` over an unbounded generator is what froze the server: for
+    a full tenant bundle it materialized one coroutine per file (hundreds of
+    thousands) before any of them ran, so the event loop could not get back to
+    the request handlers. Keeping the window small bounds both the coroutine
+    fan-out and the pressure each file puts on the publication store.
+    """
+    iterator = iter(work)
+    pending: set[asyncio.Future] = set()
+    completed = 0
+    try:
+        while True:
+            while len(pending) < _VECTORIZE_WINDOW:
+                try:
+                    pending.add(asyncio.ensure_future(next(iterator)))
+                except StopIteration:
+                    break
+            if not pending:
+                break
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in done:
+                # Surface failures instead of letting asyncio.wait swallow them.
+                task.result()
+            completed += len(done)
+            if completed and completed % 500 == 0:
+                logger.info(f"[ovpack] vectorization: {completed}/{total} {label} enqueued")
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def _restore_snapshot_with_ledger(
