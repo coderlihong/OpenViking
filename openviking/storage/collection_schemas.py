@@ -818,56 +818,6 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                     "[TextEmbeddingHandler] Generation cannot publish: %s",
                     state.get("error"),
                 )
-        await self._schedule_parent_aggregation(store)
-
-    async def _schedule_parent_aggregation(self, store) -> None:
-        """Schedule one aggregation per directory whose L2 chunks just published.
-
-        Runs *after* the vector write and its receipts committed, so the directory
-        holds its final content and the aggregation reads a settled state. One
-        message per parent directory per batch, deduplicated here; the semantic
-        queue coalesces again by key.
-
-        This replaces having every content write independently try to aggregate
-        the same parent while its chunks were still in flight: 40 documents in 40
-        subdirectories of one parent produced 24 parent-refresh messages and 11
-        aggregations of that parent, each re-reading the whole directory, for a
-        result that only depends on the final state.
-        """
-        take = getattr(store, "take_published_uris", None)
-        if take is None:
-            return
-        try:
-            uris = await asyncio.to_thread(take)
-        except Exception:  # noqa: BLE001
-            return
-        # The directory that *contains* the file -- the same level
-        # `content_write` anchors its own aggregation to (`anchor_to_parent=True`),
-        # so the two triggers name the same directory instead of one running an
-        # extra level up.
-        # Group the changed files by their directory. The aggregation needs the
-        # file list, not just the directory: a message with no changes gives the
-        # DAG nothing to summarise, so the directory's own .abstract.md is
-        # unchanged, `abstract_body_changed` is False and the refresh never
-        # propagates to the parent -- measured as action=noop / l0=False on every
-        # message, i.e. the parent overview silently stopped updating.
-        by_parent: dict[str, list[str]] = {}
-        for uri in uris or ():
-            if not isinstance(uri, str):
-                continue
-            parent = uri.rstrip("/").rsplit("/", 1)[0]
-            if parent:
-                by_parent.setdefault(parent, []).append(uri)
-        if not by_parent:
-            return
-        try:
-            from openviking.storage.queuefs.semantic_dag import schedule_parent_aggregation
-
-            for parent, changed in by_parent.items():
-                await schedule_parent_aggregation(parent, changed_files=changed)
-        except Exception:  # noqa: BLE001
-            # Aggregation is derived state; never fail the committed vectors.
-            logger.debug("Parent aggregation scheduling skipped", exc_info=True)
 
     async def on_dequeue(self, data: Optional[Dict[str, Any]]) -> ProcessResult:
         """Process dequeued message and add embedding vector(s)."""

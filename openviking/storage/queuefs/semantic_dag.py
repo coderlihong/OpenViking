@@ -235,59 +235,6 @@ def get_llm_semaphore(max_concurrent: int) -> asyncio.Semaphore:
     return semaphore
 
 
-async def schedule_parent_aggregation(parent_uri, *, changed_files=None, account_id=None, user_id=None, context_type="resource"):
-    """Queue one parent aggregation for a directory whose L2 chunks just landed.
-
-    Called from the embedding batch commit, i.e. *after* the chunk vectors and
-    their receipts are committed, so the directory holds its final content. The
-    caller deduplicates by parent directory (one call per batch per directory) and
-    the semantic queue coalesces again by key.
-
-    Identity defaults to the default account/user because the vector phase has no
-    request context of its own; a caller that has one should pass it.
-    """
-    if not parent_uri or not isinstance(parent_uri, str):
-        return False
-    parent_uri = parent_uri.rstrip("/")
-    if not parent_uri or parent_uri in {"viking:", "viking://", "viking://user", "viking://agent"}:
-        return False
-    from openviking.storage.queuefs import get_queue_manager
-    from openviking.storage.queuefs.semantic_msg import SemanticMsg, build_semantic_coalesce_key
-
-    account_id = account_id or "default"
-    user_id = user_id or "default"
-    queue_manager = get_queue_manager()
-    semantic_queue = queue_manager.get_queue(queue_manager.SEMANTIC, allow_create=True)
-    msg = SemanticMsg(
-        uri=parent_uri,
-        # target_uri must equal uri for the incremental path to engage
-        # (`_is_direct_incremental_update` checks it); without it the DAG takes
-        # the non-incremental route and reports no abstract body change, so the
-        # refresh never propagates to the parent.
-        target_uri=parent_uri,
-        context_type=context_type,
-        recursive=False,
-        account_id=account_id,
-        user_id=user_id,
-        role="user",
-        skip_vectorization=False,
-        # The DAG needs the changed files to summarise; without them the
-        # directory's own abstract does not change and the refresh stops
-        # propagating upward.
-        changes={"modified": list(changed_files or ())},
-        generation_trigger="l2_complete",
-        aggregate_directory=True,
-        coalesce_key=build_semantic_coalesce_key(
-            context_type=context_type,
-            uri=parent_uri,
-            account_id=account_id,
-            user_id=user_id,
-        ),
-    )
-    await semantic_queue.enqueue(msg)
-    return True
-
-
 def get_semantic_node_scheduler(max_workers: int) -> SemanticNodeScheduler:
     loop = asyncio.get_running_loop()
     scheduler = _node_schedulers.get(loop)

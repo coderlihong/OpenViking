@@ -626,20 +626,9 @@ class ContentWriteCoordinator:
             # Parent aggregation is best-effort; changed-file work must still run.
             logger.info("Skipping busy parent semantic refresh: %s", root_uri)
             action = FreshnessAction.NOOP
-        # Directory aggregation is scheduled by the *vector* phase, once the
-        # chunk vectors (L2) for this write are actually committed -- see
-        # TextEmbeddingHandler._schedule_parent_aggregation. Doing it here as well
-        # meant every write independently aggregated the same directory while its
-        # chunks were still in flight, and the two triggers landed two messages
-        # per directory for one result. The freshness decision is still computed
-        # because it decides whether the *file-level* work runs.
-        aggregate_directory = False
+        aggregate_directory = action is FreshnessAction.REFRESH_NOW
         has_live_files = any(changes.get(kind) for kind in ("added", "modified"))
-        if not has_live_files and action is not FreshnessAction.REFRESH_NOW:
-            return action
-        if not has_live_files:
-            # Nothing per-file to do and aggregation now belongs to the vector
-            # phase: nothing to enqueue.
+        if not aggregate_directory and not has_live_files:
             return action
         queue_manager = get_queue_manager()
         semantic_queue = queue_manager.get_queue(queue_manager.SEMANTIC, allow_create=True)
