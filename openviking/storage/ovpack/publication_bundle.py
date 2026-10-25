@@ -48,7 +48,6 @@ _SNAPSHOT_LEAF = f"{_PUBLICATION_DIR}/head_snapshot.bin"
 
 _PUBLICATION_FORMAT_VERSION = 1
 _IN_QUERY_CHUNK = 900
-_BLOB_WORKERS = 8
 
 
 def _leaf(base_name: str, leaf: str) -> str:
@@ -429,7 +428,10 @@ async def _rebuild_blobs_and_refs(
     file_entries = [
         entry for entry in entries if not entry.get("isDir") and entry.get("rel_path")
     ]
-    semaphore = asyncio.Semaphore(_BLOB_WORKERS)
+    from openviking_cli.utils.config.concurrency_config import concurrency_config
+
+    blob_workers = concurrency_config().ovpack_blob_workers
+    semaphore = asyncio.Semaphore(blob_workers)
     counter = {"written": 0, "present": 0}
 
     async def _one(entry: dict[str, Any]) -> None:
@@ -473,8 +475,8 @@ async def _rebuild_blobs_and_refs(
 
     # A 200k-entry bundle previously gathered all writes at once; the stampede
     # tripped AGFS's 5ms lock timeout and aborted the migration. Throttle to
-    # _BLOB_WORKERS inflight writes and let the retry loop absorb the rest.
-    batch_size = _BLOB_WORKERS * 64
+    # ``blob_workers`` inflight writes and let the retry loop absorb the rest.
+    batch_size = blob_workers * 64
     for start in range(0, len(file_entries), batch_size):
         await asyncio.gather(
             *[_one(entry) for entry in file_entries[start : start + batch_size]]

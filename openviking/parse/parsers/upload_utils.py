@@ -102,9 +102,6 @@ def should_skip_file(
     return False, ""
 
 
-_UPLOAD_CONCURRENCY = 8
-
-
 async def upload_directory(
     local_dir: Path,
     viking_uri_base: str,
@@ -118,7 +115,7 @@ async def upload_directory(
     """Upload an entire directory recursively and return uploaded count with warnings.
 
     Optimized: collects all files in one pass, pre-creates directories upfront,
-    then uploads all files concurrently (up to _UPLOAD_CONCURRENCY at a time).
+    then uploads all files concurrently (up to ``concurrency.upload_concurrency``).
     """
     effective_ignore_extensions = (
         ignore_extensions if ignore_extensions is not None else IGNORE_EXTENSIONS
@@ -222,7 +219,9 @@ async def upload_directory(
                 logger.warning(f"Failed to create directory {dir_uri}: {e}")
 
     # --- Phase 3: Upload files concurrently ---
-    sem = asyncio.Semaphore(_UPLOAD_CONCURRENCY)
+    from openviking_cli.utils.config.concurrency_config import concurrency_config
+
+    sem = asyncio.Semaphore(concurrency_config().upload_concurrency)
     errors: List[Optional[str]] = [None] * len(files_to_upload)
 
     async def _upload_one(idx: int, file_path: Path, target_uri: str) -> None:

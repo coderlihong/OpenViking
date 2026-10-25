@@ -47,6 +47,30 @@ class ConcurrencyConfig(BaseModel):
             "AGFS call otherwise stalls unrelated requests behind it."
         ),
     )
+    # The four below used to be module-level constants (``_UPLOAD_CONCURRENCY``
+    # and friends) with the value 8 baked into the source. They are deployment
+    # knobs like every other limit here, so they belong in one place where an
+    # operator can see and raise them without editing code.
+    upload_concurrency: int = Field(
+        default=8,
+        gt=0,
+        description="Concurrent part uploads when staging a remote/parsed source",
+    )
+    ovpack_blob_workers: int = Field(
+        default=8,
+        gt=0,
+        description="Concurrent blob reads/writes inside one ovpack bundle operation",
+    )
+    staged_copy_concurrency: int = Field(
+        default=8,
+        gt=0,
+        description="Concurrent file copies when staging a source into the store",
+    )
+    skill_integrity_read_concurrency: int = Field(
+        default=8,
+        gt=0,
+        description="Concurrent reads when verifying skill bundle integrity",
+    )
 
 
 def concurrency_config() -> ConcurrencyConfig:

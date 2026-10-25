@@ -43,7 +43,6 @@ router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 _SKILL_INTEGRITY_MAX_ENTRIES = 512
 _SKILL_INTEGRITY_MAX_FILE_BYTES = 16 * 1024 * 1024
 _SKILL_INTEGRITY_MAX_TOTAL_BYTES = 64 * 1024 * 1024
-_SKILL_INTEGRITY_READ_CONCURRENCY = 8
 
 
 class UpdateSkillRequest(BaseModel):
@@ -413,8 +412,11 @@ async def _skill_manifest_with_integrity(
 
     built: list[Dict[str, Any] | None] = []
     total_bytes = 0
-    for offset in range(0, len(visible_entries), _SKILL_INTEGRITY_READ_CONCURRENCY):
-        batch = visible_entries[offset : offset + _SKILL_INTEGRITY_READ_CONCURRENCY]
+    from openviking_cli.utils.config.concurrency_config import concurrency_config
+
+    read_concurrency = concurrency_config().skill_integrity_read_concurrency
+    for offset in range(0, len(visible_entries), read_concurrency):
+        batch = visible_entries[offset : offset + read_concurrency]
         batch_items = await asyncio.gather(*(build_entry(entry) for entry in batch))
         for item in batch_items:
             if item is not None and not item["is_dir"]:

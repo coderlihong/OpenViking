@@ -15,7 +15,6 @@ from openviking.server.identity import RequestContext
 from openviking.utils.path_safety import safe_join_viking_uri, sanitize_relative_viking_path
 from openviking_cli.exceptions import InvalidArgumentError
 
-_COPY_CONCURRENCY = 8
 _IDENTITY_META_FIELDS = frozenset(
     {
         "extension",
@@ -182,7 +181,9 @@ async def _copy_local_tree(
     for directory_uri in sorted(directories):
         await viking_fs.mkdir(directory_uri, exist_ok=True, ctx=ctx)
 
-    semaphore = asyncio.Semaphore(_COPY_CONCURRENCY)
+    from openviking_cli.utils.config.concurrency_config import concurrency_config
+
+    semaphore = asyncio.Semaphore(concurrency_config().staged_copy_concurrency)
 
     async def copy_file(local_path: Path, target_file_uri: str) -> None:
         async with semaphore:
