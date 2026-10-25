@@ -551,6 +551,31 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         return generation
 
     def observe_draft(self, account, uri):
+        """Return the current draft epoch for ``(account, uri)``, creating the row if absent.
+
+        Read first. Every file an earlier ingest archived already owns a draft
+        row, so a reindex of published content used to pay one ``BEGIN
+        IMMEDIATE`` per file to re-INSERT a row that was already there: on the
+        fleet reindex this call accounted for 8,046 of the transactions that
+        waited ~105ms each behind the single writer. A deferred read never
+        queues on the writer in WAL, so the hot path is now a lock-free lookup
+        and only a genuinely missing row opens a write transaction.
+        """
+        with self.db(readonly=True) as db:
+            row = db.execute(
+                "SELECT epoch FROM drafts WHERE account=? AND uri=?", (account, uri)
+            ).fetchone()
+            if row is not None:
+                # A fenced source must still fail here. Only a URI that actually
+                # has a source_write row falls through to the write path, where
+                # _assert_not_writing can settle or reject it -- so the guard
+                # keeps its meaning without a write transaction per file.
+                fenced = db.execute(
+                    "SELECT 1 FROM source_writes WHERE account=? AND uri=? LIMIT 1",
+                    (account, uri),
+                ).fetchone()
+                if fenced is None:
+                    return row[0]
         with self.db() as db:
             self._assert_not_writing(db, account, uri)
             db.execute("INSERT OR IGNORE INTO drafts VALUES (?,?,0,NULL)", (account, uri))
