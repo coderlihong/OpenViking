@@ -1809,6 +1809,51 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             ).rowcount
         return removed or 0
 
+    def _reap_abandoned_members(self, db, max_idle_seconds: float) -> int:
+        """Fail members whose receipt set stopped growing.
+
+        Distinct from ``_reap_stale_batch_members``: that one waits for
+        ``STALE_BUILD_SECONDS`` because a live producer legitimately holds a
+        member for a long time. This one targets the narrower, unambiguous case --
+        a member that received *some* receipts and then nothing -- because such a
+        member can never complete, and while it sits there its whole batch is
+        unpublished.
+        """
+        cutoff = time.time() - max(0.0, float(max_idle_seconds))
+        rows = db.execute(
+            """
+            SELECT m.batch AS batch, m.generation AS generation
+            FROM batch_members m
+            JOIN builds b ON b.generation = m.generation
+            JOIN batches bt ON bt.id = m.batch
+            WHERE b.state = 'queued'
+              AND b.created < ?
+              AND bt.state IN ('queued', 'building')
+              AND (SELECT COUNT(*) FROM receipts r WHERE r.generation = b.generation) > 0
+              AND (SELECT COUNT(*) FROM receipts r WHERE r.generation = b.generation)
+                  < json_array_length(json_extract(b.expected, '$'))
+            LIMIT 500
+            """,
+            (cutoff,),
+        ).fetchall()
+        reaped = 0
+        for row in rows:
+            changed = db.execute(
+                "UPDATE builds SET state='failed', error=? "
+                "WHERE generation=? AND state='queued'",
+                (
+                    "abandoned member: receipts stopped arriving, batch could not settle",
+                    row["generation"],
+                ),
+            ).rowcount
+            if changed:
+                reaped += changed
+                db.execute(
+                    "UPDATE batches SET remaining=MAX(remaining-1,0) WHERE id=?",
+                    (row["batch"],),
+                )
+        return reaped
+
     def recover_stranded_batches(self, limit=200, idle_seconds=0.0):
         """Seal batches a lost producer left 'building' with every receipt in.
 
@@ -1832,6 +1877,18 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         cutoff = time.time() - max(0.0, float(idle_seconds))
         with self.db() as db:
             reaped = self._reap_stale_batch_members(db, STALE_BUILD_SECONDS)
+            # A member whose receipts stopped arriving blocks every sibling in its
+            # batch until STALE_BUILD_SECONDS (2h) expires. One member missing a
+            # `semantic:*` receipt was measured holding back the other 15
+            # documents of its batch for the full two hours, even though all 15
+            # were fully receipted and ready.
+            #
+            # Reap on a much shorter window here, but only for members that have
+            # made *no* progress at all: they hold at least one receipt (so the
+            # producer did start) and have not gained another for this long. A
+            # member still receiving receipts is progressing, and one with none is
+            # covered by the building-state reap above.
+            reaped += self._reap_abandoned_members(db, STRANDED_MEMBER_SECONDS)
             if reaped:
                 logger.warning(
                     "reaped %d stale batch member(s) whose producer exited before "
@@ -2769,6 +2826,11 @@ def current_process_generation() -> str:
 # worst legitimate delay (an embedding backlog of ~35k messages at ~9/s is about
 # an hour), so a slow-but-live producer is never reaped.
 STALE_BUILD_SECONDS = 7200.0
+# How long a batch member may sit with a partially-complete receipt set before it
+# is failed so its siblings can publish. Long enough that an embedding backlog or
+# a slow semantic call is not mistaken for an abandoned member; short enough that
+# one stuck member does not hide a whole batch for two hours.
+STRANDED_MEMBER_SECONDS = 900.0
 AUTO_SETTLE_FENCE_ACTOR = "system:auto-fence-settle"
 AUTO_SETTLE_FENCE_REASON = (
     "writer left an unbacked uncertain fence older than 600s; the backend holds no "
