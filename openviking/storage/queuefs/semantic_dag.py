@@ -181,6 +181,10 @@ class SemanticNodeScheduler:
         # flight. Sizing it to the raw queue depth let the pool collapse every
         # time an await drained the queue, which serialised the DAG (measured
         # ~0.6 concurrent LLM calls against a configured width of 8).
+        #
+        # Growing straight to ``max_workers`` was tried and reverted: idle workers
+        # exit after ``_idle_timeout`` (50ms), so a wide pool churned -- 512 worker
+        # starts for 8 documents -- and the run got slower (200s), not faster.
         target = min(self._max_workers, len(self._workers) + self._queue.qsize())
         while len(self._workers) < target:
             task = asyncio.create_task(self._worker())
