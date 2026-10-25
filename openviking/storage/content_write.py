@@ -584,6 +584,46 @@ class ContentWriteCoordinator:
             embedding_requested=embedding_requested,
         )
 
+    async def _vectorize_resource_changes(
+        self,
+        *,
+        refresh_root: str,
+        context_type: str,
+        changes: dict[str, list[str]],
+        ctx: RequestContext,
+    ) -> bool:
+        """Enqueue chunk vectors for the changed files, right now.
+
+        Returns whether every changed file was enqueued, so the caller can tell
+        the semantic message to skip its own vectorization only when this
+        actually covered the work. A file that fails to enqueue leaves the flag
+        False and the DAG keeps its original responsibility for it, so the change
+        cannot lose vectors.
+        """
+        uris = list(changes.get("added") or ()) + list(changes.get("modified") or ())
+        if not uris:
+            return False
+        all_enqueued = True
+        for uri in uris:
+            try:
+                enqueued = await vectorize_file(
+                    file_path=uri,
+                    # `content_only` is the configured text source, so the
+                    # summary is not embedded; an empty one is correct here and
+                    # the DAG fills the real abstract when it runs.
+                    summary_dict={"name": uri.rsplit("/", 1)[-1], "summary": ""},
+                    parent_uri=refresh_root,
+                    context_type=context_type,
+                    ctx=ctx,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Direct vectorize failed for %s: %s", uri, exc)
+                all_enqueued = False
+                continue
+            if not enqueued:
+                all_enqueued = False
+        return all_enqueued
+
     async def _enqueue_semantic_refresh_changes(
         self,
         *,
@@ -596,6 +636,24 @@ class ContentWriteCoordinator:
         force_refresh: bool = False,
         ingest_options: IngestOptions | None = None,
     ) -> FreshnessAction:
+        # Vector work is enqueued here, from the write, rather than being left to
+        # the semantic DAG. The DAG only reached `_vectorize_single_file` after
+        # generating that file's summary, so chunk vectors -- and therefore
+        # retrieval -- waited on an LLM call the vectors do not use: with
+        # `text_source=content_only` the embedded text is the file body, and the
+        # summary only fills the `abstract` scalar. Measured: 40 documents
+        # produced 40 semantic messages and zero embedding messages until the
+        # semantic queue drained, so nothing was retrievable for as long as the
+        # summaries took.
+        #
+        # Both callers (single write and batch write) funnel through here, so this
+        # is the one place the split has to happen.
+        skip_vectorization = await self._vectorize_resource_changes(
+            refresh_root=root_uri,
+            context_type=context_type,
+            changes=changes,
+            ctx=ctx,
+        )
         changed_entries = len({uri for values in changes.values() for uri in values})
         semantic_config = get_openviking_config().semantic
         try:
@@ -642,7 +700,7 @@ class ContentWriteCoordinator:
             user_id=ctx.user.user_id,
             group_ids=ctx.group_ids,
             role=str(ctx.role),
-            skip_vectorization=False,
+            skip_vectorization=skip_vectorization,
             telemetry_id=telemetry.telemetry_id,
             ingest_options=ingest_options,
             coalesce_key=(
