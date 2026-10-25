@@ -62,6 +62,33 @@ logger = logging.getLogger(__name__)
 _MANIFEST_DELTA_MAX_DEPTH = 16
 
 
+def _with_delta_ancestors(db, snapshot_ids):
+    """Extend *snapshot_ids* with every ancestor reachable through deltas.
+
+    A delta snapshot stores only its change set, so it is unreadable once its
+    parent is gone. Any set of snapshots that must stay readable therefore has to
+    include the whole chain behind each of them.
+    """
+    keep = set(snapshot_ids)
+    pending = list(keep)
+    while pending:
+        current = pending.pop()
+        row = db.execute("SELECT manifest FROM snapshots WHERE id=?", (current,)).fetchone()
+        if row is None:
+            continue
+        raw = row[0]
+        if not is_delta_manifest(raw):
+            continue
+        try:
+            parent = decode_manifest_delta(raw).get("parent")
+        except Exception:  # noqa: BLE001
+            continue
+        if parent and parent not in keep:
+            keep.add(parent)
+            pending.append(parent)
+    return keep
+
+
 def _delta_depth(db, snapshot):
     """How many deltas sit between *snapshot* and its nearest full manifest."""
     depth = 0
@@ -1549,6 +1576,12 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 row["snapshot"]
                 for row in db.execute("SELECT snapshot FROM source_recoveries")
             )
+            # A snapshot stored as a delta needs its parent chain to resolve, so
+            # every ancestor of a kept snapshot must survive too. Without this,
+            # pruning deleted a parent that a live head still chained through and
+            # every read of that head raised "Pinned snapshot dependency is
+            # missing".
+            keep = _with_delta_ancestors(db, keep)
             victims = [
                 row["id"]
                 for row in db.execute(

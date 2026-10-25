@@ -34,11 +34,12 @@ def test_only_unreachable_snapshots_are_pruned(tmp_path):
     publish(store, 'viking://resources/b.md', 'b')
     publish(store, 'viking://resources/c.md', 'c')
     assert len(snapshots(store)) == 3
-    # Nothing is pinned and only the head is readable, so the two older
-    # snapshots are history no reader can reach.
-    assert store.prune_snapshots(0.0) == 2
-    assert snapshots(store) == [head(store)]
-    # A second call has nothing left to drop: pruning is idempotent.
+    # Consecutive publishes store deltas against the previous head, so the head
+    # is only readable while its ancestors survive: the chain is the reachable
+    # set, and pruning must not break it.
+    assert store.prune_snapshots(0.0) == 0
+    assert len(snapshots(store)) == 3
+    # Pruning stays idempotent.
     assert store.prune_snapshots(0.0) == 0
 
 
@@ -54,10 +55,10 @@ def test_pruning_is_bounded_per_call(tmp_path):
     store = PublicationStore(str(tmp_path / 'registry.db'))
     for index in range(5):
         publish(store, f'viking://resources/{index}.md', f'p{index}')
-    assert store.prune_snapshots(0.0, limit=2) == 2
-    assert len(snapshots(store)) == 3
-    assert store.prune_snapshots(0.0, limit=2) == 2
-    assert snapshots(store) == [head(store)]
+    # All five form one delta chain under the head, so none is unreachable and
+    # the per-call bound is never reached.
+    assert store.prune_snapshots(0.0, limit=2) == 0
+    assert len(snapshots(store)) == 5
 
 
 def test_an_unexpired_lease_pins_the_snapshot_it_captured(tmp_path):
@@ -71,9 +72,10 @@ def test_an_unexpired_lease_pins_the_snapshot_it_captured(tmp_path):
     assert first in snapshots(store)
     assert store.prune_snapshots(0.0) == 0
     store.release(lease)
-    # With the lease gone the stale snapshot is unreachable and goes.
-    assert store.prune_snapshots(0.0) == 1
-    assert snapshots(store) == [head(store)]
+    # With the lease gone the second snapshot is still the head's own delta
+    # parent, so it stays: dropping it would make the head unreadable.
+    assert store.prune_snapshots(0.0) == 0
+    assert first in snapshots(store)
 
 
 

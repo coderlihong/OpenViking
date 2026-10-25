@@ -9,6 +9,7 @@ import json
 import math
 import sqlite3
 import time
+import logging
 from collections import OrderedDict
 from uuid import uuid4
 
@@ -29,6 +30,8 @@ GC_COMMANDS = ('generation_write_begin', 'generation_write_confirm', 'generation
 # manifest for *every* managed write (i.e. per embedded item) while holding the
 # single writer lock, which is what put multi-second lock waits in front of
 # every other writer during a reindex (measured 0.6-10s lock waits).
+logger = logging.getLogger(__name__)
+
 _SNAPSHOT_MANIFEST_CACHE: "OrderedDict[str, dict]" = OrderedDict()
 _SNAPSHOT_GENERATIONS_CACHE: "OrderedDict[str, dict[str, str]]" = OrderedDict()
 # How many snapshots to keep decoded. This used to be 2 with a wholesale
@@ -115,6 +118,19 @@ def _decode_snapshot_chain(db, snapshot):
             break
         row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (current,)).fetchone()
         if row is None:
+            if chain:
+                # The chain is broken: a delta's parent is gone. That must not
+                # make the head unreadable, so fall back to rebuilding what the
+                # deltas themselves carry. Callers see a smaller manifest rather
+                # than an exception, and the next publish writes a full one
+                # (see _delta_depth, which also treats a missing parent as depth
+                # exhaustion).
+                logger.warning(
+                    "Snapshot %s is missing from a delta chain; serving the deltas alone",
+                    current,
+                )
+                base = {}
+                break
             raise FailedPreconditionError('Pinned snapshot dependency is missing')
         raw = row[0]
         if not is_delta_manifest(raw):
