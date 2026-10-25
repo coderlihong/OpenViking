@@ -1321,10 +1321,37 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         )
         if batch is not None:
             db.execute("UPDATE batches SET state='published' WHERE id=?", (batch,))
+        # Remember which directories this publish made fully live, so the caller
+        # can schedule their aggregation once the chunk vectors (L2) are actually
+        # committed. Collected here because `plan["published"]` is the authoritative
+        # list of generations this commit made visible; consumed after the commit.
+        published_uris = getattr(self._local, "published_uris", None)
+        if published_uris is None:
+            published_uris = set()
+            self._local.published_uris = published_uris
+        for generation in plan.get("published") or ():
+            row = db.execute("SELECT uri FROM builds WHERE generation=?", (generation,)).fetchone()
+            if row is not None and row[0]:
+                published_uris.add(row[0])
         # Hand the mapping we just stored to the read caches: every publish mints
         # a new snapshot id, so readers would otherwise re-gunzip this blob.
         record_snapshot_manifest(snapshot, plan["manifest"])
         return True
+
+    def take_published_uris(self):
+        """Directories whose L2 chunks were made visible since the last call.
+
+        Returns and clears the set collected by ``_apply_publication``. The
+        embedding handler calls this after its commit so it can schedule one
+        parent aggregation per directory *after* the vectors exist, instead of
+        every content write racing to aggregate the same parent while its chunks
+        are still being written.
+        """
+        uris = getattr(self._local, "published_uris", None)
+        if not uris:
+            return set()
+        self._local.published_uris = set()
+        return uris
 
     def can_write(self, generation, fields):
         with self.db(readonly=True) as db:
