@@ -168,21 +168,97 @@ class RequestWaitTracker:
                 return True
             return not state.pending_semantic_roots and not state.pending_embedding_roots
 
+    def progress_token(self, telemetry_id: str) -> tuple:
+        """A value that changes whenever any pending work completes.
+
+        Used to tell "still working" apart from "stalled": the counters only
+        move when a queue message actually finishes, so an unchanged token over
+        a long window means no message is completing any more.
+        """
+        with self._lock:
+            state = self._states.get(telemetry_id)
+            if state is None:
+                return ()
+            return (
+                state.semantic_processed,
+                state.embedding_processed,
+                state.semantic_error_count,
+                state.embedding_error_count,
+                len(state.pending_semantic_roots),
+                len(state.pending_embedding_roots),
+            )
+
+    def pending_counts(self, telemetry_id: str) -> tuple:
+        with self._lock:
+            state = self._states.get(telemetry_id)
+            if state is None:
+                return (0, 0)
+            return (len(state.pending_semantic_roots), len(state.pending_embedding_roots))
+
     async def wait_for_request(
         self,
         telemetry_id: str,
         timeout: Optional[float] = None,
         poll_interval: float = 0.05,
+        stall_timeout: Optional[float] = None,
     ) -> None:
+        """Wait until this request's queued work reports done.
+
+        ``timeout`` bounds the whole wait. ``stall_timeout`` is the one that
+        matters here: it bounds how long the *progress* token may stay
+        unchanged. A reindex has no useful whole-request bound -- a large tree
+        legitimately takes hours -- but a token that never moves means a queue
+        message was lost, rejected, or dropped on a restart, and the wait will
+        never end.
+
+        That distinction is not academic. The reindex path called this method
+        with no bound at all, so one lost message hung the request forever while
+        it held the tree's pathlock; the lock's auto-refresh kept it alive, so
+        every later reindex of that subtree was refused with ``path_busy`` until
+        the process was killed. Measured live: the request sat at its last log
+        line for 7+ minutes and the process needed SIGKILL to stop.
+
+        Raises ``TimeoutError`` for either bound so callers keep one except
+        clause.
+        """
         if not telemetry_id:
             return
         start = time.time()
+        last_token = self.progress_token(telemetry_id)
+        last_progress = start
         while True:
             if self.is_complete(telemetry_id):
                 return
-            if timeout is not None and (time.time() - start) > timeout:
+            now = time.time()
+            if timeout is not None and (now - start) > timeout:
                 raise TimeoutError(f"Request processing not complete after {timeout}s")
+            token = self.progress_token(telemetry_id)
+            if token != last_token:
+                last_token = token
+                last_progress = now
+            elif stall_timeout is not None and (now - last_progress) > stall_timeout:
+                semantic, embedding = self.pending_counts(telemetry_id)
+                raise TimeoutError(
+                    "Request processing stalled: no queue progress for "
+                    f"{stall_timeout:.0f}s with {semantic} semantic and "
+                    f"{embedding} embedding root(s) still pending"
+                )
             await asyncio.sleep(poll_interval)
+
+    def debug_state(self) -> dict:
+        """Snapshot every tracked request for diagnostics (no side effects)."""
+        with self._lock:
+            return {
+                tid: {
+                    "pending_semantic": sorted(st.pending_semantic_roots),
+                    "pending_embedding": sorted(st.pending_embedding_roots),
+                    "semantic_processed": st.semantic_processed,
+                    "embedding_processed": st.embedding_processed,
+                    "semantic_errors": st.semantic_error_count,
+                    "embedding_errors": st.embedding_error_count,
+                }
+                for tid, st in self._states.items()
+            }
 
     def build_queue_status(self, telemetry_id: str) -> Dict[str, Dict[str, object]]:
         with self._lock:

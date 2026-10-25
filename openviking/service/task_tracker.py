@@ -256,12 +256,29 @@ class TaskTracker:
         )
 
     def is_cancellation_requested(self, task_id: str) -> bool:
-        """Fast thread-safe status check used by queue workers."""
+        """Fast thread-safe check used by queue workers: should this work stop?
+
+        ``FAILED`` belongs here as much as ``CANCELLING`` does. A task that has
+        reached a terminal state has no consumer left to publish for, so any
+        queue message still carrying its id is orphaned work: nothing will ever
+        collect it, and it keeps writing sidecars -- and holding the tree's
+        pathlock -- for as long as the queue takes to drain.
+
+        Leaving it out produced exactly that. When a restart orphaned a reindex,
+        ``_fail_orphaned`` settled the record as ``failed`` while the
+        Semantic-Nodes messages it had already enqueued kept draining: measured
+        live, 22,391 pending nodes continued at ~0.8/s (a ~7.6h drain) while the
+        task showed ``failed``, and because those nodes write L0/L1 under the
+        target tree they held its pathlock the whole time -- every later reindex
+        of that subtree was refused with ``path_busy`` and ``cancel`` answered
+        412 because the record was already terminal.
+        """
         with self._lock:
             task = self._tasks.get(task_id)
             return task is not None and task.status in (
                 TaskStatus.CANCELLING,
                 TaskStatus.CANCELLED,
+                TaskStatus.FAILED,
             )
 
     def start_cleanup_loop(self) -> None:

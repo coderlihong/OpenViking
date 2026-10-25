@@ -77,6 +77,17 @@ class _ImageContextCache:
         self.sources: dict[str, tuple[str, ...]] = {}
         self.texts: dict[str, str] = {}
         self.parsed: dict[str, _ParsedSource] = {}
+        # Draft epochs are per (account, source_uri), and one chapter source is
+        # re-examined once per image that lives under it: a tree of 387 chapters
+        # and 480 images asked the publication store for the same ~387 epochs
+        # 480 times over. The lookup itself is a ~1.3us indexed read, but every
+        # call also crossed ``asyncio.to_thread`` (measured ~33us) and opened a
+        # deferred transaction, so the repeat cost dominated a run that rebuilt
+        # nothing: ``vectors_only`` on that tree spent 51s for 869 records with
+        # 0 rebuilt and 869 reused. The value is stable for the run -- sources
+        # are fenced for its duration, which is exactly the consistency this
+        # cache already assumes for texts and parses.
+        self.epochs: dict[str, int | None] = {}
 
 
 _context_cache: ContextVar = ContextVar("image_context_cache", default=None)
@@ -502,10 +513,20 @@ async def collect_image_contexts(
             # the event loop made every image-source summary queue behind the
             # single publication writer (observed live as multi-second loop
             # stalls with this exact frame at publication.py observe_draft).
+            #
+            # The epoch is a property of the source, not of the image, so the
+            # run-scoped cache answers every image after the first: without it a
+            # chapter cited by 480 images paid 480 thread hops and 480 deferred
+            # transactions to read one unchanged integer.
             if registry and getattr(ctx, "account_id", None):
-                epoch = await asyncio.to_thread(
-                    registry.observe_draft, ctx.account_id, source_uri
-                )
+                if cache is not None and source_uri in cache.epochs:
+                    epoch = cache.epochs[source_uri]
+                else:
+                    epoch = await asyncio.to_thread(
+                        registry.observe_draft, ctx.account_id, source_uri
+                    )
+                    if cache is not None:
+                        cache.epochs[source_uri] = epoch
             else:
                 epoch = None
             text = cache.texts.get(source_uri) if cache is not None else None

@@ -164,6 +164,24 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 -- row, and the primary key cannot answer it (a full scan of
                 -- ``desired`` per row made that check take minutes).
                 CREATE INDEX IF NOT EXISTS desired_generation ON desired(generation);
+                -- "Which generation is desired for this URI?" without a namespace.
+                -- The primary key is (account,namespace,uri), so a lookup that
+                -- supplies only account+uri can use the account prefix and then
+                -- compares uri row by row: on the e2etest account that is 198k
+                -- index entries per call. Callers that legitimately do not know
+                -- the namespace (``declared_image_plan``, ``published_chunks``,
+                -- the cross-namespace overlap guard) paid 11.9-16.0ms each, and
+                -- ``declared_image_plan`` runs once per image -- 102,828 images
+                -- on the menus corpus, i.e. ~20 minutes of synchronous sqlite on
+                -- the event loop, which is what the reindex stalls were. This
+                -- index answers them in 0.003ms.
+                -- ``namespace`` is the third column so the overlap guard's
+                -- ``namespace!=?`` is answered from the index too (without it the
+                -- planner prefers the primary key as a covering index and still
+                -- walks every row of the account).
+                -- (account,uri) is unique in practice: ``begin`` refuses a URI
+                -- that already belongs to another namespace.
+                CREATE INDEX IF NOT EXISTS desired_account_uri ON desired(account, uri, namespace);
                 CREATE TABLE IF NOT EXISTS drafts (
                   account TEXT, uri TEXT, epoch INTEGER NOT NULL, sha TEXT,
                   PRIMARY KEY(account,uri));
@@ -363,9 +381,9 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                             )
                         frame = frame.f_back
                     logger.warning(
-                        "slow publication transaction: %.0fms (lock wait %.0fms, readonly=%s) caller=%s",
+                        "slow publication transaction: %.0fms (%s, readonly=%s) caller=%s",
                         total_ms,
-                        wait_ms,
+                        _wait_label(wait_ms, readonly),
                         readonly,
                         " <- ".join(frames[:6]),
                     )
@@ -2824,6 +2842,28 @@ def _slow_tx_threshold_ms() -> float:
         except ValueError:
             pass
     return _SLOW_TX_MS_DEFAULT
+
+
+def _wait_label(wait_ms: float, readonly: bool) -> str:
+    """Name what the pre-statement delay actually was.
+
+    This used to be reported as "lock wait" for both transaction kinds, and that
+    wording sent three separate investigations after the single writer. It is
+    wrong for half of them: a read transaction opens with ``BEGIN DEFERRED``,
+    which takes no lock at all, so it cannot queue behind a writer. Measured on
+    the live store: with another connection holding the write lock,
+    ``BEGIN DEFERRED`` still returned in 0.004ms while ``BEGIN IMMEDIATE``
+    blocked for 244ms. So a big delay on a readonly transaction is thread
+    scheduling (the GIL, held by whatever long ``sqlite3_step`` is running on
+    another thread), never contention.
+
+    Reporting the two cases differently is what stops that misreading.
+    """
+    if wait_ms < 50.0:
+        return f"begin wait {wait_ms:.0f}ms"
+    if readonly:
+        return f"begin wait {wait_ms:.0f}ms [no lock taken; thread/GIL scheduling]"
+    return f"write-lock wait {wait_ms:.0f}ms"
 
 
 QUERY_LEASE_TTL_SECONDS = 120

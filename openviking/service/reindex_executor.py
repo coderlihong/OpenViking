@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import time
 from dataclasses import dataclass, field, replace
@@ -89,6 +90,35 @@ _RECORD_REVISION_SCAN_LIMIT = 256
 # thousand records; the cap keeps a namespace-root reindex from materialising an
 # unbounded map, and exceeding it simply leaves later URIs on the per-URI path.
 _REVISION_PREFETCH_LIMIT = 50000
+
+# How long a reindex may wait for its queued embedding work with no progress at
+# all before it stops waiting and reports what it has.
+#
+# The wait itself is unbounded on purpose -- a large tree legitimately queues
+# work for hours -- but a *stalled* wait is a different condition: no queue
+# message is completing, so it can only end by intervention. The reindex holds
+# the target tree's pathlock for the whole call, and that lease auto-refreshes,
+# so an unbounded wait never even frees the lock by expiring: live, one such
+# request sat for 7+ minutes and the process needed SIGKILL, after which every
+# reindex of the subtree was refused with ``path_busy``.
+#
+# A stall is reported as a partial result with a warning instead of a failure:
+# the documents whose vectors did land are published, and the caller can re-run
+# to pick up the rest. Override with OPENVIKING_REINDEX_STALL_TIMEOUT_SECS.
+_REINDEX_STALL_TIMEOUT_DEFAULT_SECS = 300.0
+_REINDEX_STALL_TIMEOUT_ENV = "OPENVIKING_REINDEX_STALL_TIMEOUT_SECS"
+
+
+def _reindex_stall_timeout_secs() -> float:
+    raw = os.environ.get(_REINDEX_STALL_TIMEOUT_ENV, "").strip()
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError:
+            return _REINDEX_STALL_TIMEOUT_DEFAULT_SECS
+        # 0 disables the bound (previous behaviour); negative is meaningless.
+        return max(0.0, value)
+    return _REINDEX_STALL_TIMEOUT_DEFAULT_SECS
 
 # The two enterprise build modes share one IndexPlan with D1 ingestion. They are
 # the only modes that may take a dry_run preview (``prune_orphans`` keeps its own
@@ -798,7 +828,36 @@ class ReindexExecutor:
                 )
 
             if telemetry_id and mode != "prune_orphans":
-                await wait_tracker.wait_for_request(telemetry_id)
+                # Bounded by *progress*, not by total time: a tree reindex may
+                # legitimately queue work for hours, but a wait whose counters
+                # stop moving can never end on its own and would pin the tree's
+                # pathlock (which auto-refreshes) until the process dies.
+                try:
+                    await wait_tracker.wait_for_request(
+                        telemetry_id,
+                        stall_timeout=_reindex_stall_timeout_secs() or None,
+                    )
+                except TimeoutError as exc:
+                    # The work that did land is already published, so this is a
+                    # partial result, not a failure: report it and let the caller
+                    # re-run for the rest. Raising here would also skip the
+                    # counters below and turn a slow run into a lost one.
+                    semantic_pending, embedding_pending = wait_tracker.pending_counts(
+                        telemetry_id
+                    )
+                    counters.failed_records += semantic_pending + embedding_pending
+                    counters.warnings.append(
+                        f"Stopped waiting for queued work: {exc}. "
+                        f"{counters.rebuilt_records} record(s) were published; "
+                        "re-run this reindex to finish the remainder."
+                    )
+                    logger.warning(
+                        "Reindex of %s stopped waiting for its queue: %s", uri, exc
+                    )
+                    logger.warning(
+                        "Request-wait tracker state at stall: %s",
+                        wait_tracker.debug_state(),
+                    )
                 self._apply_embedding_wait_status(
                     counters,
                     wait_tracker.build_queue_status(telemetry_id),
@@ -1407,6 +1466,19 @@ class ReindexExecutor:
                 ctx=ctx,
                 lock=run.lock,
                 recursive=False,
+                # Rebuild this directory's own L0/L1 from the sidecars the child
+                # units just wrote, but do not bubble it into the ancestors: their
+                # leases live outside this subtree's tree lease, so every shard
+                # would queue on the run that owns them (live: 111 blocked
+                # dispatches, the parent re-processed 38 times). The caller
+                # refreshes those ancestors once, after the shards join.
+                #
+                # ``propagate_to_parent`` is what gates that upward step
+                # (``_enqueue_parent_refresh`` returns early on it); leaving
+                # ``aggregate_directory`` at its default is required, because that
+                # flag also suppresses writing this directory's *own* sidecars --
+                # setting it here produced a fully vectorized tree with no
+                # .abstract.md at all.
                 propagate_to_parent=False,
             )
             await self._update_stage(f"vectors:{uri}")
@@ -1470,6 +1542,14 @@ class ReindexExecutor:
                 semantic_kwargs["recursive"] = False
             if not propagate_to_parent:
                 semantic_kwargs["propagate_to_parent"] = False
+                # A sharded child owns only its own subtree's sidecars. Bubbling
+                # into the ancestors takes an exact lease outside this subtree's
+                # tree lease, so every shard queues behind the run that owns it: a
+                # 74-unit shard logged 596 "Semantic dispatch ... is lock-blocked"
+                # and gave up on 291 dispatches. ``propagate_to_parent`` alone
+                # stops that (``_enqueue_parent_refresh`` returns early on it);
+                # ``aggregate_directory`` must stay True or this child stops
+                # writing its own L0/L1 too.
             semantic_value = await self._run_semantic_processor(**semantic_kwargs)
             if isinstance(semantic_value, dict) and semantic_value.get("image_summaries"):
                 vector_kwargs["image_summaries"] = semantic_value["image_summaries"]
@@ -1477,7 +1557,16 @@ class ReindexExecutor:
                 # A non-recursive rebuild does not let the semantic processor
                 # walk upward, so refresh the affected ancestors explicitly to
                 # keep their L0/L1 consistent with the changed leaf.
-                await self._refresh_ancestor_semantics(uri=uri, run=run)
+                #
+                # A sharded child must not do this. Its ancestors lie outside the
+                # subtree this shard owns, so the refresh takes a lease the outer
+                # run already holds and every shard blocks on it: a 74-unit shard
+                # of one directory logged 111 "Semantic dispatch ... is
+                # lock-blocked" and re-processed its own parent 38 times before
+                # giving up. The sharded caller refreshes the ancestors once, after
+                # all shards join, from the sidecars they produced.
+                if propagate_to_parent:
+                    await self._refresh_ancestor_semantics(uri=uri, run=run)
         await self._update_stage(f"vectors:{uri}")
         await self._reindex_resource_vectors(
             **self._with_ingest_options(
@@ -2511,6 +2600,17 @@ class ReindexExecutor:
                     # rebuilt from the chapters that cite the image. Skipping is
                     # only for an image no citing chapter describes, and it is
                     # reported instead of being swallowed.
+                    #
+                    # This is the expensive step of the image path: the cache
+                    # miss walks every chapter directory under the tree to find
+                    # the ones citing the asset. It cannot be deferred until the
+                    # reuse guard below, because the guard compares captions and
+                    # the walk is what produces them. What made it affordable is
+                    # that ``collect_image_contexts`` memoizes its per-source
+                    # reads, parses and draft epochs for the run -- without the
+                    # epoch memo a chapter cited by 480 images paid 480 thread
+                    # hops to re-read one unchanged integer (vectors_only on a
+                    # 387-chapter/480-image tree: 51s for 869 records, 0 rebuilt).
                     summary_dict, reason = await self._image_summary_for_reindex(
                         file_uri, ctx=ctx
                     )

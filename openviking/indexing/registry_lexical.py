@@ -759,8 +759,28 @@ class RegistryLexicalMixin:
             if incomplete:
                 db.execute('UPDATE publication_lexical_index SET updated=? WHERE account=?', (time.time(), account))
             elif state is None:
-                total = db.execute(f'SELECT count(*) FROM publication_lexical WHERE {_ACCOUNT_EXPR}=?',
-                                   (account,)).fetchone()[0]
+                # Count the account's rows from the scope mirror, not from
+                # ``publication_lexical``.
+                #
+                # ``_ACCOUNT_EXPR`` is json_extract(payload,'$.account_id'), which
+                # no index can answer: on the live store this statement SCANs
+                # 258k rows and parses 1.66GiB of JSON payload, measured 3.64s --
+                # inside ``BEGIN IMMEDIATE``, so it held the single writer for
+                # 3.64s and every other writer queued behind it. That is the
+                # "single-write lock" stall the reindex convoy was blamed on.
+                # ``publication_lexical_scope`` is keyed (account,uri,generation,
+                # rowid,doc_len) and is written in this same transaction for every
+                # row inserted above, so counting it by account is an index range
+                # scan: 21.3ms, same answer (verified 255,717 == 255,717).
+                #
+                # The scope mirror is maintained alongside the postings; a row
+                # whose scope insert failed would make this count low and the
+                # mirror would be marked incomplete, which is the safe direction
+                # (searches fall back rather than trusting a partial mirror).
+                total = db.execute(
+                    'SELECT count(*) FROM publication_lexical_scope WHERE account=?',
+                    (account,),
+                ).fetchone()[0]
                 rows = inserted if total == inserted else _INDEX_INCOMPLETE
                 db.execute('INSERT OR REPLACE INTO publication_lexical_index VALUES (?,?,?,?)',
                            (account, rows, TOKENIZER_VERSION, time.time()))

@@ -714,6 +714,18 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                 # A member that raises keeps its own failure; the batch still
                 # commits the members that succeeded, exactly as separate
                 # deliveries would have.
+                #
+                # Settle the request's wait root here as well. ``_process_message``
+                # records its own outcome in a ``finally``, but that block only
+                # covers what it got to run: anything raised before it (parsing
+                # the message, building the context, a collector write) escaped
+                # with the root still pending. A pending root never resolves, so
+                # the reindex waiting on this telemetry_id could only end via its
+                # stall bound -- observed live as a reindex reporting "no queue
+                # progress ... 1 embedding root(s) still pending" while the very
+                # vector it was waiting for was already written and searchable
+                # (score 0.936).
+                self._settle_failed_member(data, exc)
                 return ProcessResult.failed(str(exc))
 
         # Embed concurrently, commit together. The provider takes one document
@@ -726,8 +738,14 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         started = time.monotonic()
         results = await asyncio.gather(*(one(data) for data in batch))
         embedded = time.monotonic()
+        written: list[dict] = []
         if collector["upserts"]:
-            await self._commit_collected(collector["upserts"])
+            written = await self._commit_collected(collector["upserts"]) or []
+        # The deferred path records no outcome in ``_process_message`` (nothing is
+        # written there), so settle every member's request-wait root now that the
+        # batch's vectors have landed. Without this the roots stay pending and the
+        # reindex that queued them can only end at its stall bound.
+        self._settle_collected(collector["upserts"], written)
         finished = time.monotonic()
         logger.debug(
             "[batch] n=%d deferred=%d embed=%.0fms commit=%.0fms (%.1fms/item)",
@@ -739,7 +757,7 @@ class TextEmbeddingHandler(DequeueHandlerBase):
         )
         return list(results)
 
-    async def _commit_collected(self, pending: list[dict]) -> None:
+    async def _commit_collected(self, pending: list[dict]) -> list[dict]:
         """Write a batch's vectors and receipts with one lock each.
 
         Vectors go through ``upsert_many`` (one adapter call, one managed-write
@@ -798,11 +816,11 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             except Exception:  # noqa: BLE001
                 continue
         if not receipts:
-            return
+            return written
         store = next((item["store"] for item in written if item["store"] is not None), None)
         record_and_settle = getattr(store, "record_and_settle_receipts", None) if store else None
         if record_and_settle is None:
-            return
+            return written
         try:
             states = await asyncio.to_thread(record_and_settle, receipts)
         except Exception as exc:  # noqa: BLE001
@@ -811,12 +829,52 @@ class TextEmbeddingHandler(DequeueHandlerBase):
                 len(receipts),
                 exc,
             )
-            return
+            return written
         for state in (states or {}).values():
             if state.get("state") == "failed":
                 logger.warning(
                     "[TextEmbeddingHandler] Generation cannot publish: %s",
                     state.get("error"),
+                )
+        return written
+
+    @staticmethod
+    def _settle_collected(pending: list[dict], written: list[dict]) -> None:
+        """Resolve every batch member's request-wait root after the commit.
+
+        The batched path defers its writes: ``_process_message`` appends to
+        ``collector["upserts"]`` and returns success *without* recording an
+        outcome, because at that point nothing has been written yet. The outcome
+        has to be recorded here, once the batch's vectors have actually landed --
+        and it was not, so every chunk indexed through the batch path left its
+        ``pending_embedding_roots`` entry set forever.
+
+        That is the stall the reindex kept reporting: the wait has no whole-request
+        bound (a tree may legitimately queue work for hours), so a root that can
+        never be settled only ends at the stall bound -- while the vector it was
+        waiting for had already been written and was returning search hits.
+        Measured live: search scored the just-reindexed file at 0.936 while the
+        tracker still showed ``embedding_processed: 0`` and one root pending.
+
+        Members that were not written (the fallback path drops a member whose
+        single-record retry also failed) are settled as failures so the request
+        learns about them instead of waiting.
+        """
+        tracker = get_request_wait_tracker()
+        written_ids = {id(item) for item in written}
+        for item in pending:
+            msg = item.get("msg")
+            if msg is None:
+                continue
+            if id(item) in written_ids:
+                tracker.mark_embedding_done(
+                    msg.telemetry_id, msg.id, vector_written=True
+                )
+            else:
+                tracker.mark_embedding_failed(
+                    msg.telemetry_id,
+                    msg.id,
+                    "Batched vector write did not persist this chunk",
                 )
 
     async def on_dequeue(self, data: Optional[Dict[str, Any]]) -> ProcessResult:
@@ -1354,3 +1412,25 @@ class TextEmbeddingHandler(DequeueHandlerBase):
             embedding_msg.id,
             message,
         )
+
+    @staticmethod
+    def _settle_failed_member(data: Optional[Dict[str, Any]], exc: BaseException) -> None:
+        """Settle a batch member that raised before recording its own outcome.
+
+        The message id and telemetry id are all the tracker needs, and they are
+        recoverable from the raw queue payload even when the failure happened
+        before an ``EmbeddingMsg`` could be built. Best effort on purpose: this
+        runs while unwinding, so it must never raise a second error.
+        """
+        try:
+            raw = (data or {}).get("data")
+            if not raw:
+                return
+            embedding_msg = EmbeddingMsg.from_json(raw)
+            get_request_wait_tracker().mark_embedding_failed(
+                embedding_msg.telemetry_id,
+                embedding_msg.id,
+                f"Embedding batch member failed: {exc}",
+            )
+        except Exception:  # noqa: BLE001 - never mask the original failure
+            return

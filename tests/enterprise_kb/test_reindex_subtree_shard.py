@@ -206,3 +206,140 @@ def test_non_recursive_resources_never_shard(monkeypatch):
     )
 
     assert shard_calls == [], "a leaf rebuild keeps its single sequential unit"
+
+
+# ---------------------------------------------------------------------------
+# A shard must not reach outside the subtree it owns.
+#
+# Sharding splits one directory into per-child units and runs them under a single
+# tree lease held by the outer reindex. Each unit's semantic work has two upward
+# hooks: aggregating the parent directory (``aggregate_directory``) and the
+# explicit ancestor refresh (``_refresh_ancestor_semantics``). Both write sidecars
+# whose exact leases live *outside* the shard's tree lease, so a unit that takes
+# either one queues behind the run that owns it.
+#
+# Live, before the fix, a 74-unit shard of one directory produced 111
+# "Semantic dispatch ... is lock-blocked" warnings, re-processed its own parent 38
+# times, and gave up on 291 dispatches; ``semantic_and_vectors`` took 104.7s with
+# the parent directory's sidecars never written. With both hooks disabled inside a
+# shard: 0 blocked, 0 abandoned, 20.5s.
+# ---------------------------------------------------------------------------
+
+
+def test_a_sharded_child_does_not_aggregate_its_parent(monkeypatch):
+    entries = [_entry(f"{ROOT}/a", directory=True), _entry(f"{ROOT}/b", directory=True)]
+    executor, log = _install(monkeypatch, entries)
+
+    assert asyncio.run(
+        executor._reindex_resource_sharded(uri=ROOT, mode="semantic_and_vectors", run=_run())
+    )
+
+    assert log["children"], "the directory must still shard into child units"
+    for uri, _recursive, _shard, propagate in log["children"]:
+        assert propagate is False, (
+            f"child unit {uri} asked to propagate to its parent; the shard does not "
+            "own the parent's lease and will block on it"
+        )
+
+
+def test_a_sharded_child_does_not_refresh_ancestors(monkeypatch):
+    """The leaf branch must skip the ancestor refresh when it is a shard."""
+    executor, log = _install(monkeypatch, [_entry(f"{ROOT}/a", directory=True)])
+    refreshed = []
+
+    async def _refresh(self, *, uri, run):
+        refreshed.append(uri)
+
+    async def _semantic(self, **kwargs):
+        log["semantic"].append(kwargs)
+        return None
+
+    monkeypatch.setattr(ReindexExecutor, "_refresh_ancestor_semantics", _refresh)
+    monkeypatch.setattr(ReindexExecutor, "_run_semantic_processor", _semantic)
+
+    asyncio.run(
+        executor._reindex_resource(
+            uri=f"{ROOT}/chapter.md",
+            mode="semantic_and_vectors",
+            run=_run(),
+            recursive=False,
+            shard=False,
+            propagate_to_parent=False,
+        )
+    )
+
+    assert refreshed == [], (
+        "a shard refreshed its ancestors, whose leases the outer reindex already "
+        "holds; every shard then blocks on the same path"
+    )
+
+
+def test_a_standalone_leaf_still_refreshes_its_ancestors(monkeypatch):
+    """The guard must not disable ancestor refresh for ordinary leaf rebuilds."""
+    executor = ReindexExecutor()
+    refreshed = []
+
+    async def _refresh(self, *, uri, run):
+        refreshed.append(uri)
+
+    async def _semantic(self, **kwargs):
+        return None
+
+    async def _vectors(self, **kwargs):
+        return None
+
+    async def _sweep(self, uri, ctx=None):
+        return None
+
+    monkeypatch.setattr(ReindexExecutor, "_refresh_ancestor_semantics", _refresh)
+    monkeypatch.setattr(ReindexExecutor, "_run_semantic_processor", _semantic)
+    monkeypatch.setattr(ReindexExecutor, "_reindex_resource_vectors", _vectors)
+    monkeypatch.setattr(ReindexExecutor, "_sweep_stale_placeholder_sidecars", _sweep)
+
+    asyncio.run(
+        executor._reindex_resource(
+            uri=f"{ROOT}/chapter.md",
+            mode="semantic_and_vectors",
+            run=_run(),
+            recursive=False,
+            shard=False,
+            propagate_to_parent=True,
+        )
+    )
+
+    assert refreshed == [f"{ROOT}/chapter.md"], (
+        "a non-sharded leaf rebuild must still bubble its L0/L1 into its ancestors"
+    )
+
+
+def test_a_sharded_child_still_writes_its_own_sidecars(monkeypatch):
+    """Disabling upward propagation must not disable the child's own L0/L1.
+
+    ``SemanticDagExecutor._overview_task`` returns early when
+    ``aggregate_directory`` is False, skipping the write of the directory's own
+    ``.abstract.md``/``.overview.md``. That flag is therefore *not* the knob for
+    "don't bubble into the parent" -- ``propagate_to_parent`` is, and it gates
+    ``_enqueue_parent_refresh`` on its own.
+
+    Setting the wrong one produced a fully vectorized tree with no directory
+    sidecars at all: 388 chapters rebuilt, 1042 vectors written, and zero
+    ``.abstract.md`` files. These assertions pin the correct knob.
+    """
+    entries = [_entry(f"{ROOT}/a", directory=True), _entry(f"{ROOT}/b", directory=True)]
+    executor, log = _install(monkeypatch, entries)
+
+    assert asyncio.run(
+        executor._reindex_resource_sharded(uri=ROOT, mode="semantic_and_vectors", run=_run())
+    )
+
+    # The directory's own refresh runs once, after the children.
+    assert len(log["semantic"]) == 1
+    own = log["semantic"][0]
+    assert own["uri"] == ROOT
+    assert own["propagate_to_parent"] is False, (
+        "the shard's own refresh must not bubble into ancestors it does not own"
+    )
+    assert own.get("aggregate_directory", True) is True, (
+        "aggregate_directory=False also skips writing this directory's own "
+        ".abstract.md/.overview.md, leaving the tree vectorized but undocumented"
+    )
