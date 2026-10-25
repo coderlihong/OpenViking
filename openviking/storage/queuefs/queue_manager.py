@@ -225,6 +225,18 @@ class QueueManager:
         """
         return max(1, int(self._max_concurrent_embedding))
 
+    def _embedding_batch_size(self) -> int:
+        """Members per embedding batch: a fraction of the window, at least 1.
+
+        Small enough that several batches run concurrently inside the window
+        (their model calls overlap, which is what actually uses the endpoint),
+        large enough that a batch still amortises its fixed commit cost.
+        """
+        window = max(1, int(self._max_concurrent_embedding))
+        if window <= 2:
+            return window
+        return max(1, min(8, window // 3))
+
     def _worker_thread_count(self, queue_name: str) -> int:
         """How many worker threads to run for a queue.
 
@@ -437,9 +449,19 @@ class QueueManager:
                 if queue.name == self.EMBEDDING:
                     # A batch is dispatched as one unit and its members are all
                     # in flight at once, so it may not be larger than the free
-                    # window; also cap it at the configured target so a big
-                    # window does not turn into one enormous batch.
-                    want = min(free, self._embedding_batch_target())
+                    # window.
+                    #
+                    # It must also be *smaller* than the window, or only one
+                    # batch can ever run: a batch sized to the whole window takes
+                    # every slot, and the loop then waits for it alone. Measured:
+                    # batches of 24 against a window of 24 ran strictly serially
+                    # 2-3s apart (embed 1463ms + upsert 199ms + receipts 675ms
+                    # per batch), so the endpoint never saw more than one batch's
+                    # worth of overlap and per-batch latency became throughput.
+                    # Splitting the window into several batches lets their
+                    # embeds overlap while their commits still serialise on the
+                    # writer, which is the cheap part.
+                    want = min(free, self._embedding_batch_size())
                     # Each batch costs a fixed number of writer transactions
                     # (managed-write begin+confirm, receipt record+settle) no
                     # matter how many members it carries, so a half-empty batch
