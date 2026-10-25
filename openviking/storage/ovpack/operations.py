@@ -804,7 +804,9 @@ async def _backup_entries(viking_fs, ctx: RequestContext) -> list[dict[str, Any]
             if entry.get("rel_path") and not entry.get("isDir")
         ]
         scope_entries = list(top_files)
-        walk_sem = asyncio.Semaphore(8)
+        from openviking_cli.utils.config.concurrency_config import concurrency_config
+
+        walk_sem = asyncio.Semaphore(concurrency_config().ovpack_blob_workers)
 
         async def _walk_child(child_entry: dict[str, Any]) -> None:
             child_uri = join_uri(scope_uri, child_entry["rel_path"])
