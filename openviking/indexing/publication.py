@@ -1641,7 +1641,44 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                 "UPDATE batches SET remaining=remaining-1 WHERE id=? AND remaining>0",
                 (row["batch"],),
             )
-        return len(rows)
+        # A *sealed* member can be stuck the same way: its batch counted it ready
+        # (remaining already decremented) but some receipts never arrived, so
+        # `_has_all_receipts` is False forever and `_collect_publication` returns
+        # None for the whole batch. Every sibling then waits for a publication
+        # that can never happen -- observed as "Retried N queued publication
+        # batch(es) whose publish never landed" repeating every 15s, with one
+        # semantic message blocked behind it. Fail those members so the batch can
+        # settle without them.
+        stuck = db.execute(
+            """
+            SELECT m.batch AS batch, m.generation AS generation
+            FROM batch_members m
+            JOIN builds b ON b.generation = m.generation
+            JOIN batches bt ON bt.id = m.batch
+            WHERE b.state = 'queued'
+              AND b.created < ?
+              AND bt.state IN ('queued', 'building')
+              AND (SELECT COUNT(*) FROM receipts r WHERE r.generation = b.generation)
+                  < json_array_length(json_extract(b.expected, '$'))
+            LIMIT 500
+            """,
+            (cutoff,),
+        ).fetchall()
+        for row in stuck:
+            reaped = db.execute(
+                "UPDATE builds SET state='failed', error=? "
+                "WHERE generation=? AND state='queued'",
+                (
+                    "stale member: receipts never completed, batch could not settle",
+                    row["generation"],
+                ),
+            ).rowcount
+            if reaped:
+                db.execute(
+                    "UPDATE batches SET remaining=MAX(remaining-1,0) WHERE id=?",
+                    (row["batch"],),
+                )
+        return len(rows) + len(stuck)
 
     # Errors a producer leaves behind when it is killed rather than failing.
     INTERRUPTED_GENERATION_ERRORS = (
@@ -1824,6 +1861,32 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
                     (cutoff, limit),
                 )
             ]
+            # A batch with no members can never publish: `_collect_publication`
+            # returns None for it (`if not rows: return None`), so deferring it
+            # again just retries forever. Observed live as "Retried 3 queued
+            # publication batch(es) whose publish never landed" repeating every
+            # 15s while a semantic message waited on the generation those empty
+            # batches were supposed to publish. Settle them as published-empty so
+            # the recovery loop stops chasing them.
+            empty = [
+                row[0]
+                for row in db.execute(
+                    "SELECT b.id FROM batches b WHERE b.state='queued' "
+                    "AND b.remaining=0 "
+                    "AND NOT EXISTS (SELECT 1 FROM batch_members m WHERE m.batch=b.id) "
+                    "LIMIT ?",
+                    (limit,),
+                )
+            ]
+            if empty:
+                marks = ",".join("?" * len(empty))
+                db.execute(
+                    f"UPDATE batches SET state='published' WHERE id IN ({marks})", empty
+                )
+                logger.info(
+                    "Settled %d empty publication batch(es) that could never publish",
+                    len(empty),
+                )
             unapplied = [
                 row[0]
                 for row in db.execute(

@@ -118,15 +118,16 @@ class SemanticProcessor(DequeueHandlerBase):
         self._circuit_breaker = CircuitBreaker()
 
     def _llm_semaphore(self) -> asyncio.Semaphore:
-        """The one LLM semaphore shared by every message this processor handles.
+        """The LLM semaphore for this event loop.
 
-        Created lazily because the processor is constructed outside a running
-        event loop; ``asyncio.Semaphore`` binds to the loop that first awaits it,
-        which is the queue worker's loop.
+        Delegates to ``semantic_dag.get_llm_semaphore`` so the processor, the DAG
+        executor and the citation stage all share *one* limit. They used to build
+        their own, which made ``max_concurrent_llm`` a per-component allowance:
+        with both at 32 the loop actually admitted 64 concurrent LLM calls.
         """
-        if self._llm_sem is None:
-            self._llm_sem = asyncio.Semaphore(max(1, int(self.max_concurrent_llm)))
-        return self._llm_sem
+        from openviking.storage.queuefs.semantic_dag import get_llm_semaphore
+
+        return get_llm_semaphore(self.max_concurrent_llm)
 
     @classmethod
     def _cache_dag_stats(cls, telemetry_id: str, uri: str, stats: DagStats) -> None:
