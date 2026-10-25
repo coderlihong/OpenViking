@@ -92,6 +92,19 @@ from openviking_cli.utils.config.concurrency_config import concurrency_config
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
+# MCP argument types
+# ---------------------------------------------------------------------------
+
+# Retrieval context types accepted by the search tools. Only the singular
+# names are valid here; the plural memories/resources/skills are output
+# grouping keys, not input values. Declaring the members as Literal lets
+# FastMCP publish an enum in the MCP input schema, so MCP clients and the
+# LLMs behind them pick valid values instead of guessing from the response
+# shape (a guess that produced INVALID_ARGUMENT at runtime).
+McpContextTypeValue = Literal["memory", "resource", "skill"]
+McpContextTypeInput = Optional[Union[McpContextTypeValue, List[McpContextTypeValue]]]
+
+# ---------------------------------------------------------------------------
 # Identity propagation via contextvars
 # ---------------------------------------------------------------------------
 
@@ -258,7 +271,7 @@ async def find(
     node_limit: Optional[int] = None,
     min_score: Optional[float] = None,
     level: Optional[Union[int, str, List[int]]] = None,
-    context_type: Optional[Union[str, List[str]]] = None,
+    context_type: McpContextTypeInput = None,
     meta_filters: Optional[List[Dict[str, Any]]] = None,
     meta_hints: Optional[List[Dict[str, Any]]] = None,
     tags: Optional[List[str]] = None,
@@ -270,6 +283,11 @@ async def find(
     rerank: bool = True,
 ) -> str:
     """Fast semantic retrieval without session context. Returns ranked memories, resources, and skills with URI, abstract, and score.
+
+    ``context_type`` takes the singular retrieval types ``memory``,
+    ``resource``, or ``skill`` (a single value or a list of values); omit it
+    to search every context type. The plural ``memories``/``resources``/
+    ``skills`` are response grouping keys and are not valid inputs.
 
     Mirrors ``POST /api/v1/search/find``: pass ``image_url`` for image search,
     ``meta_filters``/``meta_hints`` for business metadata constraints, ``tags``
@@ -318,7 +336,7 @@ async def search(
     node_limit: Optional[int] = None,
     min_score: Optional[float] = None,
     level: Optional[Union[int, str, List[int]]] = None,
-    context_type: Optional[Union[str, List[str]]] = None,
+    context_type: McpContextTypeInput = None,
     meta_filters: Optional[List[Dict[str, Any]]] = None,
     meta_hints: Optional[List[Dict[str, Any]]] = None,
     tags: Optional[List[str]] = None,
@@ -344,6 +362,11 @@ async def search(
     rerank: bool = True,
 ) -> str:
     """Deep semantic retrieval with optional session context and intent analysis.
+
+    ``context_type`` takes the singular retrieval types ``memory``,
+    ``resource``, or ``skill`` (a single value or a list of values); omit it
+    to search every context type. The plural ``memories``/``resources``/
+    ``skills`` are response grouping keys and are not valid inputs.
 
     ``mode="list"`` returns ranked memories, resources, and skills with URI,
     abstract, and score. ``mode="context"`` returns an injection-ready,
@@ -1580,7 +1603,7 @@ async def vector_search(
     limit: int = DEFAULT_LIMIT,
     min_score: Optional[float] = None,
     level: Optional[Union[int, str, List[int]]] = None,
-    context_type: Optional[Union[str, List[str]]] = None,
+    context_type: McpContextTypeInput = None,
     meta_filters: Optional[List[Dict[str, Any]]] = None,
     meta_hints: Optional[List[Dict[str, Any]]] = None,
     tags: Optional[List[str]] = None,
@@ -1592,6 +1615,11 @@ async def vector_search(
     rerank: bool = True,
 ) -> str:
     """Semantic retrieval over the vector + BM25 hybrid fusion recall. Same recall caliber as `find` but without session context, query expansion, or context assembly. Returns ranked memories, resources, and skills with URI, abstract, and score.
+
+    ``context_type`` takes the singular retrieval types ``memory``,
+    ``resource``, or ``skill``; omit it to search every context type. The
+    plural ``memories``/``resources``/``skills`` are response grouping keys
+    and are not valid inputs.
 
     Mirrors ``POST /api/v1/vector/search`` (HTTP calls the score floor ``score_threshold``).
     Set ``rerank=false`` to skip the rerank provider call (faster, fused-order ranking)."""
