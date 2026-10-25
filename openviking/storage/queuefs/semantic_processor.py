@@ -357,6 +357,37 @@ class SemanticProcessor(DequeueHandlerBase):
 
     @draft_source_job
     @text_publication_batch
+    async def on_dequeue_batch(
+        self, batch: list[Optional[Dict[str, Any]]]
+    ) -> list[ProcessResult]:
+        """Process a dequeued semantic batch concurrently.
+
+        The base class runs ``on_dequeue`` one message at a time, which made the
+        semantic queue strictly serial no matter how wide its concurrency window
+        was: measured 6 independent directories draining 56-62s as one-at-a-time
+        8-14s LLM calls, with the queue reporting 32 in flight but only one
+        actually running.
+
+        Each message is an independent directory, and the expensive part is its
+        own LLM call, so they overlap cleanly. Order is preserved in the result
+        list, which is what the ack loop expects.
+        """
+        if not batch:
+            return []
+        results = await asyncio.gather(
+            *(self.on_dequeue(data) for data in batch), return_exceptions=True
+        )
+        out: list[ProcessResult] = []
+        for data, result in zip(batch, results):
+            if isinstance(result, BaseException):
+                # One directory failing must not drop its siblings; the failed
+                # member keeps its own failure so the queue recovers it.
+                logger.error("Semantic batch member failed: %s", result)
+                out.append(ProcessResult.failed(str(result)))
+            else:
+                out.append(result)
+        return out
+
     async def on_dequeue(
         self,
         data: Optional[Dict[str, Any]],
