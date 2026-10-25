@@ -35,6 +35,9 @@ _SNAPSHOT_GENERATIONS_CACHE: "OrderedDict[str, dict[str, str]]" = OrderedDict()
 # transaction). An LRU over a handful of snapshots keeps the live head, the
 # one before it, and whatever a concurrent lease pinned.
 _SNAPSHOT_MANIFEST_CACHE_MAX = 8
+# Memoized _protected_generations results, keyed by the pinned-snapshot set.
+_PROTECTED_GENERATIONS_CACHE: dict = {}
+_PROTECTED_GENERATIONS_CACHE_MAX = 4
 
 
 def _cache_snapshot(snapshot, manifest):
@@ -230,6 +233,15 @@ class RegistryGCMixin:
             ''')
 
     def _protected_generations(self, db):
+        """Every generation reachable from a head, lease or recovery pin.
+
+        The result is a union over pinned snapshots, and a snapshot's
+        {uri: generation} index is immutable, so the union is memoized per
+        snapshot-set. Without that, every call rebuilt a ~187k-element set from
+        scratch; measured 491ms cold, and the lexical sweep paid it on every
+        pass that had a candidate, inside a read transaction (body 9.7-10.8s
+        observed on the live store).
+        """
         snapshots = {row[0] for row in db.execute('SELECT snapshot FROM heads')}
         for table in ('leases', 'gc_leases'):
             for row in db.execute(f'SELECT snapshots FROM {table} WHERE expires>?', (time.time(),)):
@@ -237,9 +249,18 @@ class RegistryGCMixin:
         # Query-view leases live in the dedicated store, not in this database;
         # a leased old head must stay writable exactly like before the move.
         snapshots.update(self._query_leases.live_snapshot_ids())
+        key = frozenset(snapshots)
+        cached = _PROTECTED_GENERATIONS_CACHE.get(key)
+        if cached is not None:
+            return cached
         protected = set()
-        for snapshot in snapshots:
+        for snapshot in key:
             protected.update(_snapshot_generation_index(db, snapshot).values())
+        # Bounded: the key space is "which snapshots are pinned right now", which
+        # only changes when a publish moves a head or a lease is taken/released.
+        if len(_PROTECTED_GENERATIONS_CACHE) >= _PROTECTED_GENERATIONS_CACHE_MAX:
+            _PROTECTED_GENERATIONS_CACHE.clear()
+        _PROTECTED_GENERATIONS_CACHE[key] = protected
         return protected
 
     def generation_write_begin(self, account, backend, records):

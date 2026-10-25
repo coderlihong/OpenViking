@@ -1310,23 +1310,31 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
             )
 
     def record_and_settle_receipts(self, entries):
-        """Record receipts for a whole batch and settle them, in two transactions.
+        """Record a whole batch's receipts and settle them in ONE transaction.
 
         The embedding queue's hot path. ``entries`` is a sequence of
-        ``(generation, child)``; all rows land under one ``BEGIN IMMEDIATE``,
-        then the touched generations are settled under a second. Compared with
-        the per-chunk path -- which takes the lock twice per chunk -- this takes
-        it twice per batch.
+        ``(generation, child)``. Compared with the per-chunk path -- two lock
+        acquisitions per chunk -- this is two per batch, and now one: recording
+        and settling are safe to combine because settling does not publish
+        inline. ``_receipt_recorded`` -> ``_settle_batch`` -> ``_defer_publication``
+        only *queues* the publication on the thread-local list, which
+        ``_drain_deferred_publications`` runs after this transaction commits, so
+        the expensive manifest walk and encode still happen outside the writer.
+
+        The outer ``db()`` block is what makes that work: ``settle_many_after_receipts``
+        opens its own ``db()``, which joins the enclosing transaction because
+        ``db()`` is depth-aware per thread.
 
         Returns ``{generation: state}`` for every generation the caller should
         report on. A child the generation does not expect raises, exactly as the
         single-receipt path raises: the batch is rejected as a whole rather than
         silently dropping a member.
         """
-        recorded, touched = self.record_receipts(entries)
-        if not touched:
-            return {}
-        return self.settle_many_after_receipts(touched)
+        with self.db():
+            recorded, touched = self.record_receipts(entries)
+            if not touched:
+                return {}
+            return self.settle_many_after_receipts(touched)
 
     def record_receipts(self, entries):
         """Insert receipts for many generations in ONE write transaction.
