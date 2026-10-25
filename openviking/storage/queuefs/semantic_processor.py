@@ -362,6 +362,16 @@ class SemanticProcessor(DequeueHandlerBase):
     ) -> list[ProcessResult]:
         """Process a dequeued semantic batch concurrently.
 
+        Note on scope: semantic generation is a *background* phase. A content
+        write returns as soon as the file is on disk and both queues have the
+        message (p50 5ms measured); it does not wait for this. Only requests that
+        explicitly pass ``wait=True`` -- batch-write and reindex -- wait for
+        semantic roots too, via ``RequestWaitTracker.is_complete``. So the drain
+        time of this queue is not write latency and must not be reported as such:
+        measuring a 50-document run that way gives ~45 docs/min, while the write
+        path plus embedding actually sustains 824 docs/min with the same 50
+        semantic messages still running in the background.
+
         The base class runs ``on_dequeue`` one message at a time, which made the
         semantic queue strictly serial no matter how wide its concurrency window
         was: measured 6 independent directories draining 56-62s as one-at-a-time
