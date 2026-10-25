@@ -36,10 +36,14 @@ def _snapshot_pages(registry, account, namespace, root):
                           (account, 'resources' if namespace != 'resources' else namespace)).fetchone()
         if head is None:
             return {}
-        manifest = db.execute('SELECT manifest FROM snapshots WHERE id=?', (head[0],)).fetchone()
-    if manifest is None:
-        return {}
-    return {uri: item for uri, item in decode_manifest(manifest[0]).items()
+        manifest = db.execute('SELECT id FROM snapshots WHERE id=?', (head[0],)).fetchone()
+        if manifest is None:
+            return {}
+        # Resolve through the store so a delta snapshot is followed to its parent.
+        from openviking.indexing.registry_gc import load_snapshot_manifest
+
+        entries = load_snapshot_manifest(db, head[0])
+    return {uri: item for uri, item in entries.items()
             if uri.startswith(root.rstrip('/') + '/')}
 
 

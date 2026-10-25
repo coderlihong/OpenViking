@@ -12,7 +12,11 @@ import time
 from collections import OrderedDict
 from uuid import uuid4
 
-from openviking.indexing.manifest_codec import decode_manifest
+from openviking.indexing.manifest_codec import (
+    decode_manifest,
+    decode_manifest_delta,
+    is_delta_manifest,
+)
 from openviking.storage.vector_ids import publication_member_id
 from openviking_cli.exceptions import ConflictError, FailedPreconditionError, NotFoundError
 
@@ -85,11 +89,53 @@ def _snapshot_manifest(db, snapshot):
     cached = _SNAPSHOT_MANIFEST_CACHE.get(snapshot)
     if cached is not None:
         return cached
-    row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (snapshot,)).fetchone()
-    if row is None:
-        raise FailedPreconditionError('Pinned snapshot dependency is missing')
-    manifest = decode_manifest(row[0])
+    manifest = _decode_snapshot_chain(db, snapshot)
     _cache_snapshot(snapshot, manifest)
+    return manifest
+
+
+def _decode_snapshot_chain(db, snapshot):
+    """Resolve a snapshot's manifest, following delta parents.
+
+    A delta snapshot stores only what changed against its parent, so resolving
+    one walks back to the nearest full manifest and replays the deltas forward.
+    Every pre-existing row is a full manifest, so this is a no-op for them.
+    """
+    chain = []
+    current = snapshot
+    seen = set()
+    while True:
+        if current in seen:
+            raise FailedPreconditionError('Snapshot delta chain contains a cycle')
+        seen.add(current)
+        cached = _SNAPSHOT_MANIFEST_CACHE.get(current)
+        if cached is not None:
+            _SNAPSHOT_MANIFEST_CACHE.move_to_end(current)
+            base = cached
+            break
+        row = db.execute('SELECT manifest FROM snapshots WHERE id=?', (current,)).fetchone()
+        if row is None:
+            raise FailedPreconditionError('Pinned snapshot dependency is missing')
+        raw = row[0]
+        if not is_delta_manifest(raw):
+            base = decode_manifest(raw)
+            _cache_snapshot(current, base)
+            break
+        chain.append((current, decode_manifest_delta(raw)))
+        parent = chain[-1][1].get('parent')
+        if not parent:
+            raise FailedPreconditionError('Delta snapshot has no parent')
+        current = parent
+    if not chain:
+        return base
+    # Replay oldest-first. Copy only when this level actually has a delta, so a
+    # plain full manifest is never duplicated.
+    manifest = dict(base)
+    for _, delta in reversed(chain):
+        for uri in delta.get('drop') or ():
+            manifest.pop(uri, None)
+        for uri, item in (delta.get('set') or {}).items():
+            manifest[uri] = item
     return manifest
 
 
@@ -126,9 +172,19 @@ def _snapshot_generation_for(db, snapshot, uri):
             raise FailedPreconditionError('Pinned snapshot dependency is missing')
         # Deliberately *not* memoized: keeping a 185k-entry manifest alive for
         # the two-entry cache evicts the one a walk actually needs.
-        manifest = decode_manifest(row[0])
+        manifest = _decode_snapshot_chain(db, snapshot)
     item = manifest.get(uri)
     return item.get('generation') if isinstance(item, dict) else None
+
+
+def load_snapshot_manifest(db, snapshot):
+    """Full manifest of one snapshot, transparently following delta parents.
+
+    Every caller that reads a manifest row must go through this rather than
+    ``decode_manifest`` directly: a snapshot may be stored as a delta against its
+    parent, and only this knows how to resolve the chain.
+    """
+    return _snapshot_manifest(db, snapshot)
 
 
 def _tombstone_covers(db, account, uri):

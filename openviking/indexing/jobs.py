@@ -217,8 +217,9 @@ class DurableJobsMixin:
         if not published or not head:
             missing['version_switch'].append(f'{account}/{namespace}')
             return missing
-        manifest = decode_manifest(db.execute('SELECT manifest FROM snapshots WHERE id=?',
-                                              (head[0],)).fetchone()[0])
+        from openviking.indexing.registry_gc import load_snapshot_manifest
+
+        manifest = load_snapshot_manifest(db, head[0])
         for row in rows:
             item = manifest.get(row['uri'])
             if not item or item.get('generation') != row['generation']:

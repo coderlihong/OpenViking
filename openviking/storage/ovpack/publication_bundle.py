@@ -278,6 +278,14 @@ def _decode_manifest(raw) -> Optional[dict]:
         return None
     if isinstance(raw, (bytes, bytearray)):
         data = bytes(raw)
+        # A delta snapshot stores only its change set; this helper has no access
+        # to the parent chain, so it must refuse rather than hand back the delta
+        # envelope as if it were a manifest. Callers inside a transaction should
+        # use openviking.indexing.registry_gc.load_snapshot_manifest instead.
+        if data[:3] == b"\x1f\x8bD":
+            raise ValueError(
+                "Snapshot is stored as a delta; resolve it with load_snapshot_manifest"
+            )
         if data[:2] == b"\x1f\x8b":
             data = gzip.decompress(data)
         return json.loads(data.decode("utf-8"))
