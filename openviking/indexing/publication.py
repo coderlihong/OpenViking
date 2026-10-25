@@ -2108,12 +2108,33 @@ class PublicationStore(RegistryDomains, DurableJobsMixin, WriteRecoveryMixin, Re
         its published bytes) must not open a write transaction, because the
         single writer turns that into a busy-timeout wait -- measured as 12-33s
         event-loop stalls in ``source_reference``.
+
+        The returned mapping is a *shared, immutable* view of the cached snapshot
+        manifests, never a fresh dict. Callers must only read it (``.get``,
+        ``.items()``, ``in``); every current caller does, so this is a contract
+        rather than a change in behaviour.
+        Returning a copy used to cost more than the decode it was protecting: an
+        export walks ~210k files and every one of them re-materialised this dict,
+        which measured 74% of the whole export's wall time (py-spy: 25.9% +
+        21.4% + 16.2% inside this method's loop, plus 10.9% re-decoding JSON it
+        had already decoded). A single-namespace account -- every account this
+        deployment has -- can hand back the memoized manifest outright; the
+        multi-namespace case still merges, but only when it actually has more
+        than one namespace.
         """
-        manifest = {}
-        for row in db.execute(
+        rows = db.execute(
             "SELECT s.id FROM heads h JOIN snapshots s ON s.id=h.snapshot WHERE h.account=?",
             (account,),
-        ):
+        ).fetchall()
+        if not rows:
+            return {}
+        if len(rows) == 1:
+            # The overwhelmingly common case: one namespace, so the head manifest
+            # *is* that snapshot's manifest. ``_snapshot_manifest`` memoizes it,
+            # making this call O(1) after the first decode.
+            return _snapshot_manifest(db, rows[0]["id"])
+        manifest = {}
+        for row in rows:
             # decode once per snapshot per process: re-decoding an ~11MB gzip
             # blob inside a write transaction held the single writer lock for
             # ~116ms per call (capture runs once per file in the vector phase,
